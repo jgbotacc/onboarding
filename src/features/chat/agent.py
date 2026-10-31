@@ -7,7 +7,7 @@ import uuid
 
 from src.features.imagegen.providers import generate
 from src.features.intake.extract import EMAIL, extract_fields
-from src.features.intake.validate import check, reask
+from src.features.intake.validate import check, parse_amount, reask
 from src.shared.config import LABELS, MANDATORY, MAX_ROUNDS, MEDIA_DIR
 
 SKIP = re.compile(r"^\s*(skip|no|none|nope|n/a|go ahead|proceed)\b", re.I)
@@ -80,7 +80,7 @@ def _after_fields(s, prefix=""):
         if s.pop("design_changed", False) and s["round"] < MAX_ROUNDS:
             s["direction"] = s["fields"].get("design_preferences") or s["direction"]
             out = run_round(s)
-            out["reply"] = prefix + "Thanks, your details are updated. Your design brief changed, so " + out["reply"]
+            out["reply"] = prefix + "Thanks, your details are updated. Your design brief changed. " + out["reply"]
             return out
         s["status"] = "pending_review"
         return resp(s, prefix + "Thanks, your details are updated. Our team will review them and get back to you.",
@@ -94,7 +94,7 @@ def _after_fields(s, prefix=""):
             return resp(s, prefix + f"Thanks, {name} is registered. I'll use your design preferences "
                         f"({s['direction']}). Upload any reference images (JPG or PNG) now, or say 'skip' to start.")
         out = run_round(s)
-        out["reply"] = prefix + f"Thanks, {name} is registered. Using your design preferences. " + out["reply"]
+        out["reply"] = prefix + f"Thanks, {name} is registered.\n\n" + out["reply"]
         return out
     s["status"] = "need_direction"
     refs = f"Got {len(s['refs'])} reference image(s). Now tell me" if s["refs"] else \
@@ -120,7 +120,7 @@ def on_refs(s, paths):
     s["refs"].extend(paths)
     if s["status"] == "need_direction" and s.pop("refs_pending", False):
         out = run_round(s)  # PDF design preferences + these refs
-        out["reply"] = f"Got {len(paths)} reference image(s). " + out["reply"]
+        out["reply"] = f"Got {len(paths)} reference image(s).\n\n" + out["reply"]
         return out
     if s["status"] == "need_direction":
         return resp(s, f"Got {len(paths)} reference image(s). Now tell me your design direction, or say 'skip'.")
@@ -141,6 +141,35 @@ def _fill_from_text(s, text):
     return True
 
 
+SUMMARY = [("business_name", "Business name"), ("business_type", "Business type"), ("industry", "Industry"),
+           ("business_website", "Business website"), ("contact_name", "Contact name"),
+           ("title_position", "Title / position"), ("email", "Email"), ("phone_number", "Phone number"),
+           ("design_preferences", "Design preferences"), ("expected_annual_revenue", "Expected annual revenue"),
+           ("requirements_notes", "Requirements / notes")]
+SUMMARY_CLOSE = "Using your design preferences and business information. Here is a mockup."
+
+
+def _money(v):
+    """'480000', '480k' or 'five thousand dollars' -> 'S$480,000'. Ranges and unparsed text stay as typed."""
+    if re.search(r"\d\s*[a-z]{0,3}\s*(?:-|–|—|\bto\b)\s*\S", v, re.I):
+        return v
+    n = parse_amount(v)
+    return f"S${n:,.0f}" if n is not None else v
+
+
+def summary(s):
+    """Registration summary shown with the first mockup: one field per line, then the closing line."""
+    f, bad = dict(s["fields"]), s.get("invalid", {})
+    if not f.get("design_preferences") and s.get("direction"):
+        f["design_preferences"] = s["direction"]  # direction typed in chat
+    lines = []
+    for k, label in SUMMARY:
+        v = str(f.get(k) or "").strip()
+        if v and k not in bad:
+            lines.append(f"{label}: {_money(v) if k == 'expected_annual_revenue' else v}")
+    return "\n".join(lines) + "\n\n" + SUMMARY_CLOSE
+
+
 def run_round(s):
     s["round"] += 1
     prev = str(MEDIA_DIR / s["images"][0].rsplit("/", 1)[-1]) if s.get("images") else None
@@ -149,8 +178,10 @@ def run_round(s):
     s["status"] = "awaiting_review"
     s.setdefault("history", []).append({"round": s["round"], "images": s["images"], "direction": s["direction"],
                                         "feedback": None, "accepted": None})
-    return resp(s, f"Here is mock-up round {s['round']} of {MAX_ROUNDS}. Happy with this direction? "
-                "Accept it, or tell me what to change.", s["images"])
+    if s["round"] == 1:
+        return resp(s, summary(s), s["images"])
+    return resp(s, "Here is the updated mockup. Happy with this direction? Accept it, or tell me what to change.",
+                s["images"])
 
 
 def on_chat(s, text):
@@ -198,7 +229,7 @@ def on_review(s, accepted: bool, feedback: str | None):
     s["feedback"] = (feedback or "").strip() or None
     if s["round"] >= MAX_ROUNDS:
         s["status"] = "handed_off"
-        return resp(s, f"We've done {MAX_ROUNDS} rounds, so I'm handing you to a human designer, "
+        return resp(s, "Thanks for the feedback. I'm handing you to a human designer, "
                     "who will contact you shortly with your feedback in hand.")
     if not s["feedback"]:
         s["status"] = "awaiting_review"

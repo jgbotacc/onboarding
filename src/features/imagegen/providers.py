@@ -123,16 +123,26 @@ class GeminiProvider:
 
 
 def build_prompt(brief: dict) -> str:
-    parts = [f"Square 1:1 social media marketing post for {brief.get('business_name') or 'a small business'}"]
-    if brief.get("business_type") or brief.get("industry"):
-        parts.append(f"a {' / '.join(x for x in [brief.get('business_type'), brief.get('industry')] if x)} business")
-    if brief.get("direction"):
-        parts.append(f"Design direction: {brief['direction']}")
-    if brief.get("requirements_notes"):
-        parts.append(f"Requirements: {brief['requirements_notes']}")
+    """Muse prompt. Order: the post's headline offer (requirements / notes), then the design direction
+    (style and colours), then business type and industry, then the business name. Empty fields are skipped."""
+    name = (brief.get("business_name") or "").strip() or "a small business"
+    notes = (brief.get("requirements_notes") or "").strip()
+    style = (brief.get("direction") or brief.get("design_preferences") or "").strip()
+    kind = " / ".join(x.strip() for x in (brief.get("business_type"), brief.get("industry")) if x and x.strip())
+    parts = []
+    if notes:
+        parts.append(f"Main message and headline offer of the post: {notes}. Make this the biggest, clearest text "
+                     "and show it as the focus of the image")
+    else:
+        parts.append(f"Social media marketing post for {name}")
+    if style:
+        parts.append(f"Design direction (style and colours): {style}")
     if brief.get("brand_colours"):
         parts.append(f"Brand colours: {brief['brand_colours']}")
-    parts.append(f"Show the business name '{brief.get('business_name', '')}' clearly. Clean, professional layout.")
+    if kind:
+        parts.append(f"Business type and industry: {kind}")
+    parts.append(f"Business name: show '{name}' clearly")
+    parts.append("Square 1:1 social media marketing post. Clean, professional layout")
     return ". ".join(parts) + "."
 
 

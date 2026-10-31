@@ -100,3 +100,14 @@ def test_form_with_prefs_after_pdf_goes_straight_to_round_1():
     r = c.post("/api/form", json={"sessionId": sid, "fields": {
         "business_name": "Acme", "contact_name": "Jo", "email": "jo@acme.example", "design_preferences": "minimal blue"}}).json()
     assert r["status"] == "awaiting_review" and r["round"] == 1 and r["images"], r
+
+
+def test_pdf_skip_and_ref_paths_show_summary():
+    close = "Using your design preferences and business information. Here is a mockup."
+    sid = _pdf_with_prefs()
+    r = c.post("/api/chat", json={"sessionId": sid, "text": "skip"}).json()
+    assert r["reply"].startswith("Business name: ") and r["reply"].endswith("\n\n" + close), r
+    assert f"Design preferences: {PREFS}\n" in r["reply"]
+    sid = _pdf_with_prefs()
+    r = _upload(sid, ("ref.png", _png(), "image/png"))
+    assert r["reply"].startswith("Got 1 reference image(s).\n\nBusiness name: ") and r["reply"].endswith(close), r
