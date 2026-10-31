@@ -8,13 +8,19 @@ MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 SQLITE_PATH = DATA_DIR / "onboarding.sqlite3"
 MAX_ROUNDS = 3
 
+# Source of truth: Docs/b2b-registration-form.html (* = mandatory)
 MANDATORY = [
-    ("company_name", "Company name"),
-    ("address", "Address"),
-    ("contact", "Contact email or phone"),
-    ("industry", "Industry"),
+    ("business_name", "Business Name"),
+    ("contact_name", "Contact Name"),
+    ("email", "Email"),
 ]
-OPTIONAL = [("tagline", "Marketing tagline"), ("brand_colours", "Brand colours"), ("logo", "Logo")]
+OPTIONAL = [
+    ("business_type", "Business Type"), ("industry", "Industry"), ("business_website", "Business Website"),
+    ("title_position", "Title/Position"), ("phone_number", "Phone Number"),
+    ("design_preferences", "Design Preferences"), ("expected_annual_revenue", "Expected Annual Revenue"),
+    ("requirements_notes", "Requirements / Notes"),
+]
+FORM_KEYS = [k for k, _ in MANDATORY + OPTIONAL]
 LABELS = dict(MANDATORY + OPTIONAL)
 
 

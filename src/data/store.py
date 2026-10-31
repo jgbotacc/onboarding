@@ -2,6 +2,7 @@
 import json
 import sqlite3
 import threading
+from pathlib import Path
 
 from src.shared.config import SQLITE_PATH, neo4j_env
 
@@ -12,8 +13,9 @@ class SqliteStore:
     def __init__(self, path=SQLITE_PATH):
         self.db = sqlite3.connect(path, check_same_thread=False)
         self.lock = threading.Lock()
-        sql = open(__file__.replace("src/data/store.py", "db/migrations/001_init.sql")).read()
-        self.db.executescript(sql)
+        mig = Path(__file__).resolve().parents[2] / "db" / "migrations"
+        for f in sorted(mig.glob("*.sql")):
+            self.db.executescript(f.read_text())
 
     def save(self, s: dict):
         with self.lock:

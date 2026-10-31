@@ -53,7 +53,7 @@ class Neo4jStore:
 
     def save(self, st: dict):
         self._run("MERGE (c:Client {id:$id}) SET c.name=$name, c.status=$status, c.state=$state",
-                  id=st["id"], name=st["fields"].get("company_name", ""), status=st["status"],
+                  id=st["id"], name=st["fields"].get("business_name", ""), status=st["status"],
                   state=json.dumps(st))
         if st["fields"]:
             self._run(FIELDS_Q, clientId=st["id"],

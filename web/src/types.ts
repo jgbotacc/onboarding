@@ -24,3 +24,31 @@ export const STATUS_LABELS: Record<string, string> = {
   accepted: "Accepted",
   handed_off: "Handed off",
 };
+
+export interface FormFields {
+  business_name: string;
+  business_type: string;
+  industry: string;
+  business_website: string;
+  contact_name: string;
+  title_position: string;
+  email: string;
+  phone_number: string;
+  design_preferences: string;
+  expected_annual_revenue: string;
+  requirements_notes: string;
+}
+
+export const EMPTY_FORM: FormFields = {
+  business_name: "",
+  business_type: "",
+  industry: "",
+  business_website: "",
+  contact_name: "",
+  title_position: "",
+  email: "",
+  phone_number: "",
+  design_preferences: "",
+  expected_annual_revenue: "",
+  requirements_notes: "",
+};

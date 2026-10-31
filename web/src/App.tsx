@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
 import { connect, type Client } from "./api";
-import { MAX_ROUNDS, STATUS_LABELS, type ApiResponse } from "./types";
+import { MAX_ROUNDS, STATUS_LABELS, type ApiResponse, type FormFields } from "./types";
+import FormModal from "./FormModal";
 import { CheckboxIcon, CloseIcon, FileIcon, ImageIcon, PaperclipIcon, SendIcon } from "./icons";
 
 type Msg =
   | { id: number; role: "user"; text: string; files: string[] }
-  | { id: number; role: "assistant"; text: string; images: string[]; status: string; round: number }
+  | { id: number; role: "assistant"; text: string; images: string[]; status: string; round: number; choices?: boolean }
   | { id: number; role: "error"; text: string };
 
 type NewMsg = Msg extends infer T ? (T extends Msg ? Omit<T, "id"> : never) : never;
 
-const GREETING = "Welcome. Upload a PDF with your business details and any JPG reference images, and I'll get you set up.";
+const GREETING = "Welcome. To get started, upload a PDF with your business details (plus any JPG reference images), or fill in a registration form.";
 const isAcceptable = (f: File) => /\.(pdf|jpe?g)$/i.test(f.name) || f.type === "application/pdf" || f.type === "image/jpeg";
 
 let nextId = 1;
@@ -26,6 +27,7 @@ export default function App() {
   const [feedbackMode, setFeedbackMode] = useState(false);
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
   const dragDepth = useRef(0);
   const chatRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -38,7 +40,7 @@ export default function App() {
     connect().then((c) => {
       if (!alive) return;
       setClient(c);
-      setMessages([{ id: nextId++, role: "assistant", text: GREETING, images: [], status: "registering", round: 0 }]);
+      setMessages([{ id: nextId++, role: "assistant", text: GREETING, images: [], status: "registering", round: 0, choices: true }]);
       inputRef.current?.focus();
     });
     return () => {
@@ -95,6 +97,15 @@ export default function App() {
     Array.from(list).forEach((f) => (isAcceptable(f) ? ok.push(f) : bad.push(f.name)));
     if (bad.length) push({ role: "error", text: "Only PDF and JPG files are supported: " + bad.join(", ") });
     if (ok.length) setFiles((prev) => [...prev, ...ok]);
+  };
+
+  const started = messages.some((m) => m.role === "user");
+
+  const submitForm = (fields: FormFields) => {
+    if (!client || busy) return;
+    setFormOpen(false);
+    push({ role: "user", text: "Submitted registration form", files: fields.business_name ? [fields.business_name] : [] });
+    run(() => client.form(fields));
   };
 
   const startFeedback = () => {
@@ -191,6 +202,16 @@ export default function App() {
             return (
               <div key={m.id} className="msg assistant">
                 {m.text && <div>{m.text}</div>}
+                {m.choices && (
+                  <div className="choices">
+                    <button type="button" className="btn primary" id="choiceUpload" disabled={started || busy} onClick={() => fileRef.current?.click()}>
+                      Upload PDF
+                    </button>
+                    <button type="button" className="btn" id="choiceForm" disabled={started || busy} onClick={() => setFormOpen(true)}>
+                      Fill in a new form
+                    </button>
+                  </div>
+                )}
                 {m.images.length > 0 && (
                   <div className="img-grid">
                     {m.images.map((src, i) => (
@@ -293,6 +314,7 @@ export default function App() {
       </footer>
 
       {dragging && <div className="drop-overlay">Drop PDF or JPG files to attach</div>}
+      {formOpen && <FormModal onCancel={() => setFormOpen(false)} onSubmit={submitForm} />}
       {lightbox && (
         <div className="lightbox" id="lightbox" onClick={() => setLightbox(null)} role="dialog" aria-label="Image preview">
           <img src={lightbox} alt="Enlarged image" />

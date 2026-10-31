@@ -55,9 +55,9 @@ class PlaceholderProvider:
         d.rectangle([0, 0, 1080, 140], fill=accent)
         d.text((40, 45), f"PLACEHOLDER  ·  round {round_n}", font=_font(44), fill="white")
         y = 200
-        for line in _wrap(d, brief.get("company_name", "Your company"), _font(72), 1000)[:3]:
+        for line in _wrap(d, brief.get("business_name", "Your business"), _font(72), 1000)[:3]:
             d.text((40, y), line, font=_font(72), fill="#0f172a"); y += 86
-        tag = brief.get("tagline") or brief.get("industry") or ""
+        tag = brief.get("tagline") or " · ".join(x for x in [brief.get("business_type"), brief.get("industry")] if x)
         for line in _wrap(d, tag, _font(40), 1000)[:2]:
             d.text((40, y + 10), line, font=_font(40), fill="#334155"); y += 52
         for i, c in enumerate(cols):
@@ -86,9 +86,9 @@ class OpenAIProvider:
 
     def generate(self, brief, refs, round_n):
         import base64, httpx
-        prompt = (f"Square 1080x1080 social media marketing post for {brief.get('company_name')}, "
+        prompt = (f"Square 1080x1080 social media marketing post for {brief.get('business_name')}, "
                   f"a {brief.get('industry')} business. Tagline: {brief.get('tagline','')}. "
-                  f"Brand colours: {brief.get('brand_colours','')}. Style: {brief.get('direction','')}. "
+                  f"Brand colours: {brief.get('brand_colours','')}. Requirements: {brief.get('requirements_notes','')}. Style: {brief.get('direction','')}. "
                   f"Changes requested: {brief.get('feedback','none')}.")
         r = httpx.post("https://api.openai.com/v1/images/generations", timeout=120,
                        headers={"Authorization": f"Bearer {os.environ['OPENAI_API_KEY']}"},
@@ -106,9 +106,9 @@ class GeminiProvider:
     def generate(self, brief, refs, round_n):
         from google import genai
         client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-        prompt = (f"Create a square 1:1 social media marketing post for {brief.get('company_name')}, "
+        prompt = (f"Create a square 1:1 social media marketing post for {brief.get('business_name')}, "
                   f"a {brief.get('industry')} business. Tagline: {brief.get('tagline','')}. "
-                  f"Brand colours: {brief.get('brand_colours','')}. Design direction: {brief.get('direction','')}. "
+                  f"Brand colours: {brief.get('brand_colours','')}. Requirements: {brief.get('requirements_notes','')}. Design direction: {brief.get('direction','')}. "
                   f"Changes requested: {brief.get('feedback') or 'none'}. Use the attached images as style references.")
         parts = [prompt] + [Image.open(r) for r in refs[:3]]
         res = client.models.generate_content(

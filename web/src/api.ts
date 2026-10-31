@@ -1,4 +1,4 @@
-import { ApiResponse } from "./types";
+import { ApiResponse, EMPTY_FORM, type FormFields } from "./types";
 import { createMock } from "./mock";
 
 export const API_BASE = "";
@@ -18,6 +18,7 @@ export interface Client {
   mock: boolean;
   sessionId: string;
   upload(files: File[]): Promise<ApiResponse>;
+  form(fields: FormFields): Promise<ApiResponse>;
   chat(text: string): Promise<ApiResponse>;
   review(accepted: boolean, feedback: string): Promise<ApiResponse>;
 }
@@ -55,6 +56,7 @@ export async function connect(): Promise<Client> {
         if (!res.ok) throw new Error("HTTP " + res.status);
         return res.json();
       },
+      form: (fields) => postJson("/api/form", { sessionId, fields: { ...EMPTY_FORM, ...fields } }),
       chat: (text) => postJson("/api/chat", { sessionId, text }),
       review: (accepted, feedback) => postJson("/api/review", { sessionId, accepted, feedback: feedback || "" }),
     };

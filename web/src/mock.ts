@@ -1,4 +1,11 @@
-import { ApiResponse, MAX_ROUNDS } from "./types";
+import { ApiResponse, MAX_ROUNDS, type FormFields } from "./types";
+
+const REQUIRED: { key: "business_name" | "contact_name" | "email"; label: string }[] = [
+  { key: "business_name", label: "Business name" },
+  { key: "contact_name", label: "Contact name" },
+  { key: "email", label: "Email" },
+];
+const EMAIL_RE = /[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+/;
 
 const FILLS = ["#DCE6FF", "#E3F1EA", "#FBEBDD", "#E8EAEE", "#F6E2E2"];
 
@@ -18,10 +25,11 @@ interface MockState {
   missing: string[];
   round: number;
   status: string;
+  designDirection: string;
 }
 
 export function createMock() {
-  const s: MockState = { registered: false, missing: [], round: 0, status: "registering" };
+  const s: MockState = { registered: false, missing: [], round: 0, status: "registering", designDirection: "" };
 
   const resp = (reply: string, images: string[] = []): ApiResponse => ({
     reply,
@@ -35,9 +43,19 @@ export function createMock() {
     s.round += 1;
     s.status = "awaiting_review";
     return resp(
-      `${prefix}Here are round ${s.round} concepts based on your design direction. Do they look right?`,
+      `${prefix}Here are round ${s.round} concepts based on ${s.round === 1 && s.designDirection ? `your design direction (\u201c${s.designDirection}\u201d)` : "your design direction"}. Do they look right?`,
       [0, 1, 2].map((i) => placeholder(s.round, i)),
     );
+  };
+
+  const askMissing = (prefix: string): ApiResponse => {
+    if (s.missing.length) {
+      s.status = "missing_info";
+      const list = s.missing.join(", ").toLowerCase();
+      return resp(`${prefix}Some mandatory details are missing: ${list}. Please send ${s.missing.length > 1 ? "them" : "it"} here.`);
+    }
+    s.status = "generating";
+    return generate(prefix);
   };
 
   const handlers = {
@@ -49,23 +67,33 @@ export function createMock() {
       }
       if (!s.registered) {
         s.registered = true;
-        s.missing = ["Contact email or phone"];
-        s.status = "missing_info";
-        return resp(
-          `I've read your document and registered your business${jpgs ? ` along with ${jpgs} reference image(s)` : ""}. One mandatory detail is missing: please send your contact email or phone number.`,
-        );
+        // Simulated parse: the document has a business and contact name but no email.
+        s.missing = ["Email"];
+        return askMissing(`I've read your document and registered your business${jpgs ? ` along with ${jpgs} reference image(s)` : ""}. `);
       }
       return resp(`Got ${files.length} more file(s). I'll use them in the next round.`);
+    },
+    form(fields: FormFields): ApiResponse {
+      s.registered = true;
+      s.missing = REQUIRED.filter((r) => !(fields[r.key] || "").trim() || (r.key === "email" && !EMAIL_RE.test(fields.email))).map((r) => r.label);
+      if (fields.design_preferences.trim()) s.designDirection = fields.design_preferences.trim();
+      const name = fields.business_name.trim();
+      const ack = s.designDirection ? ` I've noted \u201c${s.designDirection}\u201d as your design direction.` : "";
+      return askMissing(`Thanks${name ? `, ${name} is registered` : ", your form is received"}.${ack} `);
     },
     chat(text: string): ApiResponse {
       if (!s.registered) return resp("To get started, please upload a PDF with your business details, plus any JPG reference images.");
       if (s.status === "missing_info") {
-        if (text.includes("@") || /\d{6,}/.test(text.replace(/[\s+-]/g, ""))) {
-          s.missing = [];
-          s.status = "generating";
-          return generate("Thanks, your contact details are saved. ");
+        const before = s.missing.length;
+        const parts = text.split(/[,;\n]+/).map((p) => p.trim()).filter(Boolean);
+        const email = text.match(EMAIL_RE);
+        if (email) s.missing = s.missing.filter((m) => m !== "Email");
+        const names = parts.filter((p) => !EMAIL_RE.test(p));
+        s.missing = s.missing.filter((m) => (m !== "Email" && names.length ? (names.shift(), false) : true));
+        if (s.missing.length === before) {
+          return resp(`I couldn't match that to the missing details. Please send: ${s.missing.join(", ").toLowerCase()}.`);
         }
-        return resp("That doesn't look like an email or phone number. Could you send your contact email or phone?");
+        return askMissing("Thanks, saved. ");
       }
       if (s.status === "awaiting_review") return resp("Please use \u201cLooks good\u201d or \u201cRequest changes\u201d on the images above.");
       if (s.status === "accepted") return resp("Your designs are approved. Our team will follow up with the final files.");
@@ -88,6 +116,7 @@ export function createMock() {
   const delay = <T,>(v: T) => new Promise<T>((res) => setTimeout(() => res(v), 600));
   return {
     upload: (f: File[]) => delay(handlers.upload(f)),
+    form: (f: FormFields) => delay(handlers.form(f)),
     chat: (t: string) => delay(handlers.chat(t)),
     review: (a: boolean, fb: string) => delay(handlers.review(a, fb)),
   };

@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from src.data.store import get_store
 from src.features.chat import agent
 from src.features.intake.extract import extract_fields, pdf_text
-from src.shared.config import MEDIA_DIR
+from src.shared.config import FORM_KEYS, MEDIA_DIR
 
 ROOT = Path(__file__).resolve().parents[1]
 WEB = ROOT / "web" / "dist"
@@ -21,6 +21,11 @@ store = get_store()
 class ChatIn(BaseModel):
     sessionId: str
     text: str
+
+
+class FormIn(BaseModel):
+    sessionId: str
+    fields: dict[str, str | None]
 
 
 class ReviewIn(BaseModel):
@@ -61,8 +66,8 @@ def session(body: SessionIn | None = None):
         out["sessionId"] = old["id"]
         return out
     s = agent.new_session()
-    out = agent.resp(s, "Hi! Upload a PDF with your business details (company name, address, "
-                        "contact, industry) or just type them here.")
+    out = agent.resp(s, "Hi! Upload your registration PDF, fill in the registration form, "
+                        "or type your business name, contact name and email here.")
     out["sessionId"] = s["id"]
     return _done(s, out, "session", {})
 
@@ -92,6 +97,13 @@ async def upload(request: Request):
     if not out:
         raise HTTPException(400, "Upload a PDF or JPG")
     return _done(s, out)
+
+
+@app.post("/api/form")
+def form(body: FormIn):
+    s = _load(body.sessionId)
+    fields = {k: v for k, v in body.fields.items() if k in FORM_KEYS}
+    return _done(s, agent.on_form(s, fields))
 
 
 @app.post("/api/chat")
