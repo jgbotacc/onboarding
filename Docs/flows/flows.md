@@ -30,4 +30,4 @@ What moves between the browser, the FastAPI back end in the Daytona sandbox, the
 6. The decision email goes out through Resend, or is kept in the outbox as "Sent (demo)".
 7. The "more info" link brings the client back through `POST /api/session {resumeToken}`.
 
-The Vercel relay hop is drawn from the team's description and isn't in the repo code yet.
+The live Daytona sandbox reaches Neo4j Aura, Muse Image and Resend through the Vercel relay, which holds the API keys and only accepts calls carrying a shared secret.

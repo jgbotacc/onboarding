@@ -17,7 +17,7 @@ Stack: `web (FastAPI + React/Vite, Neo4j Aura, Daytona, Vercel relay)`
 │   └── flows/
 │       ├── flows.md          user flow and data flow, step by step
 │       ├── user-flow.png     end-to-end user flow storyboard
-│       └── data-flow.png     data flow between browser, back end and services (pending)
+│       └── data-flow.png     data flow between browser, back end and services
 ├── src/
 │   ├── app.py                FastAPI entry point (API + serves web/dist)
 │   ├── features/
@@ -55,4 +55,4 @@ Stack: `web (FastAPI + React/Vite, Neo4j Aura, Daytona, Vercel relay)`
 ## Added files and folders
 - `Docs/flows/flows.md`: user flow and data flow, step by step
 - `Docs/flows/user-flow.png`: end-to-end user flow storyboard (chat and staff page)
-- `Docs/flows/data-flow.png`: data flow between browser, back end, relay, Neo4j, Muse and Resend (not committed yet, see note)
+- `Docs/flows/data-flow.png`: data flow between browser, back end, relay, Neo4j, Muse and Resend
