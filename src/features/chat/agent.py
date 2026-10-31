@@ -134,7 +134,7 @@ def on_refs(s, paths):
         out["reply"] = f"Got {len(paths)} reference image(s).\n\n" + out["reply"]
         return out
     if s["status"] == "need_direction":
-        return resp(s, f"Got {len(paths)} reference image(s). Now tell me your design direction, or say 'skip'.")
+        return resp(s, f"Got {len(paths)} reference image(s). Now tell me your design direction, or type \"skip\".")
     return resp(s, f"Saved {len(paths)} reference image(s).") if s["status"] != "missing_info" \
         else _after_fields(s, f"Saved {len(paths)} reference image(s).\n\n")
 

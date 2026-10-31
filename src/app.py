@@ -162,7 +162,7 @@ async def upload(request: Request):
         except Exception:
             fields = {}
         out = agent.on_document(s, fields, fname)
-    if pdfs and refs and out["status"] != "need_direction":
+    if pdfs and refs and out["status"] == "missing_info":
         out = dict(out, reply=out["reply"] + f"\n\nSaved {len(refs)} reference image(s).")
     if refs and not pdfs:
         out = agent.on_refs(s, refs)
