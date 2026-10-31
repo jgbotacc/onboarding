@@ -1,7 +1,8 @@
 """Neo4j store using Junior Dev's graph model (neo4j/schema.cypher, queries.cypher)."""
 import json
+import os
 
-from neo4j import GraphDatabase
+import httpx
 
 ROUND_Q = """
 MATCH (c:Client {id:$clientId})
@@ -35,12 +36,20 @@ class Neo4jStore:
     kind = "neo4j"
 
     def __init__(self, uri, user, pw):
-        self.drv = GraphDatabase.driver(uri, auth=(user, pw))
-        self.drv.verify_connectivity()
+        """Uses the HTTPS Query API (port 443): Bolt port 7687 is blocked on the box and on Daytona."""
+        host = uri.split("://", 1)[1].split(":")[0].split("/")[0]
+        db = os.getenv("NEO4J_DATABASE") or "neo4j"
+        self.url, self.auth = f"https://{host}/db/{db}/query/v2", (user, pw)
+        self.http = httpx.Client(timeout=20)
+        self._run("RETURN 1 AS ok")
 
     def _run(self, q, **p):
-        with self.drv.session() as s:
-            return list(s.run(q, **p))
+        r = self.http.post(self.url, auth=self.auth, json={"statement": q, "parameters": p})
+        body = r.json()
+        if r.status_code >= 400 or body.get("errors"):
+            raise RuntimeError(f"Neo4j query failed: {body.get('errors') or r.status_code}")
+        data = body.get("data") or {}
+        return [dict(zip(data.get("fields", []), row)) for row in data.get("values", [])]
 
     def save(self, st: dict):
         self._run("MERGE (c:Client {id:$id}) SET c.name=$name, c.status=$status, c.state=$state",

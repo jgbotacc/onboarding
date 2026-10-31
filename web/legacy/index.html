@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Client Onboarding</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app" id="app">
+  <header class="header">
+    <h1>Client Onboarding</h1>
+    <div class="header-right">
+      <span class="badge-demo" id="demoBadge" hidden>Demo mode (mock data)</span>
+      <span class="pill" id="statusPill" data-status="registering">Registering</span>
+    </div>
+  </header>
+  <main class="chat" id="chat" aria-live="polite"></main>
+  <div class="drop-overlay" id="dropOverlay" hidden>Drop PDF or JPG files here</div>
+  <section class="missing-card" id="missingCard" hidden>
+    <div class="missing-title">Still needed:</div>
+    <ul id="missingList"></ul>
+  </section>
+  <div class="chips" id="chips"></div>
+  <form class="composer" id="composer" autocomplete="off">
+    <input type="file" id="fileInput" accept=".pdf,.jpg,.jpeg,application/pdf,image/jpeg" multiple hidden>
+    <button type="button" class="btn-icon" id="attachBtn" title="Attach PDF or JPG" aria-label="Attach files">&#128206;</button>
+    <textarea id="textInput" rows="1" placeholder="Type a message…"></textarea>
+    <button type="submit" class="btn-send" id="sendBtn">Send</button>
+  </form>
+</div>
+<div class="lightbox" id="lightbox" hidden><img id="lightboxImg" alt="Enlarged image"></div>
+<script src="app.js"></script>
+</body>
+</html>
