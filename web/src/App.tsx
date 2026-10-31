@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
 import { connect, HttpError, type Client } from "./api";
-import { EMPTY_FORM, MAX_ROUNDS, STATUS_LABELS, type ApiResponse, type FieldIssue, type FormFields } from "./types";
+import { EMPTY_FORM, STATUS_LABELS, type ApiResponse, type FieldIssue, type FormFields } from "./types";
 import FormModal from "./FormModal";
 import { FIELDS, toFieldKeys } from "./staff/fields";
 import { CheckboxIcon, CloseIcon, FileIcon, ImageIcon, PaperclipIcon, SendIcon } from "./icons";
@@ -343,11 +343,6 @@ export default function App() {
                 )}
                 {showReview && (
                   <>
-                    {m.round > 0 && (
-                      <div className="round">
-                        Round {m.round} of {MAX_ROUNDS}
-                      </div>
-                    )}
                     <div className="review">
                       <button type="button" className="btn primary" disabled={!active || busy} onClick={accept}>
                         Looks good
