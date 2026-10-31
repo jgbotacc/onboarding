@@ -1,6 +1,6 @@
 # Staff review API
 
-Page: `/staff` (served by the SPA). No auth (demo only).
+Page: `/staff` (served by the SPA). Every staff API call needs the `x-staff-key` header matching the `STAFF_PASSCODE` env var (401 if wrong, 503 if the server has none set). The page asks for the passcode and keeps it in sessionStorage. List and detail responses never include email bodies or resume links; the decision response returns `resume_url` once.
 
 ## GET /api/staff/clients
 Registered clients, newest first. Each row:

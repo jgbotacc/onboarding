@@ -8,9 +8,10 @@ os.environ.setdefault("APP_DATA_DIR", tempfile.mkdtemp())
 from fastapi.testclient import TestClient  # noqa: E402
 
 from src.app import app  # noqa: E402
+from helpers import new_session, resume, staff_client  # noqa: E402
 from src.features.intake.validate import check, parse_amount  # noqa: E402
 
-c = TestClient(app)
+c = staff_client(app)
 
 PASS = [
     ("expected_annual_revenue", "five thousand dollars"), ("expected_annual_revenue", "$5k"),
@@ -53,7 +54,7 @@ def test_word_numbers():
 
 
 def _sid():
-    return c.post("/api/session", json={}).json()["sessionId"]
+    return new_session(c)
 
 
 def test_form_path_flags_invalid_and_blocks_until_fixed():
@@ -104,7 +105,7 @@ def test_resume_link_answer_is_checked():
     d = c.post(f"/api/staff/clients/{sid}/decision",
                json={"decision": "more_info", "fields": ["expected_annual_revenue"]}).json()
     token = d["resume_url"].split("resume=")[1]
-    c.post("/api/session", json={"resumeToken": token})
+    resume(c, token)
     r = c.post("/api/chat", json={"sessionId": sid, "text": "cat"}).json()
     assert r["status"] == "missing_info" and r["invalid"][0]["field"] == "expected_annual_revenue"
     assert "Expected Annual Revenue" in r["missing"]

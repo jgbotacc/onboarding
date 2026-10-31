@@ -1,15 +1,17 @@
-"""Staff review API. Primary: /api/staff/clients*. Aliases: /api/clients*, /api/admin/clients*. No auth (demo)."""
+"""Staff review API. Primary: /api/staff/clients*. Aliases: /api/clients*, /api/admin/clients*.
+Every route needs the staff passcode (x-staff-key header, see shared/security.py)."""
 import secrets
 import uuid
 from datetime import datetime, timezone
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from src.features.chat import agent
 from src.features.staff import email
 from src.shared.config import LABELS, PUBLIC_BASE_URL
+from src.shared.security import require_staff
 
 STATUS = {"approve": "approved", "reject": "rejected", "more_info": "needs_info"}
 
@@ -31,11 +33,16 @@ def _detail(s):
     refs = ["/media/" + r.rsplit("/", 1)[-1] for r in s.get("refs", [])]
     return dict(_summary(s), fields=s.get("fields", {}), labels=LABELS, images=s.get("images", []),
                 reference_images=refs, rounds=s.get("history", []), decisions=s.get("decisions", []),
-                outbox=s.get("outbox", []), refill=s.get("refill", []), missing=agent.missing(s))
+                outbox=[_mail(m) for m in s.get("outbox", [])], refill=s.get("refill", []), missing=agent.missing(s))
+
+
+def _mail(m):
+    """Outbox entry without the body (it can hold a live resume link)."""
+    return {k: m.get(k) for k in ("to", "subject", "status", "sent_at", "id") if k in m}
 
 
 def make_router(store, save):
-    r = APIRouter()
+    r = APIRouter(dependencies=[Depends(require_staff)])
 
     def load(cid):
         s = store.load(cid)
@@ -73,7 +80,7 @@ def make_router(store, save):
         save(s)
         store.event(s["id"], "decision", dict(rec, token=token))
         store.event(s["id"], "email", mail)
-        return dict(_detail(s), email=mail, resume_url=url)
+        return dict(_detail(s), email=_mail(mail), resume_url=url)  # link shown once, to staff only
 
     for prefix in ("/api/staff/clients", "/api/clients", "/api/admin/clients"):
         r.add_api_route(prefix, list_clients, methods=["GET"])
