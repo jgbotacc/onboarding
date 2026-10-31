@@ -26,10 +26,11 @@ interface MockState {
   round: number;
   status: string;
   designDirection: string;
+  refs: number;
 }
 
 export function createMock() {
-  const s: MockState = { registered: false, missing: [], round: 0, status: "registering", designDirection: "" };
+  const s: MockState = { registered: false, missing: [], round: 0, status: "registering", designDirection: "", refs: 0 };
 
   const resp = (reply: string, images: string[] = []): ApiResponse => ({
     reply,
@@ -62,6 +63,7 @@ export function createMock() {
     upload(files: File[]): ApiResponse {
       const pdfs = files.filter((f) => /\.pdf$/i.test(f.name)).length;
       const jpgs = files.length - pdfs;
+      s.refs += jpgs;
       if (!s.registered && pdfs === 0) {
         return resp(`Thanks for the ${jpgs} reference image(s). Please also upload the PDF with your business details so I can register you.`);
       }
@@ -78,7 +80,8 @@ export function createMock() {
       s.missing = REQUIRED.filter((r) => !(fields[r.key] || "").trim() || (r.key === "email" && !EMAIL_RE.test(fields.email))).map((r) => r.label);
       if (fields.design_preferences.trim()) s.designDirection = fields.design_preferences.trim();
       const name = fields.business_name.trim();
-      const ack = s.designDirection ? ` I've noted \u201c${s.designDirection}\u201d as your design direction.` : "";
+      const refs = s.refs ? ` I'll use your ${s.refs} reference image(s) as style references.` : "";
+      const ack = (s.designDirection ? ` I've noted \u201c${s.designDirection}\u201d as your design direction.` : "") + refs;
       return askMissing(`Thanks${name ? `, ${name} is registered` : ", your form is received"}.${ack} `);
     },
     chat(text: string): ApiResponse {

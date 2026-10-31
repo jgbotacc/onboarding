@@ -36,3 +36,20 @@ def test_form_with_design_preferences_generates_immediately():
     assert r["missing"] == ["Email"] and r["status"] == "missing_info", r
     r = c.post("/api/form", json={"sessionId": sid, "fields": {"email": "jo@acme.co", "design_preferences": "minimal blue"}}).json()
     assert r["status"] == "awaiting_review" and r["round"] == 1 and r["images"], r
+
+
+def test_form_with_reference_images_uploaded_first():
+    """Form path: JPGs go to /api/upload before /api/form and are kept as style refs."""
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (8, 8), (22, 100, 255)).save(buf, "JPEG")
+    sid = c.post("/api/session", json={}).json()["sessionId"]
+    r = c.post("/api/upload", data={"sessionId": sid},
+               files={"files[]": ("ref.jpg", buf.getvalue(), "image/jpeg")})
+    assert r.status_code == 200 and r.json()["status"] == "need_document", r.text
+    r = c.post("/api/form", json={"sessionId": sid, "fields": {
+        "business_name": "Acme", "contact_name": "Jo", "email": "jo@acme.co", "design_preferences": "minimal blue"}}).json()
+    assert r["status"] == "awaiting_review" and r["round"] == 1 and r["images"], r
+    from src.app import store
+    assert len(store.load(sid)["refs"]) == 1

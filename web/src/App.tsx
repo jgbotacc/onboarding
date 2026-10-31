@@ -106,13 +106,24 @@ export default function App() {
     if (ok.length) setFiles((prev) => [...prev, ...ok]);
   };
 
-  const started = messages.some((m) => m.role === "user");
+  // Keep the start choices (upload / form) until the client is registered, so sending a
+  // reference image first no longer hides "Fill in a new form".
+  const started = messages.some((m) => m.role === "user") && !["registering", "need_document"].includes(status);
 
-  const submitForm = (fields: FormFields) => {
+  // Form path: reference images (optional) go to /api/upload first so the session holds them
+  // as style refs, then /api/form registers the client and starts round 1 with those refs.
+  const submitForm = (fields: FormFields, images: File[] = []) => {
     if (!client || busy) return;
     setFormOpen(false);
-    push({ role: "user", text: "Submitted registration form", files: fields.business_name ? [fields.business_name] : [] });
-    run(() => client.form(fields));
+    push({
+      role: "user",
+      text: "Submitted registration form",
+      files: [...(fields.business_name ? [fields.business_name] : []), ...images.map((f) => f.name)],
+    });
+    run(async () => {
+      if (images.length) await client.upload(images);
+      return client.form(fields);
+    });
   };
 
   const startFeedback = () => {

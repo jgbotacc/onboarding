@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { CloseIcon } from "./icons";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { CloseIcon, ImageIcon } from "./icons";
 import { EMPTY_FORM, type FormFields } from "./types";
 
 type Key = keyof FormFields;
@@ -69,12 +69,85 @@ function validate(f: FieldDef, raw: string): string {
 
 interface Props {
   onCancel: () => void;
-  onSubmit: (fields: FormFields) => void;
+  onSubmit: (fields: FormFields, images: File[]) => void;
+}
+
+const MAX_IMAGES = 6;
+const isImage = (f: File) => /\.(jpe?g|png)$/i.test(f.name) || f.type === "image/jpeg" || f.type === "image/png";
+
+/** Optional reference images: thumbnails with remove buttons. Sent to /api/upload before the form. */
+function RefImages({ files, onChange }: { files: File[]; onChange: (f: File[]) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [note, setNote] = useState("");
+  const urls = useMemo(() => files.map((f) => URL.createObjectURL(f)), [files]);
+  useEffect(() => () => urls.forEach((u) => URL.revokeObjectURL(u)), [urls]);
+
+  const add = (list: FileList | null) => {
+    if (!list) return;
+    const all = Array.from(list);
+    const ok = all.filter(isImage);
+    const room = MAX_IMAGES - files.length;
+    const msgs: string[] = [];
+    if (ok.length < all.length) msgs.push("Only JPG and PNG images are supported.");
+    if (ok.length > room) msgs.push(`Up to ${MAX_IMAGES} images.`);
+    setNote(msgs.join(" "));
+    if (room > 0 && ok.length) onChange([...files, ...ok.slice(0, room)]);
+  };
+
+  return (
+    <div className="field full">
+      <label htmlFor="f_ref_images">Reference images (optional)</label>
+      <p className="field-hint" id="f_ref_images_hint">
+        JPG or PNG examples of styles you like. We use them as style references for your first designs.
+      </p>
+      <input
+        ref={inputRef}
+        id="f_ref_images"
+        type="file"
+        accept="image/jpeg,image/png"
+        multiple
+        hidden
+        onChange={(e) => {
+          add(e.target.files);
+          e.target.value = "";
+        }}
+      />
+      <div className="ref-grid">
+        {files.map((f, i) => (
+          <div className="ref-thumb" key={f.name + i}>
+            <img src={urls[i]} alt={f.name} />
+            <button
+              type="button"
+              className="ref-remove"
+              aria-label={"Remove " + f.name}
+              onClick={() => onChange(files.filter((_, j) => j !== i))}
+            >
+              <CloseIcon />
+            </button>
+          </div>
+        ))}
+        {files.length < MAX_IMAGES && (
+          <button
+            type="button"
+            className="ref-add"
+            id="refAddBtn"
+            aria-describedby="f_ref_images_hint"
+            onClick={() => inputRef.current?.click()}
+          >
+            <ImageIcon />
+            <span>{files.length ? "Add more" : "Add images"}</span>
+          </button>
+        )}
+      </div>
+      {note && <div className="field-error">{note}</div>}
+    </div>
+  );
 }
 
 export default function FormModal({ onCancel, onSubmit }: Props) {
   const [values, setValues] = useState<FormFields>({ ...EMPTY_FORM });
   const [errors, setErrors] = useState<Partial<Record<Key, string>>>({});
+  const [images, setImages] = useState<File[]>([]);
   const [touched, setTouched] = useState<Partial<Record<Key, boolean>>>({});
   const dialogRef = useRef<HTMLDivElement>(null);
   const restoreRef = useRef<Element | null>(null);
@@ -114,7 +187,7 @@ export default function FormModal({ onCancel, onSubmit }: Props) {
     }
     const trimmed = { ...values };
     (Object.keys(trimmed) as Key[]).forEach((k) => (trimmed[k] = trimmed[k].trim()));
-    onSubmit(trimmed);
+    onSubmit(trimmed, images);
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -201,6 +274,12 @@ export default function FormModal({ onCancel, onSubmit }: Props) {
                 </div>
               </fieldset>
             ))}
+            <fieldset className="form-section">
+              <legend>Design references</legend>
+              <div className="form-grid">
+                <RefImages files={images} onChange={setImages} />
+              </div>
+            </fieldset>
           </div>
           <div className="modal-foot">
             <button type="button" className="btn" onClick={onCancel}>

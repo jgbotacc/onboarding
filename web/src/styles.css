@@ -179,6 +179,24 @@ button { font: inherit; }
 .field input:focus, .field textarea:focus { border-color: var(--accent); }
 .field.invalid input, .field.invalid textarea { border-color: var(--danger); }
 .field-error { font-size: 12px; line-height: 16px; color: var(--danger); }
+/* Form: optional reference images */
+.field-hint { margin: 0; font-size: 12px; line-height: 16px; color: var(--text-3); }
+.ref-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.ref-thumb { position: relative; width: 88px; height: 88px; border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; background: var(--subtle); }
+.ref-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ref-remove {
+  position: absolute; top: 4px; right: 4px; display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; padding: 0; border: 1px solid var(--border); border-radius: 4px;
+  background: var(--surface); color: var(--text-2); cursor: pointer;
+}
+.ref-remove:hover { color: var(--text); border-color: #c9cdd4; }
+.ref-add {
+  display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  width: 88px; height: 88px; padding: 0; border: 1px dashed #c9cdd4; border-radius: var(--r);
+  background: var(--surface); color: var(--text-2); font: inherit; font-size: 12px; cursor: pointer;
+  transition: border-color .12s ease-out, color .12s ease-out;
+}
+.ref-add:hover, .ref-add:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
 .modal-foot {
   position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: 8px;
   padding: 12px 20px; border-top: 1px solid var(--border); background: var(--surface);
