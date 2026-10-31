@@ -20,6 +20,11 @@ class SqliteStore:
     def save(self, s: dict):
         with self.lock:
             self.db.execute("INSERT OR REPLACE INTO sessions(id, state) VALUES(?, ?)", (s["id"], json.dumps(s)))
+            bad = s.get("invalid", {})
+            self.db.execute("DELETE FROM field_values WHERE session_id=?", (s["id"],))
+            self.db.executemany("INSERT INTO field_values(session_id, key, value, valid, issue) VALUES(?,?,?,?,?)",
+                                [(s["id"], k, v, int(k not in bad), (bad.get(k) or {}).get("message"))
+                                 for k, v in s.get("fields", {}).items()])
             self.db.commit()
 
     def list_states(self):
