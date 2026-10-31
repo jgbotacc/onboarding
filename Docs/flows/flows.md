@@ -6,7 +6,7 @@ Real screenshots from a local run of main (placeholder images in place of Muse I
 1. The client opens the chat. It offers **Upload PDF** or **Fill in a new form**, and there's no message box yet.
 2. The PDF is uploaded and read into fields. Each field is sense-checked: revenue "cat" is rejected with an example ("S$250,000" or "five thousand dollars"), and "Still needed" lists only the missing or invalid fields.
 3. The client fixes the value, and the bot asks only for what's still missing (Email).
-4. The client is registered and asked for optional reference images and a design direction (or "skip").
+4. The client is registered and asked for optional reference images and a design direction (or "skip"). If the PDF already has design preferences, it only asks for reference images (JPG or PNG): uploading them or saying "skip" starts round 1 with those preferences.
 5. Or the client uses the form: 11 fields, 3 mandatory, with design direction and optional reference images.
 6. Muse Image makes a 1080 x 1080 post (round 1 of 3), with **Looks good** and **Request changes**.
 7. Feedback is applied to the previous image.

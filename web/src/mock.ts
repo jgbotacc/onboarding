@@ -28,10 +28,11 @@ interface MockState {
   status: string;
   designDirection: string;
   refs: number;
+  viaPdf: boolean;
 }
 
 export function createMock(opts: { resumed?: boolean } = {}) {
-  const s: MockState = { registered: false, missing: [], round: 0, status: "registering", designDirection: "", refs: 0 };
+  const s: MockState = { registered: false, missing: [], round: 0, status: "registering", designDirection: "", refs: 0, viaPdf: false };
 
   const resp = (reply: string, images: string[] = []): ApiResponse => ({
     reply,
@@ -55,6 +56,12 @@ export function createMock(opts: { resumed?: boolean } = {}) {
       s.status = "missing_info";
       const list = s.missing.join(", ").toLowerCase();
       return resp(`${prefix}Some mandatory details are missing: ${list}. Please send ${s.missing.length > 1 ? "them" : "it"} here.`);
+    }
+    if (s.viaPdf && !s.refs && s.round === 0) {
+      // PDF path has no reference-image field, so ask for refs before round 1.
+      s.status = "need_direction";
+      const prefs = s.designDirection ? ` I'll use your design preferences (${s.designDirection}).` : "";
+      return resp(`${prefix}Thanks, your business is registered.${prefs} Upload any reference images (JPG or PNG) now, or say 'skip' to start.`);
     }
     s.status = "generating";
     return generate(prefix);
@@ -97,11 +104,13 @@ export function createMock(opts: { resumed?: boolean } = {}) {
       const pdfs = files.filter((f) => /\.pdf$/i.test(f.name)).length;
       const jpgs = files.length - pdfs;
       s.refs += jpgs;
+      if (s.status === "need_direction" && jpgs && !pdfs) return generate(`Got ${jpgs} reference image(s). `);
       if (!s.registered && pdfs === 0) {
         return resp(`Thanks for the ${jpgs} reference image(s). Please also upload the PDF with your business details so I can register you.`);
       }
       if (!s.registered) {
         s.registered = true;
+        s.viaPdf = true;
         // Simulated parse: the document has a business and contact name but no email.
         s.missing = ["Email"];
         return askMissing(`I've read your document and registered your business${jpgs ? ` along with ${jpgs} reference image(s)` : ""}. `);
@@ -119,6 +128,7 @@ export function createMock(opts: { resumed?: boolean } = {}) {
         return askMissing("Thanks, your updated details are saved and sent to our team. ");
       }
       s.registered = true;
+      s.viaPdf = false;
       s.missing = REQUIRED.filter((r) => !(fields[r.key] || "").trim() || (r.key === "email" && !EMAIL_RE.test(fields.email))).map((r) => r.label);
       if (fields.design_preferences.trim()) s.designDirection = fields.design_preferences.trim();
       const name = fields.business_name.trim();
@@ -127,7 +137,7 @@ export function createMock(opts: { resumed?: boolean } = {}) {
       return askMissing(`Thanks${name ? `, ${name} is registered` : ", your form is received"}.${ack} `);
     },
     chat(text: string): ApiResponse {
-      if (!s.registered) return resp("To get started, please upload a PDF with your business details, plus any JPG reference images.");
+      if (!s.registered) return resp("To get started, please upload a PDF with your business details, plus any JPG or PNG reference images.");
       if (s.status === "missing_info") {
         const before = s.missing.length;
         const parts = text.split(/[,;\n]+/).map((p) => p.trim()).filter(Boolean);
@@ -139,6 +149,10 @@ export function createMock(opts: { resumed?: boolean } = {}) {
           return resp(`I couldn't match that to the missing details. Please send: ${s.missing.join(", ").toLowerCase()}.`);
         }
         return askMissing("Thanks, saved. ");
+      }
+      if (s.status === "need_direction") {
+        if (!/^\s*(skip|no|none|nope|n\/a|go ahead|proceed)\b/i.test(text)) s.designDirection = text.trim();
+        return generate("");
       }
       if (s.status === "awaiting_review") return resp("Please use \u201cLooks good\u201d or \u201cRequest changes\u201d on the images above.");
       if (s.status === "accepted") return resp("Your designs are approved. Our team will follow up with the final files.");

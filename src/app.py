@@ -144,23 +144,28 @@ async def upload(request: Request):
         else:
             img, ext = security.clean_image(data)
             checked.append(("img", img, ext, f.filename))
-    out, refs, ref_meta = None, [], []
+    out, refs, ref_meta, pdfs = None, [], [], []
     for kind, data, ext, fname in checked:
         if kind == "pdf":
-            try:
-                fields = extract_fields(pdf_text(data))
-            except Exception:
-                fields = {}
-            out = agent.on_document(s, fields, fname)
+            pdfs.append((data, fname))
         else:
             rid = uuid.uuid4().hex
             p = MEDIA_DIR / f"ref-{rid}{ext}"
             p.write_bytes(data)
             refs.append(str(p))
             ref_meta.append({"id": rid, "path": str(p), "filename": fname})
-    if refs:
-        r = agent.on_refs(s, refs)
-        out = r if not out else dict(out, reply=out["reply"] + " " + r["reply"])
+    if pdfs and refs:  # refs sent with the PDF count before it is read, so no second ask for them
+        s["refs"].extend(refs)
+    for data, fname in pdfs:
+        try:
+            fields = extract_fields(pdf_text(data))
+        except Exception:
+            fields = {}
+        out = agent.on_document(s, fields, fname)
+    if pdfs and refs and out["status"] != "need_direction":
+        out = dict(out, reply=out["reply"] + f" Saved {len(refs)} reference image(s).")
+    if refs and not pdfs:
+        out = agent.on_refs(s, refs)
     if not out:
         raise HTTPException(400, "Upload a PDF, JPG or PNG")
     if ref_meta:
