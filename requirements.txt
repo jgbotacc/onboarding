@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+python-multipart
+pypdf
+pillow
+neo4j
+httpx
+google-genai
+reportlab
