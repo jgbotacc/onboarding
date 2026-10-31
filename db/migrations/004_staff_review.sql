@@ -1,0 +1,9 @@
+CREATE TABLE IF NOT EXISTS decisions (
+  id TEXT PRIMARY KEY, session_id TEXT NOT NULL, decision TEXT NOT NULL, fields TEXT, note TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS emails (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, to_addr TEXT, subject TEXT, body TEXT,
+  status TEXT, sent_at TEXT
+);
+CREATE TABLE IF NOT EXISTS resume_tokens (token TEXT PRIMARY KEY, session_id TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP);

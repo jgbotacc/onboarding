@@ -58,19 +58,36 @@ class Neo4jStore:
         return [dict(zip(data.get("fields", []), row)) for row in data.get("values", [])]
 
     def save(self, st: dict):
-        self._run("MERGE (c:Client {id:$id}) SET c.name=$name, c.status=$status, c.state=$state",
+        self._run("MERGE (c:Client {id:$id}) SET c.name=$name, c.status=$status, c.state=$state, "
+                  "c.updatedAt=datetime(), c.resumeToken=$token",
                   id=st["id"], name=st["fields"].get("business_name", ""), status=st["status"],
-                  state=json.dumps(st))
+                  state=json.dumps(st), token=st.get("resume_token"))
         if st["fields"]:
             self._run(FIELDS_Q, clientId=st["id"],
                       fields=[{"key": k, "value": v} for k, v in st["fields"].items()])
+
+    def list_states(self):
+        rows = self._run("MATCH (c:Client) WHERE c.state IS NOT NULL RETURN c.state AS s")
+        return [json.loads(r["s"]) for r in rows]
+
+    def find_by_token(self, token):
+        rows = self._run("MATCH (c:Client {resumeToken:$t}) RETURN c.state AS s", t=token)
+        return json.loads(rows[0]["s"]) if rows and rows[0]["s"] else None
 
     def load(self, sid):
         rows = self._run("MATCH (c:Client {id:$id}) RETURN c.state AS s", id=sid)
         return json.loads(rows[0]["s"]) if rows and rows[0]["s"] else None
 
     def event(self, sid, kind, payload):
-        if kind == "refs":
+        if kind == "decision":
+            self._run("MATCH (c:Client {id:$id}) CREATE (d:Decision {id:$did, decision:$decision, fields:$fields, "
+                      "note:$note, createdAt:datetime()}) MERGE (c)-[:HAS_DECISION]->(d)", id=sid, did=payload["id"],
+                      decision=payload["decision"], fields=payload["fields"], note=payload["note"] or "")
+        elif kind == "email":
+            self._run("MATCH (c:Client {id:$id}) CREATE (e:Email {to:$to, subject:$subject, body:$body, status:$status, "
+                      "sentAt:$sent_at}) MERGE (c)-[:SENT_EMAIL]->(e)", id=sid, **{k: payload[k] for k in
+                      ("to", "subject", "body", "status", "sent_at")})
+        elif kind == "refs":
             self._run(REFS_Q, clientId=sid, refs=payload["refs"])
         elif kind == "round":
             self._run(ROUND_Q, clientId=sid, imageUrls=payload["images"])

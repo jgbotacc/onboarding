@@ -22,12 +22,28 @@ class SqliteStore:
             self.db.execute("INSERT OR REPLACE INTO sessions(id, state) VALUES(?, ?)", (s["id"], json.dumps(s)))
             self.db.commit()
 
+    def list_states(self):
+        return [json.loads(r[0]) for r in self.db.execute("SELECT state FROM sessions").fetchall()]
+
+    def find_by_token(self, token: str):
+        row = self.db.execute("SELECT session_id FROM resume_tokens WHERE token=?", (token,)).fetchone()
+        return self.load(row[0]) if row else None
+
     def load(self, sid: str):
         row = self.db.execute("SELECT state FROM sessions WHERE id=?", (sid,)).fetchone()
         return json.loads(row[0]) if row else None
 
     def event(self, sid: str, kind: str, payload: dict):
         with self.lock:
+            if kind == "decision":
+                self.db.execute("INSERT INTO decisions(id, session_id, decision, fields, note) VALUES(?,?,?,?,?)",
+                                (payload["id"], sid, payload["decision"], json.dumps(payload["fields"]), payload["note"]))
+                if payload.get("token"):
+                    self.db.execute("INSERT OR REPLACE INTO resume_tokens(token, session_id) VALUES(?,?)",
+                                    (payload["token"], sid))
+            if kind == "email":
+                self.db.execute("INSERT INTO emails(session_id, to_addr, subject, body, status, sent_at) VALUES(?,?,?,?,?,?)",
+                                (sid, payload["to"], payload["subject"], payload["body"], payload["status"], payload["sent_at"]))
             for ref in payload.get("refs", []) if kind == "refs" else []:
                 self.db.execute("INSERT OR IGNORE INTO reference_images(id, session_id, path, filename) VALUES(?,?,?,?)",
                                 (ref["id"], sid, ref["path"], ref.get("filename")))

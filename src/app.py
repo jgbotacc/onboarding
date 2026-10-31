@@ -7,7 +7,10 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from datetime import datetime, timezone
+
 from src.data.store import get_store
+from src.features.staff import routes as staff
 from src.features.chat import agent
 from src.features.intake.extract import extract_fields, pdf_text
 from src.shared.config import FORM_KEYS, MEDIA_DIR
@@ -41,12 +44,30 @@ def _load(sid):
     return s
 
 
-def _done(s, out, kind=None, payload=None):
+def _save(s):
+    s["updated"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     store.save(s)
+
+
+def _done(s, out, kind=None, payload=None):
+    _save(s)
     store.event(s["id"], kind or "msg", payload or {"reply": out["reply"]})
     if out["images"] and s["status"] == "awaiting_review" and kind != "round":
         store.event(s["id"], "round", {"images": out["images"]})
     return out
+
+
+app.include_router(staff.make_router(store, _save))
+
+
+@app.get("/api/resume/{token}")
+def resume_get(token: str):
+    got = staff.resume(store, token)
+    if not got:
+        raise HTTPException(404, "Unknown or expired resume link")
+    s, out = got
+    _done(s, out, "resume", {})
+    return dict(out, sessionId=s["id"], fields_to_refill=s["refill"], note=s["resume"].get("note"))
 
 
 @app.get("/api/health")
@@ -56,10 +77,18 @@ def health():
 
 class SessionIn(BaseModel):
     sessionId: str | None = None
+    resumeToken: str | None = None
 
 
 @app.post("/api/session")
 def session(body: SessionIn | None = None):
+    if body and body.resumeToken:
+        got = staff.resume(store, body.resumeToken)
+        if not got:
+            raise HTTPException(404, "Unknown or expired resume link")
+        s, out = got
+        out["sessionId"] = s["id"]
+        return _done(s, out, "resume", {})
     old = store.load(body.sessionId) if body and body.sessionId else None
     if old:
         out = agent.resp(old, "Welcome back! Let's continue where you left off.", old.get("images"))
@@ -120,7 +149,7 @@ def chat(body: ChatIn):
 def review(body: ReviewIn):
     s = _load(body.sessionId)
     out = agent.on_review(s, body.accepted, body.feedback)
-    store.save(s)
+    _save(s)
     store.event(s["id"], "review", {"accepted": body.accepted, "feedback": body.feedback})
     if s["status"] == "awaiting_review" and out["images"]:
         store.event(s["id"], "round", {"images": out["images"]})
@@ -136,6 +165,10 @@ if not (WEB / "index.html").exists() and (WEB.parent / "index.html").exists() \
 if not (WEB / "index.html").exists() and (ROOT / "web" / "legacy" / "index.html").exists():
     WEB = ROOT / "web" / "legacy"  # React build missing: serve legacy plain-HTML UI
 if (WEB / "index.html").exists():
+    from fastapi.responses import FileResponse
+
+    for _page in ("/staff", "/review", "/admin", "/staff/{rest:path}", "/review/{rest:path}"):
+        app.add_api_route(_page, lambda rest="": FileResponse(WEB / "index.html"), methods=["GET"], include_in_schema=False)
     app.mount("/", StaticFiles(directory=WEB, html=True), name="web")
 else:
     @app.get("/", response_class=HTMLResponse)
