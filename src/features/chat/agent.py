@@ -6,7 +6,7 @@ import uuid
 
 from src.features.imagegen.providers import generate
 from src.features.intake.extract import EMAIL, extract_fields
-from src.shared.config import MANDATORY, MAX_ROUNDS
+from src.shared.config import MANDATORY, MAX_ROUNDS, MEDIA_DIR
 
 SKIP = re.compile(r"^\s*(skip|no|none|nope|n/a|go ahead|proceed)\b", re.I)
 
@@ -77,7 +77,8 @@ def _fill_from_text(s, text):
 
 def run_round(s):
     s["round"] += 1
-    brief = dict(s["fields"], direction=s["direction"], feedback=s["feedback"])
+    prev = str(MEDIA_DIR / s["images"][0].rsplit("/", 1)[-1]) if s.get("images") else None
+    brief = dict(s["fields"], direction=s["direction"], feedback=s["feedback"], prev_image=prev)
     s["images"] = generate(brief, s["refs"], s["round"])
     s["status"] = "awaiting_review"
     return resp(s, f"Here is mock-up round {s['round']} of {MAX_ROUNDS}. Happy with this direction? "

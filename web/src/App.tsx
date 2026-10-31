@@ -16,6 +16,13 @@ const isAcceptable = (f: File) => /\.(pdf|jpe?g)$/i.test(f.name) || f.type === "
 
 let nextId = 1;
 
+const ASSET = import.meta.env.BASE_URL;
+const AGENT_NAME = "Onboarding agent";
+
+function Avatar() {
+  return <img className="avatar" src={ASSET + "agent-64.png"} alt="" aria-hidden="true" width={32} height={32} />;
+}
+
 export default function App() {
   const [client, setClient] = useState<Client | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -170,6 +177,7 @@ export default function App() {
   return (
     <div className="app" onDragEnter={onDragEnter} onDragOver={(e) => e.preventDefault()} onDragLeave={onDragLeave} onDrop={onDrop}>
       <header className="header">
+        <img className="header-avatar" src={ASSET + "agent-64.png"} alt="" aria-hidden="true" width={24} height={24} />
         <h1>Client Onboarding</h1>
         <span className="pill" id="statusPill" data-status={status}>
           {STATUS_LABELS[status] || status.replace(/_/g, " ")}
@@ -197,21 +205,33 @@ export default function App() {
                   {m.text}
                 </div>
               );
+            if (m.choices && !started)
+              return (
+                <div key={m.id} className="welcome">
+                  <img className="welcome-figure" src={ASSET + "agent-clean.png"} alt={AGENT_NAME} width={140} />
+                  <div className="welcome-body">
+                    <div className="agent-label">{AGENT_NAME}</div>
+                    <div className="msg assistant speech">
+                      <div>{m.text}</div>
+                      <div className="choices">
+                        <button type="button" className="btn primary" id="choiceUpload" disabled={busy} onClick={() => fileRef.current?.click()}>
+                          Upload PDF
+                        </button>
+                        <button type="button" className="btn" id="choiceForm" disabled={busy} onClick={() => setFormOpen(true)}>
+                          Fill in a new form
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
             const showReview = m.status === "awaiting_review";
             const active = showReview && reviewOpen && m.id === lastReviewId;
             return (
-              <div key={m.id} className="msg assistant">
+              <div key={m.id} className="row assistant">
+              <Avatar />
+              <div className="msg assistant">
                 {m.text && <div>{m.text}</div>}
-                {m.choices && (
-                  <div className="choices">
-                    <button type="button" className="btn primary" id="choiceUpload" disabled={started || busy} onClick={() => fileRef.current?.click()}>
-                      Upload PDF
-                    </button>
-                    <button type="button" className="btn" id="choiceForm" disabled={started || busy} onClick={() => setFormOpen(true)}>
-                      Fill in a new form
-                    </button>
-                  </div>
-                )}
                 {m.images.length > 0 && (
                   <div className="img-grid">
                     {m.images.map((src, i) => (
@@ -239,13 +259,17 @@ export default function App() {
                   </>
                 )}
               </div>
+              </div>
             );
           })}
           {busy && (
-            <div className="typing" aria-label="Waiting for reply">
-              <span />
-              <span />
-              <span />
+            <div className="row assistant">
+              <Avatar />
+              <div className="typing" aria-label="Waiting for reply">
+                <span />
+                <span />
+                <span />
+              </div>
             </div>
           )}
         </div>

@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ID_FILE = ROOT / ".daytona_sandbox"
 PORT = 8000
 SKIP = {".git", "var", "node_modules", "__pycache__", ".env", ".daytona_sandbox", ".pytest_cache"}
-APP_ENV = ["NEO4J_URI", "NEO4J_USERNAME", "NEO4J_PASSWORD", "GEMINI_API_KEY", "GEMINI_IMAGE_MODEL", "OPENAI_API_KEY"]
+APP_ENV = ["NEO4J_URI", "NEO4J_USERNAME", "NEO4J_PASSWORD", "GEMINI_API_KEY", "GEMINI_IMAGE_MODEL", "OPENAI_API_KEY", "MODEL_API_KEY", "IMAGE_PROVIDER"]
 
 
 def bundle() -> bytes:

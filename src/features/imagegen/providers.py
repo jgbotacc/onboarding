@@ -121,7 +121,61 @@ class GeminiProvider:
         raise RuntimeError("Gemini returned no image")
 
 
+def build_prompt(brief: dict) -> str:
+    parts = [f"Square 1:1 social media marketing post for {brief.get('business_name') or 'a small business'}"]
+    if brief.get("business_type") or brief.get("industry"):
+        parts.append(f"a {' / '.join(x for x in [brief.get('business_type'), brief.get('industry')] if x)} business")
+    if brief.get("direction"):
+        parts.append(f"Design direction: {brief['direction']}")
+    if brief.get("requirements_notes"):
+        parts.append(f"Requirements: {brief['requirements_notes']}")
+    if brief.get("brand_colours"):
+        parts.append(f"Brand colours: {brief['brand_colours']}")
+    parts.append(f"Show the business name '{brief.get('business_name', '')}' clearly. Clean, professional layout.")
+    return ". ".join(parts) + "."
+
+
+def _data_url(path: str) -> str:
+    import base64, mimetypes
+    mime = mimetypes.guess_type(path)[0] or "image/png"
+    return f"data:{mime};base64," + base64.b64encode(Path(path).read_bytes()).decode()
+
+
+class MuseProvider:
+    """Meta Muse Image (muse-image-1.0) via the OpenAI-compatible images API. Needs MODEL_API_KEY."""
+    name = "muse"
+    base = os.getenv("META_API_BASE", "https://api.meta.ai/v1")
+
+    def generate(self, brief, refs, round_n):
+        import base64, httpx
+        prompt = build_prompt(brief)
+        images = []
+        prev = brief.get("prev_image")
+        if round_n > 1 and prev and Path(prev).exists():
+            images.append(prev)
+            prompt = (f"Revise this marketing post. Client feedback: {brief.get('feedback') or 'improve it'}. "
+                      f"Keep what works. Context: " + prompt)
+        images += [r for r in refs if Path(r).exists()][: 10 - len(images)]
+        body = {"model": os.getenv("MUSE_MODEL", "muse-image-1.0"), "prompt": prompt[:3900], "n": 1,
+                "response_format": "b64_json", "output_format": "png", "size": "1024x1024"}
+        path = "/images/generations"
+        if images:
+            path = "/images/edits"
+            body["images"] = [{"image_url": _data_url(i)} for i in images]
+            if refs and round_n == 1:
+                body["prompt"] = "Use the attached images as style references. " + body["prompt"]
+        r = httpx.post(self.base + path, json=body, timeout=180,
+                       headers={"Authorization": f"Bearer {os.environ['MODEL_API_KEY']}"})
+        if r.status_code >= 400:
+            raise RuntimeError(f"Muse {path} HTTP {r.status_code}: {r.text[:300]}")
+        name = f"{uuid.uuid4().hex}.png"
+        Path(MEDIA_DIR / name).write_bytes(base64.b64decode(r.json()["data"][0]["b64_json"]))
+        return [f"/media/{name}"]
+
+
 def get_provider():
+    if os.getenv("MODEL_API_KEY") and os.getenv("IMAGE_PROVIDER", "muse") == "muse":
+        return MuseProvider()
     if os.getenv("IMAGE_PROVIDER") == "openai" and os.getenv("OPENAI_API_KEY"):
         return OpenAIProvider()
     if os.getenv("GEMINI_API_KEY"):
