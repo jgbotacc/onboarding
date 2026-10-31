@@ -1,5 +1,6 @@
 import { ApiResponse, MAX_ROUNDS, type FieldIssue, type FormFields } from "./types";
-import { validateField, type FieldKey } from "./validation"; // [field-validation]
+import { RULES, validateField, type FieldKey } from "./validation"; // [field-validation]
+import { FIELDS } from "./staff/fields";
 
 const REQUIRED: { key: "business_name" | "contact_name" | "email"; label: string }[] = [
   { key: "business_name", label: "Business name" },
@@ -29,10 +30,8 @@ interface MockState {
   designDirection: string;
   refs: number;
   viaPdf: boolean;
-  /** Values held while the client fixes rejected or missing fields in the chat. */
-  fixing: { fields: FormFields; bad: FieldKey[]; reason: Partial<Record<FieldKey, string>> } | null;
-  fields: FormFields | null;
-  pdfName: string;
+  /** Values held while the client fixes rejected fields in the chat. */
+  fixing: { fields: FormFields; bad: FieldKey[] } | null;
 }
 
 // Sample values the mock "reads" from an uploaded PDF (demo data). A file name with
@@ -51,40 +50,12 @@ const SAMPLE_PDF: FormFields = {
   requirements_notes: "Post for our new truffle pizza, 1-for-1 Tuesdays.",
 };
 
-// Live reply wording (src/features/chat/agent.py + src/features/intake/validate.py), so ?mock=1 reads
-// exactly like the deployed chat. Keep these in step with the backend.
-const LIVE: { key: FieldKey; label: string; what: string; example: string }[] = [
-  { key: "business_name", label: "Business name", what: "a business name", example: "Slice & Stone Pizzeria Pte Ltd" },
-  { key: "business_type", label: "Business type", what: "a business type", example: "Restaurant" },
-  { key: "industry", label: "Industry", what: "an industry", example: "Food and Beverage" },
-  { key: "business_website", label: "Business website", what: "a website address", example: "slicestone.sg" },
-  { key: "contact_name", label: "Contact name", what: "a person's name", example: "Tan Mei Ling" },
-  { key: "title_position", label: "Title / position", what: "a job title", example: "Owner" },
-  { key: "email", label: "Email", what: "an email address", example: "name@business.com" },
-  { key: "phone_number", label: "Phone number", what: "a phone number", example: "+65 6123 4567" },
-  { key: "design_preferences", label: "Design preferences", what: "a design preference", example: "warm and rustic, tomato red and cream" },
-  { key: "expected_annual_revenue", label: "Expected annual revenue", what: "an amount", example: "S$250,000" },
-  { key: "requirements_notes", label: "Requirements / notes", what: "a description of what you need", example: "A post for our new truffle pizza" },
-];
-const LIVE_BY = Object.fromEntries(LIVE.map((f) => [f.key, f])) as Record<FieldKey, (typeof LIVE)[number]>;
-const SUMMARY_CLOSE = "Using your design preferences and business information. Here is a mockup.";
-const UPDATED = "Here is the updated mockup. Happy with this direction? Accept it, or tell me what to change.";
-const COUNT = ["", "one fix", "two fixes", "three fixes", "four fixes", "five fixes"];
-const works = (k: FieldKey) => `Something like "${LIVE_BY[k].example}" works.`;
-const clip = (v: string) => {
-  const t = v.replace(/\s+/g, " ").trim();
-  return t.length <= 40 ? t : t.slice(0, 39).trimEnd() + "\u2026";
-};
-const fixMessage = (lines: string[]) =>
-  `I just need ${COUNT[lines.length] || "a few fixes"}:\n\n${lines.join("\n")}\n\n` +
-  `Just type the ${lines.length === 1 ? "correction" : "corrections"} here.`;
-const refsSaved = (n: number) => `Saved ${n} reference image(s).`;
+const NUMBER_WORDS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven"];
+const plural = (n: number, one: string, many: string) => `${NUMBER_WORDS[n] || n} ${n === 1 ? one : many}`;
+const bullets = (items: string[]) => items.map((i) => `\u2022 ${i}`).join("\n");
 
 export function createMock(opts: { resumed?: boolean } = {}) {
-  const s: MockState = {
-    registered: false, missing: [], round: 0, status: "registering", designDirection: "", refs: 0, viaPdf: false,
-    fixing: null, fields: null, pdfName: "",
-  };
+  const s: MockState = { registered: false, missing: [], round: 0, status: "registering", designDirection: "", refs: 0, viaPdf: false, fixing: null };
 
   const resp = (reply: string, images: string[] = []): ApiResponse => ({
     reply,
@@ -94,142 +65,176 @@ export function createMock(opts: { resumed?: boolean } = {}) {
     round: s.round,
   });
 
-  /** Per-line summary shown with the first mockup, then Jin's closing line. */
+  // Labels match the form and the per-line summary.
+  const LABELS: Record<FieldKey, string> = Object.fromEntries(FIELDS.map((f) => [f.key, f.label])) as Record<FieldKey, string>;
+
   const summary = (fields: FormFields) =>
-    LIVE.filter((f) => (fields[f.key] || "").trim())
+    FIELDS.filter((f) => (fields[f.key] || "").trim())
       .map((f) => `${f.label}: ${fields[f.key].trim()}`)
-      .concat(["", SUMMARY_CLOSE])
       .join("\n");
 
-  const generate = (prefix: string): ApiResponse => {
+  const generate = (prefix: string, fields?: FormFields): ApiResponse => {
     s.round += 1;
     s.status = "awaiting_review";
-    return resp(prefix + (s.round === 1 && s.fields ? summary(s.fields) : UPDATED), [0, 1, 2].map((i) => placeholder(s.round, i)));
+    const first = `Here's a first mockup, based on your details${s.designDirection ? " and style" : ""}.`;
+    const again = "Here's the updated version.\nHappy with it? Tap \u201cLooks good\u201d, or tell me what to change.";
+    return resp(
+      prefix + (s.round === 1 && fields ? `${summary(fields)}\n\n${first}` : s.round === 1 ? first : again),
+      [0, 1, 2].map((i) => placeholder(s.round, i)),
+    );
   };
 
-  // [field-validation] Mock of the server's sense checks: the shared rules, plus a placeholder-domain
-  // check so the "server invalid" path demos with ?mock=1.
+  const askMissing = (prefix: string, fields?: FormFields): ApiResponse => {
+    if (s.missing.length) {
+      s.status = "missing_info";
+      return resp(`${prefix}I just need a bit more:\n\n${bullets(s.missing)}\n\nJust type ${s.missing.length > 1 ? "them" : "it"} here.`);
+    }
+    if (s.viaPdf && !s.refs && s.round === 0) {
+      // PDF path has no reference-image field, so ask for refs before the first mockup.
+      s.status = "need_direction";
+      const shown = fields ? `Here's what I have:\n\n${summary(fields)}\n\n` : "";
+      return resp(`${prefix}${shown}Got any images of a style you like?\nUpload JPG or PNG files now, or type \u201cskip\u201d to start.`);
+    }
+    s.status = "generating";
+    return generate(prefix, fields);
+  };
+
+  // [field-validation] Mock of the server's sense checks: the shared rules, plus a server-only
+  // check for placeholder domains so the "server invalid" path demos with ?mock=1.
   const PLACEHOLDER = /(^|[@./])(example|test|mailinator|domain)\.(com|org|net)$/i;
-  const checkFields = (fields: FormFields): { issues: FieldIssue[]; reason: Partial<Record<FieldKey, string>> } => {
-    const issues: FieldIssue[] = [];
-    const reason: Partial<Record<FieldKey, string>> = {};
+  const REASON: Record<string, string> = {};
+  const checkFields = (fields: FormFields): FieldIssue[] => {
+    const out: FieldIssue[] = [];
     (Object.keys(fields) as FieldKey[]).forEach((k) => {
       const v = (fields[k] || "").trim();
-      const label = LIVE_BY[k]?.label || k;
-      const nope = `That isn't ${LIVE_BY[k]?.what || "quite right"}. ${works(k)}`;
-      if (v && validateField(k, v, label)) {
-        issues.push({ field: k, label, message: nope, example: LIVE_BY[k].example });
-      } else if (v && k === "email" && PLACEHOLDER.test(v)) {
-        reason[k] = "looks like a placeholder";
-        issues.push({ field: k, label, message: `That looks like a placeholder. ${works(k)}`, example: LIVE_BY[k].example });
+      const label = LABELS[k] || k;
+      const issue = validateField(k, v, label);
+      if (issue) out.push(issue);
+      else if (v && k === "email" && PLACEHOLDER.test(v)) {
+        REASON[k] = "looks like a placeholder email";
+        out.push({ field: k, label, message: "That looks like a placeholder. Use an email we can reach you at.", example: "hello@kopicorner.sg" });
       } else if (v && k === "business_website" && PLACEHOLDER.test(v.replace(/^https?:\/\//i, "").replace(/\/.*$/, ""))) {
-        reason[k] = "looks like a placeholder";
-        issues.push({ field: k, label, message: `That looks like a placeholder. ${works(k)}`, example: LIVE_BY[k].example });
+        REASON[k] = "looks like a placeholder website";
+        out.push({ field: k, label, message: "That looks like a placeholder. Use your real site, or leave it blank.", example: "kopicorner.sg" });
       }
     });
-    return { issues, reason };
-  };
-  const missingKeys = (fields: FormFields) =>
-    REQUIRED.filter((r) => !(fields[r.key] || "").trim()).map((r) => r.key as FieldKey);
-
-  /** Same block as the live chat: "I just need two fixes:" then one bullet per field. */
-  const reAsk = (fields: FormFields, issues: FieldIssue[], reason: Partial<Record<FieldKey, string>>, only?: FieldKey): ApiResponse => {
-    const bad = issues.map((i) => i.field as FieldKey);
-    const keys = LIVE.map((f) => f.key).filter((k) => bad.includes(k) || missingKeys(fields).includes(k));
-    // The live chat fills invalid fields first, then missing ones; replies list them in form order.
-    s.fixing = { fields: { ...fields }, bad: [...keys.filter((k) => bad.includes(k)), ...keys.filter((k) => !bad.includes(k))], reason };
-    s.missing = keys.map((k) => LIVE_BY[k].label);
-    s.status = "missing_info";
-    const line = (k: FieldKey) =>
-      !bad.includes(k)
-        ? `\u2022 ${LIVE_BY[k].label}: I couldn't find one. ${works(k)}`
-        : `\u2022 ${LIVE_BY[k].label}: "${clip(fields[k])}" ${reason[k] || `isn't ${LIVE_BY[k].what}`}. ${works(k)}`;
-    return { ...resp(fixMessage((only ? [only] : keys).map(line))), invalid: issues };
+    return out;
   };
 
-  /** Everything passed: register, then ask for refs (PDF) or a direction, or go straight to the mockup. */
-  const register = (fields: FormFields): ApiResponse => {
+  /** One line per bad field: label, the value given, a short reason and one example. */
+  const reAsk = (invalid: FieldIssue[], fields: FormFields): ApiResponse => {
+    s.fixing = { fields: { ...fields }, bad: invalid.map((i) => i.field as FieldKey) };
+    const lines = invalid.map((i) => {
+      const k = i.field as FieldKey;
+      const reason = REASON[k] ? REASON[k] : `isn't ${RULES[k]?.what || "quite right"}`;
+      const ex = RULES[k]?.examples[0] || (i.example || "").split(" or ")[0];
+      return `${i.label || LABELS[k] || k}: \u201c${(fields[k] || "").trim()}\u201d ${reason}.${ex ? ` Something like \u201c${ex}\u201d works.` : ""}`;
+    });
+    delete REASON.email;
+    delete REASON.business_website;
+    return {
+      ...resp(`I just need ${plural(invalid.length, "fix", "fixes")}:\n\n${bullets(lines)}\n\nJust type the corrections here.`),
+      status: s.registered ? s.status : (s.status = "missing_info"),
+      invalid,
+    };
+  };
+
+  /** Read typed corrections: "Label: value" lines, or plain values in order. */
+  const applyFixes = (text: string) => {
+    const f = s.fixing!;
+    const lines = text.split(/\n|;/).map((l) => l.trim()).filter(Boolean);
+    const norm = (t: string) => t.toLowerCase().replace(/[^a-z]/g, "");
+    const left = f.bad.slice();
+    const plain: string[] = [];
+    lines.forEach((l) => {
+      const m = l.match(/^([^:]{2,40}):\s*(.+)$/);
+      const k = m && FIELDS.find((x) => norm(x.label) === norm(m[1]) || norm(x.key) === norm(m[1]))?.key;
+      if (k && m) {
+        f.fields[k] = m[2].replace(/^["\u201c]|["\u201d]$/g, "");
+        const at = left.indexOf(k);
+        if (at >= 0) left.splice(at, 1);
+      } else plain.push(l);
+    });
+    if (left.length === 1 && plain.length) f.fields[left[0]] = plain.join(" ");
+    else left.forEach((k, i) => plain[i] !== undefined && (f.fields[k] = plain[i]));
+    return f.fields;
+  };
+
+  /** Everything passed: register and show the per-line summary. */
+  const register = (fields: FormFields, viaPdf: boolean, prefix = ""): ApiResponse => {
     s.fixing = null;
-    s.missing = [];
     s.registered = true;
-    s.fields = { ...fields };
+    s.viaPdf = viaPdf;
+    s.missing = REQUIRED.filter((r) => !(fields[r.key] || "").trim() || (r.key === "email" && !EMAIL_RE.test(fields.email))).map((r) => r.label);
+    if (fields.design_preferences.trim()) s.designDirection = fields.design_preferences.trim();
     const name = fields.business_name.trim();
-    const thanks = s.viaPdf && s.pdfName ? `Thanks, I've read ${s.pdfName} and registered ${name}.` : `Thanks, ${name} is registered.`;
-    const prefix = s.viaPdf ? "" : "Got your registration form. ";
-    s.designDirection = (fields.design_preferences || "").trim();
-    if (s.designDirection) {
-      if (s.viaPdf && !s.refs) {
-        s.status = "need_direction";
-        return resp(`${prefix}${thanks}\n\nI'll go with your design preferences: ${s.designDirection}\n\n` +
-          'Want to add reference images (JPG or PNG)? Upload them now, or type "skip" to start.');
-      }
-      return generate(`${prefix}${thanks}\n\n`);
-    }
-    s.status = "need_direction";
-    const refs = s.refs ? `Got ${s.refs} reference image(s). Now tell me` : "You can upload reference images (JPG or PNG) if you have any. Then tell me";
-    return resp(`${prefix}${thanks}\n\n${refs} your design direction, something like "minimal, warm, brown and cream", or type "skip".`);
-  };
-
-  const intake = (fields: FormFields): ApiResponse => {
-    const { issues, reason } = checkFields(fields);
-    return issues.length || missingKeys(fields).length ? reAsk(fields, issues, reason) : register(fields);
+    return askMissing(`${prefix}Thanks${name ? `, ${name} is all set up` : ""}!\n\n`, fields);
   };
 
   const handlers = {
     upload(files: File[]): ApiResponse {
       const pdfFiles = files.filter((f) => /\.pdf$/i.test(f.name));
-      const imgs = files.length - pdfFiles.length;
-      s.refs += imgs;
-      if (pdfFiles.length) {
+      const pdfs = pdfFiles.length;
+      const jpgs = files.length - pdfs;
+      s.refs += jpgs;
+      const imgs = plural(jpgs, "image", "images");
+      if (s.status === "need_direction" && jpgs && !pdfs) return generate(`Got your ${imgs}, thanks.\n\n`);
+      if (!s.registered && pdfs === 0) {
+        return resp(`Thanks for the ${imgs}!\nNow upload the PDF with your business details so I can set you up.`);
+      }
+      if (!s.registered) {
         const fields = { ...SAMPLE_PDF };
         if (pdfFiles.some((f) => /invalid/i.test(f.name))) {
           fields.business_type = "123";
           fields.expected_annual_revenue = "cat";
         }
         s.viaPdf = true;
-        s.pdfName = pdfFiles[pdfFiles.length - 1].name;
-        const out = intake(fields);
-        return imgs && out.status === "missing_info" ? { ...out, reply: `${out.reply}\n\n${refsSaved(imgs)}` } : out;
+        const invalid = checkFields(fields);
+        if (invalid.length) return reAsk(invalid, fields);
+        return register(fields, true);
       }
-      if (s.status === "need_direction" && s.viaPdf && s.round === 0) return generate(`Got ${imgs} reference image(s).\n\n`);
-      if (s.status === "need_direction") return resp(`Got ${imgs} reference image(s). Now tell me your design direction, or type "skip".`);
-      if (s.fixing) {
-        const out = reAsk(s.fixing.fields, checkFields(s.fixing.fields).issues, s.fixing.reason);
-        return { ...out, reply: `${refsSaved(imgs)}\n\n${out.reply}` };
-      }
-      return resp(refsSaved(imgs));
+      return resp(`Got ${plural(files.length, "more file", "more files")}. I'll use ${files.length > 1 ? "them" : "it"} in the next design.`);
     },
     form(fields: FormFields): ApiResponse {
+      const invalid = checkFields(fields); // [field-validation]
+      if (invalid.length) return reAsk(invalid, fields);
       if (opts.resumed && !s.registered) {
         // Resume link: the client is already registered server side; only the flagged fields come back.
-        const { issues, reason } = checkFields(fields);
-        if (issues.length) return reAsk(fields, issues, reason);
         s.registered = true;
         s.missing = [];
-        s.status = "pending_review";
-        return resp("Thanks, your details are updated. Our team will contact you shortly.");
+        if (fields.design_preferences.trim()) s.designDirection = fields.design_preferences.trim();
+        return askMissing("Thanks, your details are updated.\nOur team will take a look.\n\n");
       }
-      s.viaPdf = false;
-      return intake(fields);
+      return register(fields, false);
     },
     chat(text: string): ApiResponse {
       if (s.fixing) {
-        // Like the live chat: the reply fills the first field that still needs fixing.
-        const k = s.fixing.bad[0];
-        const fields = { ...s.fixing.fields, [k]: (k === "email" ? text.match(EMAIL_RE)?.[0] : null) || text.trim() };
-        const { issues, reason } = checkFields(fields);
-        if (issues.some((i) => i.field === k)) return reAsk(fields, issues, reason, k);
-        return issues.length || missingKeys(fields).length ? reAsk(fields, issues, reason) : register(fields);
+        const fields = applyFixes(text);
+        const invalid = checkFields(fields);
+        if (invalid.length) return reAsk(invalid, fields);
+        return register(fields, s.viaPdf);
       }
       if (!s.registered) return resp("To start, upload a PDF with your business details, or fill in the form.");
+      if (s.status === "missing_info") {
+        const before = s.missing.length;
+        const parts = text.split(/[,;\n]+/).map((p) => p.trim()).filter(Boolean);
+        const email = text.match(EMAIL_RE);
+        if (email) s.missing = s.missing.filter((m) => m !== "Email");
+        const names = parts.filter((p) => !EMAIL_RE.test(p));
+        s.missing = s.missing.filter((m) => (m !== "Email" && names.length ? (names.shift(), false) : true));
+        if (s.missing.length === before) {
+          return resp(`Sorry, I couldn't match that. I still need:\n\n${bullets(s.missing)}`);
+        }
+        return askMissing("Thanks, got it.\n\n");
+      }
       if (s.status === "need_direction") {
         if (!/^\s*(skip|no|none|nope|n\/a|go ahead|proceed)\b/i.test(text)) s.designDirection = text.trim();
         return generate("");
       }
-      if (s.status === "awaiting_review") return handlers.review(false, text);
-      if (s.status === "accepted") return resp("Your design direction is locked in. Our team will contact you shortly.");
-      if (s.status === "pending_review") return resp("Thanks! We're reviewing your details. Our team will contact you shortly.");
-      return resp("A designer has your details. Our team will contact you shortly.");
+      if (s.status === "awaiting_review") return resp("Tap \u201cLooks good\u201d or \u201cAsk for changes\u201d under the designs.");
+      if (s.status === "accepted") return resp("Great, design direction accepted! Our team will contact you shortly.");
+      if (s.status === "handed_off") return resp("A designer has your details.\nOur team will contact you shortly.");
+      return resp("Got it.");
     },
     review(accepted: boolean, feedback: string): ApiResponse {
       if (accepted) {
@@ -238,10 +243,9 @@ export function createMock(opts: { resumed?: boolean } = {}) {
       }
       if (s.round >= MAX_ROUNDS) {
         s.status = "handed_off";
-        return resp("Thanks for the feedback. I'm handing you to a human designer with your notes. Our team will contact you shortly.");
+        return resp("Thanks for the feedback.\nA designer will take it from here.\nOur team will contact you shortly.");
       }
-      if (!feedback.trim()) return resp("What would you like changed? (colours, style, text, layout...)");
-      return generate("");
+      return generate(`Thanks, I've made the changes${feedback ? ` (\u201c${feedback}\u201d)` : ""}.\n\n`);
     },
   };
 
