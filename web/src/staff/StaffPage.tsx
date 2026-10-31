@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { MAX_ROUNDS } from "../types";
 import { connectStaff, type StaffClient } from "./api";
 import { FIELDS, type FieldKey } from "./fields";
 import { statusLabel, type Decision, type DecisionResult, type EmailInfo, type StaffDetail, type StaffRow } from "./types";
@@ -117,12 +116,6 @@ function Detail({ client, row, onDecided, onOpen }: DetailProps) {
           ) : (
             <span className="staff-cc-value">Not provided</span>
           )}
-        </div>
-        <div className="staff-cc-item">
-          <span className="staff-cc-label">Round</span>
-          <span className="staff-cc-value">
-            {d.round} of {MAX_ROUNDS}
-          </span>
         </div>
       </div>
 
