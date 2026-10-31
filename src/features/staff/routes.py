@@ -47,7 +47,7 @@ def make_router(store, save):
     def load(cid):
         s = store.load(cid)
         if not s:
-            raise HTTPException(404, "Unknown client")
+            raise HTTPException(404, "Client not found.")
         return s
 
     def list_clients():
@@ -61,9 +61,9 @@ def make_router(store, save):
         s = load(cid)
         bad = [f for f in body.fields if f not in LABELS]
         if bad:
-            raise HTTPException(400, f"Unknown field keys: {bad}")
+            raise HTTPException(400, "Unknown field: " + ", ".join(bad) + ".")
         if body.decision == "more_info" and not body.fields and not body.note:
-            raise HTTPException(400, "more_info needs fields or a note")
+            raise HTTPException(400, "Pick at least one field or add a note.")
         token, url = None, None
         if body.decision == "more_info":
             token = secrets.token_urlsafe(16)
@@ -97,7 +97,6 @@ def resume(store, token: str):
     if not s or not s.get("resume") or s.get("resume_token") != token:
         return None
     if s["resume"].get("used"):
-        raise HTTPException(410, "This link has already been used. Your details were submitted; "
-                                 "our team will be in touch.")
+        raise HTTPException(410, "This link has already been used. Your details are saved, and our team will be in touch.")
     out = agent.start_resume(s, s["resume"]["fields"], s["resume"].get("note"))
     return s, out

@@ -55,7 +55,7 @@ def _load(sid, secret=None):
     """Load a client session; the caller must hold its secret (x-session-secret header or body field)."""
     s = store.load(sid) if sid else None
     if not s or not security.secret_ok(s, secret):
-        raise HTTPException(403, "Unknown session or wrong session secret")
+        raise HTTPException(403, "This chat session has ended. Please refresh the page to start again.")
     return s
 
 
@@ -83,7 +83,7 @@ app.include_router(staff.make_router(store, _save))
 def resume_get(token: str):
     got = staff.resume(store, token)
     if not got:
-        raise HTTPException(404, "Unknown or expired resume link")
+        raise HTTPException(404, "This link is no longer valid. Please contact our team.")
     s, out = got
     _done(s, out, "resume", {})
     # Read-only preview: no session secret here; the browser gets one from POST /api/session {resumeToken}.
@@ -106,7 +106,7 @@ def session(request: Request, body: SessionIn | None = None):
     if body and body.resumeToken:
         got = staff.resume(store, body.resumeToken)
         if not got:
-            raise HTTPException(404, "Unknown or expired resume link")
+            raise HTTPException(404, "This link is no longer valid. Please contact our team.")
         s, out = got
         out["sessionId"], out["sessionSecret"] = s["id"], security.issue_secret(s)
         return _done(s, out, "resume", {})
@@ -130,17 +130,17 @@ async def upload(request: Request):
     s = _load(str(form.get("sessionId", "")), _secret(request, form.get("sessionSecret")))
     files = [v for k, v in form.multi_items() if k in ("files", "files[]") and hasattr(v, "read")]
     if len(files) > security.MAX_FILES:
-        raise HTTPException(400, f"Upload at most {security.MAX_FILES} files at a time")
+        raise HTTPException(400, f"Too many files. Upload up to {security.MAX_FILES} at a time.")
     checked = []  # validate every file before acting on any of them
     for f in files:
         data = await f.read(security.MAX_FILE_BYTES + 1)
         if len(data) > security.MAX_FILE_BYTES:
-            raise HTTPException(400, f"{f.filename or 'File'} is larger than 10 MB")
+            raise HTTPException(400, f"{f.filename or 'That file'} is too big. Max 10 MB.")
         name = (f.filename or "").lower()
         if security.is_pdf(data):
             checked.append(("pdf", data, None, f.filename))
         elif name.endswith(".pdf") or f.content_type == "application/pdf":
-            raise HTTPException(400, f"{f.filename or 'File'} is not a valid PDF")
+            raise HTTPException(400, f"{f.filename or 'That file'} isn't a readable PDF.")
         else:
             img, ext = security.clean_image(data)
             checked.append(("img", img, ext, f.filename))
@@ -163,11 +163,11 @@ async def upload(request: Request):
             fields = {}
         out = agent.on_document(s, fields, fname)
     if pdfs and refs and out["status"] != "need_direction":
-        out = dict(out, reply=out["reply"] + f" Saved {len(refs)} reference image(s).")
+        out = dict(out, reply=out["reply"] + f"\n\nSaved {len(refs)} reference image(s).")
     if refs and not pdfs:
         out = agent.on_refs(s, refs)
     if not out:
-        raise HTTPException(400, "Upload a PDF, JPG or PNG")
+        raise HTTPException(400, "Please upload a PDF, JPG or PNG.")
     if ref_meta:
         store.event(s["id"], "refs", {"refs": ref_meta})
     return _done(s, out)

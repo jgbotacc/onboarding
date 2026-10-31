@@ -208,6 +208,27 @@ def check(key, value):
     return {"message": msg, "example": example_text(key)} if msg else None
 
 
-def reask(key, label, problem):
-    """Chat line: reason + ask again with an example."""
-    return f"{problem['message']} Please re-enter your {label.lower()}, for example {example_text(key, quote=True)}."
+FIX_HEADER = "A few details need fixing:"
+
+
+def _clip(v, n=40):
+    v = " ".join(str(v).split())
+    return v if len(v) <= n else v[:n - 1].rstrip() + "…"
+
+
+def fix_line(key, label, value, problem):
+    """One short chat line for an invalid value: Business type: "123" isn't a business type (e.g. Café)."""
+    ex = (EXAMPLES.get(key) or [""])[0]
+    eg = f" (e.g. {ex})" if ex else ""
+    if problem and problem.get("message", "").startswith("That's too long"):
+        return f"{label}: too long (max {LIMITS.get(key, 2000)} characters)."
+    return f'{label}: "{_clip(value)}" isn\'t {WHAT.get(key, "a valid value")}{eg}.'
+
+
+def missing_line(label):
+    return f"{label}: missing."
+
+
+def fix_message(lines):
+    """One line on its own; several under a short header."""
+    return lines[0] if len(lines) == 1 else "\n".join([FIX_HEADER, *lines])

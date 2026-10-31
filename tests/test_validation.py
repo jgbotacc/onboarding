@@ -68,8 +68,12 @@ def test_form_path_flags_invalid_and_blocks_until_fixed():
     assert set(bad) == {"business_type", "expected_annual_revenue", "phone_number"}
     assert set(bad["expected_annual_revenue"]) == {"field", "label", "message", "example"}
     assert "Expected Annual Revenue" in r["missing"]
-    assert "That doesn't look like a revenue figure." in r["reply"]
-    assert "'S$250,000' or 'five thousand dollars'" in r["reply"]
+    assert r["reply"] == (
+        "A few details need fixing:\n"
+        'Business type: "123" isn\'t a business type (e.g. Café).\n'
+        'Phone number: "12345" isn\'t a phone number (e.g. +65 9123 4567).\n'
+        'Expected annual revenue: "cat" isn\'t a revenue figure (e.g. S$250,000).'), r["reply"]
+    assert "Acme" not in r["reply"] and "Got your registration form" not in r["reply"]
     from src.app import store
     if store.kind == "sqlite":
         rows = dict(store.db.execute("SELECT key, valid FROM field_values WHERE session_id=?", (sid,)).fetchall())
@@ -85,7 +89,7 @@ def test_chat_path_reasks_with_example():
     c.post("/api/form", json={"sessionId": sid, "fields": {"business_name": "Acme", "contact_name": "Jo"}})
     r = c.post("/api/chat", json={"sessionId": sid, "text": "cat"}).json()
     assert r["status"] == "missing_info" and r["invalid"][0]["field"] == "email"
-    assert "valid email" in r["reply"] and "jo@kopicorner.sg" in r["reply"]
+    assert r["reply"] == 'Email: "cat" isn\'t an email address (e.g. jo@kopicorner.sg).', r["reply"]
     r = c.post("/api/chat", json={"sessionId": sid, "text": "jo@acme.example"}).json()
     assert r["invalid"] == [] and r["status"] == "need_direction", r
 
@@ -109,5 +113,44 @@ def test_resume_link_answer_is_checked():
     r = c.post("/api/chat", json={"sessionId": sid, "text": "cat"}).json()
     assert r["status"] == "missing_info" and r["invalid"][0]["field"] == "expected_annual_revenue"
     assert "Expected Annual Revenue" in r["missing"]
+    assert r["reply"] == 'Expected annual revenue: "cat" isn\'t a revenue figure (e.g. S$250,000).', r["reply"]
     r = c.post("/api/chat", json={"sessionId": sid, "text": "five thousand dollars"}).json()
     assert r["invalid"] == [] and r["status"] == "pending_review", r
+
+
+def test_missing_fields_listed_one_per_line():
+    sid = _sid()
+    r = c.post("/api/form", json={"sessionId": sid, "fields": {"business_name": "Acme", "business_type": "123"}}).json()
+    assert r["reply"] == ("A few details need fixing:\n"
+                          'Business type: "123" isn\'t a business type (e.g. Café).\n'
+                          "Contact name: missing.\nEmail: missing."), r["reply"]
+
+
+def test_single_reentered_field_still_wrong_gets_one_line():
+    sid = _sid()
+    c.post("/api/form", json={"sessionId": sid, "fields": {
+        "business_name": "Acme", "contact_name": "Jo", "email": "jo@acme.example",
+        "business_type": "123", "expected_annual_revenue": "cat"}})
+    r = c.post("/api/chat", json={"sessionId": sid, "text": "456"}).json()
+    assert r["reply"] == 'Business type: "456" isn\'t a business type (e.g. Café).', r["reply"]
+    r = c.post("/api/chat", json={"sessionId": sid, "text": "Restaurant"}).json()
+    assert r["reply"] == 'Expected annual revenue: "cat" isn\'t a revenue figure (e.g. S$250,000).', r["reply"]
+
+
+def test_pdf_with_invalid_fields_does_not_dump_fields():
+    from src.features.chat import agent
+    s = agent.new_session()
+    r = agent.on_document(s, {"business_name": "Slice & Stone", "contact_name": "Jin", "email": "jin@slice.sg",
+                              "business_type": "123", "expected_annual_revenue": "cat",
+                              "title_position": "Owner"}, "form.pdf")
+    assert r["reply"].startswith("A few details need fixing:\n") and "Slice" not in r["reply"], r["reply"]
+    assert "form.pdf" not in r["reply"] and "title position" not in r["reply"]
+    assert len(r["reply"].splitlines()) == 3
+
+
+def test_too_long_value_is_not_echoed():
+    from src.features.chat import agent
+    s = agent.new_session()
+    r = agent.on_form(s, {"business_name": "Acme", "contact_name": "Jo", "email": "jo@acme.sg",
+                          "requirements_notes": "x " * 3000})
+    assert r["reply"] == "Requirements / notes: too long (max 4000 characters).", r["reply"]

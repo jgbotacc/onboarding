@@ -17,10 +17,10 @@ def require_staff(request: Request):
     """Every staff route: header x-staff-key must match STAFF_PASSCODE. Fails closed (503) when unset."""
     want = os.getenv("STAFF_PASSCODE", "")
     if not want:
-        raise HTTPException(503, "Staff access is not configured")
+        raise HTTPException(503, "Staff access isn't set up yet.")
     got = request.headers.get("x-staff-key", "")
     if not hmac.compare_digest(got.encode(), want.encode()):
-        raise HTTPException(401, "Staff passcode required")
+        raise HTTPException(401, "Please enter the staff passcode.")
 
 
 def _hash(secret: str) -> str:
@@ -52,7 +52,7 @@ def clean_image(data: bytes) -> tuple[bytes, str]:
     except HTTPException:
         raise
     except Exception:
-        raise HTTPException(400, "Reference images must be JPG or PNG files")
+        raise HTTPException(400, "Reference images must be JPG or PNG.")
     out = io.BytesIO()
     if fmt == "JPEG":
         im.convert("RGB").save(out, "JPEG", quality=90)

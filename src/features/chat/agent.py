@@ -7,7 +7,7 @@ import uuid
 
 from src.features.imagegen.providers import generate
 from src.features.intake.extract import EMAIL, extract_fields
-from src.features.intake.validate import check, parse_amount, reask
+from src.features.intake.validate import check, fix_line, fix_message, missing_line, parse_amount
 from src.shared.config import LABELS, MANDATORY, MAX_ROUNDS, MEDIA_DIR
 
 SKIP = re.compile(r"^\s*(skip|no|none|nope|n/a|go ahead|proceed)\b", re.I)
@@ -62,16 +62,25 @@ def resp(s, reply, images=None):
             "round": s["round"], "invalid": invalid(s)}
 
 
-def _after_fields(s, prefix=""):
-    m = missing(s)
-    if m:
+def problem_lines(s, only=None):
+    """Short 'what was wrong' lines, one per field, in form order. No field dump."""
+    bad, keys = s.get("invalid", {}), missing_keys(s)
+    if only:
+        keys = [k for k in keys if k in only]
+    keys = sorted(keys, key=lambda k: ORDER.get(k, len(ORDER)))
+    return [fix_line(k, label(k), s["fields"].get(k, ""), bad[k]) if k in bad else missing_line(label(k))
+            for k in keys]
+
+
+def _after_fields(s, prefix="", touched=None, ok_prefix=""):
+    """ok_prefix is only used when every field is valid; problems get just the short fix lines."""
+    if missing_keys(s):
         s["status"] = "missing_info"
-        bad = s.get("invalid", {})
-        if bad:
-            fixes = " ".join(reask(k, LABELS.get(k, k), p) for k, p in bad.items())
-            rest = [LABELS.get(k, k) for k in missing_keys(s) if k not in bad]
-            return resp(s, prefix + fixes + (" I also still need: " + ", ".join(rest) + "." if rest else ""))
-        return resp(s, prefix + "I still need: " + ", ".join(m) + f". What is your {m[0].lower()}?")
+        # A single re-entered field that is still wrong: just that one line.
+        still = [k for k in (touched or []) if k in s.get("invalid", {})]
+        lines = problem_lines(s, only=still) if touched and len(touched) == 1 and still else problem_lines(s)
+        return resp(s, prefix + fix_message(lines))
+    prefix += ok_prefix
     name = s["fields"]["business_name"]
     if s.get("resumed"):
         s["resumed"] = False
@@ -106,14 +115,13 @@ def _after_fields(s, prefix=""):
 def on_document(s, fields: dict, filename: str):
     s["via_pdf"] = True
     _set_fields(s, fields)
-    found = ", ".join(f"{k.replace('_', ' ')}: {v}" for k, v in fields.items() if v) or "nothing usable"
-    return _after_fields(s, f"I read {filename}. Found {found}. ")
+    return _after_fields(s, ok_prefix=f"I read {filename}. ")
 
 
 def on_form(s, fields: dict):
     s["via_pdf"] = False
     _set_fields(s, fields)
-    return _after_fields(s, "Got your registration form. ")
+    return _after_fields(s, ok_prefix="Got your registration form. ")
 
 
 def on_refs(s, paths):
@@ -125,7 +133,7 @@ def on_refs(s, paths):
     if s["status"] == "need_direction":
         return resp(s, f"Got {len(paths)} reference image(s). Now tell me your design direction, or say 'skip'.")
     return resp(s, f"Saved {len(paths)} reference image(s).") if s["status"] != "missing_info" \
-        else _after_fields(s, f"Saved {len(paths)} reference image(s). ")
+        else _after_fields(s, f"Saved {len(paths)} reference image(s).\n\n")
 
 
 def _fill_from_text(s, text):
@@ -138,7 +146,7 @@ def _fill_from_text(s, text):
             e = re.search(EMAIL, text) if m[0] == "email" else None
             got = {m[0]: (e.group(0) if e else text).strip()}
     _set_fields(s, got)
-    return True
+    return list(got)
 
 
 SUMMARY = [("business_name", "Business name"), ("business_type", "Business type"), ("industry", "Industry"),
@@ -146,6 +154,14 @@ SUMMARY = [("business_name", "Business name"), ("business_type", "Business type"
            ("title_position", "Title / position"), ("email", "Email"), ("phone_number", "Phone number"),
            ("design_preferences", "Design preferences"), ("expected_annual_revenue", "Expected annual revenue"),
            ("requirements_notes", "Requirements / notes")]
+ORDER = {k: i for i, (k, _) in enumerate(SUMMARY)}
+
+
+def label(k):
+    """Client-facing label, e.g. 'Title / position' (never the raw key)."""
+    return dict(SUMMARY).get(k) or LABELS.get(k, k.replace("_", " ").capitalize())
+
+
 SUMMARY_CLOSE = "Using your design preferences and business information. Here is a mockup."
 
 
@@ -187,10 +203,7 @@ def run_round(s):
 def on_chat(s, text):
     st = s["status"]
     if st in ("need_document", "missing_info"):
-        ok = _fill_from_text(s, text)
-        if not ok:
-            return resp(s, "That doesn't look like an email address. What's the best contact email?")
-        return _after_fields(s)
+        return _after_fields(s, touched=_fill_from_text(s, text))
     if st == "need_direction":
         pending = s.pop("refs_pending", False)  # 'skip' keeps the PDF's design preferences
         s["direction"] = (s["direction"] if pending else None) if SKIP.match(text) else text.strip()
@@ -212,10 +225,10 @@ def start_resume(s, fields: list[str], note: str | None):
     s["refill"] = [f for f in fields if f in LABELS]
     s["resumed"] = True
     s["status"] = "missing_info"
-    labels = ", ".join(LABELS[f] for f in s["refill"])
-    return resp(s, "Welcome back! Our team needs a bit more information" + (f": {note}" if note else ".") +
-                f" Please update: {labels}. What is your {LABELS[s['refill'][0]].lower()}?" if s["refill"]
-                else "Welcome back! " + (note or "Please reply with the requested details."))
+    if not s["refill"]:
+        return resp(s, "Welcome back! " + (note or "Please reply with the requested details."))
+    head = "Welcome back! Our team needs a bit more information" + (f": {note.strip().rstrip('.')}." if note else ".")
+    return resp(s, head + "\nPlease update:\n" + "\n".join(label(f) for f in s["refill"]))
 
 
 def on_review(s, accepted: bool, feedback: str | None):
