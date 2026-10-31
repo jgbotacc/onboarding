@@ -17,7 +17,7 @@ function placeholder(round: number, i: number): string {
     `<rect width="512" height="512" fill="${fill}"/>` +
     `<rect x="24.5" y="24.5" width="463" height="463" fill="none" stroke="#1D2129" stroke-opacity=".12"/>` +
     `<text x="256" y="248" font-family="system-ui,sans-serif" font-size="36" font-weight="600" text-anchor="middle" fill="#1D2129">Placeholder</text>` +
-    `<text x="256" y="288" font-family="system-ui,sans-serif" font-size="20" text-anchor="middle" fill="#4E5969">Round ${round}, option ${i + 1}</text></svg>`;
+    `<text x="256" y="288" font-family="system-ui,sans-serif" font-size="20" text-anchor="middle" fill="#4E5969">Option ${i + 1}</text></svg>`;
   return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
 }
 
@@ -46,7 +46,9 @@ export function createMock(opts: { resumed?: boolean } = {}) {
     s.round += 1;
     s.status = "awaiting_review";
     return resp(
-      `${prefix}Here are round ${s.round} concepts based on ${s.round === 1 && s.designDirection ? `your design direction (\u201c${s.designDirection}\u201d)` : "your design direction"}. Do they look right?`,
+      s.round === 1
+        ? `${prefix}Using your design preferences and business information. Here is a mockup.`
+        : `${prefix}Here is the updated mockup. Happy with this direction? Accept it, or tell me what to change.`,
       [0, 1, 2].map((i) => placeholder(s.round, i)),
     );
   };
@@ -115,7 +117,7 @@ export function createMock(opts: { resumed?: boolean } = {}) {
         s.missing = ["Email"];
         return askMissing(`I've read your document and registered your business${jpgs ? ` along with ${jpgs} reference image(s)` : ""}. `);
       }
-      return resp(`Got ${files.length} more file(s). I'll use them in the next round.`);
+      return resp(`Got ${files.length} more file(s). I'll use them in the next mockup.`);
     },
     form(fields: FormFields): ApiResponse {
       const invalid = checkFields(fields); // [field-validation]
@@ -166,7 +168,7 @@ export function createMock(opts: { resumed?: boolean } = {}) {
       }
       if (s.round >= MAX_ROUNDS) {
         s.status = "handed_off";
-        return resp(`Thanks for the feedback. We've done ${MAX_ROUNDS} rounds, so I'm handing you over to a member of our team, who will take it from here.`);
+        return resp("Thanks for the feedback. I'm handing you to a human designer, who will contact you shortly with your feedback in hand.");
       }
       return generate(`Thanks, I've applied your feedback${feedback ? ` (\u201c${feedback}\u201d)` : ""}. `);
     },
