@@ -62,3 +62,22 @@ def test_no_round_wording_in_client_replies_but_handoff_after_3():
     assert replies[1]["reply"].startswith("Here is the updated mockup.")
     for r in replies:
         assert "round" not in r["reply"].lower() and "of 3" not in r["reply"], r["reply"]
+
+
+def test_every_end_of_flow_says_team_will_contact():
+    from src.features.chat import agent
+    end = "Our team will contact you shortly."
+    s = agent.new_session()
+    s.update(status="awaiting_review", round=1)
+    r = agent.on_review(s, True, None)
+    assert r["reply"] == "Great, design direction accepted! " + end, r["reply"]
+    assert agent.on_chat(s, "hi")["reply"].endswith(end)
+    s = agent.new_session()
+    s.update(status="awaiting_review", round=agent.MAX_ROUNDS)
+    r = agent.on_review(s, False, "more red")
+    assert r["status"] == "handed_off" and r["reply"].endswith(end), r["reply"]
+    assert agent.on_chat(s, "hi")["reply"].endswith(end)
+    for st in ("approved", "rejected", "pending_review"):
+        s = agent.new_session()
+        s["status"] = st
+        assert agent.on_chat(s, "hi")["reply"].endswith(end), st

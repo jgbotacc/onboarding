@@ -207,7 +207,7 @@ export function createMock(opts: { resumed?: boolean } = {}) {
         s.registered = true;
         s.missing = [];
         s.status = "pending_review";
-        return resp("Thanks, your details are updated. Our team will review them and get back to you.");
+        return resp("Thanks, your details are updated. Our team will contact you shortly.");
       }
       s.viaPdf = false;
       return intake(fields);
@@ -227,18 +227,18 @@ export function createMock(opts: { resumed?: boolean } = {}) {
         return generate("");
       }
       if (s.status === "awaiting_review") return handlers.review(false, text);
-      if (s.status === "accepted") return resp("Your design direction is locked in. Our team will follow up with final collaterals.");
-      if (s.status === "pending_review") return resp("Thanks! Our team is reviewing your details and will get back to you.");
-      return resp("A team member has been notified and will contact you shortly.");
+      if (s.status === "accepted") return resp("Your design direction is locked in. Our team will contact you shortly.");
+      if (s.status === "pending_review") return resp("Thanks! We're reviewing your details. Our team will contact you shortly.");
+      return resp("A designer has your details. Our team will contact you shortly.");
     },
     review(accepted: boolean, feedback: string): ApiResponse {
       if (accepted) {
         s.status = "accepted";
-        return resp("Great, design direction accepted! We'll prepare your marketing collaterals.");
+        return resp("Great, design direction accepted! Our team will contact you shortly.");
       }
       if (s.round >= MAX_ROUNDS) {
         s.status = "handed_off";
-        return resp("Thanks for the feedback. I'm handing you to a human designer, who will contact you shortly with your feedback in hand.");
+        return resp("Thanks for the feedback. I'm handing you to a human designer with your notes. Our team will contact you shortly.");
       }
       if (!feedback.trim()) return resp("What would you like changed? (colours, style, text, layout...)");
       return generate("");

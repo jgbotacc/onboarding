@@ -94,7 +94,7 @@ def _after_fields(s, prefix="", touched=None, ok_prefix=""):
             out["reply"] = prefix + "Thanks, your details are updated. Your design brief changed. " + out["reply"]
             return out
         s["status"] = "pending_review"
-        return resp(s, prefix + "Thanks, your details are updated. Our team will review them and get back to you.",
+        return resp(s, prefix + "Thanks, your details are updated. Our team will contact you shortly.",
                     s["images"])
     if s["fields"].get("design_preferences") and not s["round"]:
         s["direction"] = s["fields"]["design_preferences"]
@@ -214,13 +214,13 @@ def on_chat(s, text):
     if st == "awaiting_review":
         return on_review(s, False, text)
     if st in ("approved", "rejected", "pending_review"):
-        msg = {"approved": "You're approved! Our operations team will get in contact with you soon.",
-               "rejected": "Thanks for your interest. Our team has reviewed your application and will be in touch.",
-               "pending_review": "Thanks! Our team is reviewing your details and will get back to you."}[st]
+        msg = {"approved": "You're approved! Our team will contact you shortly.",
+               "rejected": "Thanks for your interest. Our team will contact you shortly.",
+               "pending_review": "Thanks! We're reviewing your details. Our team will contact you shortly."}[st]
         return resp(s, msg, s["images"])
     if st == "accepted":
-        return resp(s, "Your design direction is locked in. Our team will follow up with final collaterals.", s["images"])
-    return resp(s, "A team member has been notified and will contact you shortly.")
+        return resp(s, "Your design direction is locked in. Our team will contact you shortly.", s["images"])
+    return resp(s, "A designer has your details. Our team will contact you shortly.")
 
 
 def start_resume(s, fields: list[str], note: str | None):
@@ -241,12 +241,12 @@ def on_review(s, accepted: bool, feedback: str | None):
         s["history"][-1].update(accepted=bool(accepted), feedback=(feedback or "").strip() or None)
     if accepted:
         s["status"] = "accepted"
-        return resp(s, "Great, design direction accepted! We'll prepare your marketing collaterals.", s["images"])
+        return resp(s, "Great, design direction accepted! Our team will contact you shortly.", s["images"])
     s["feedback"] = (feedback or "").strip() or None
     if s["round"] >= MAX_ROUNDS:
         s["status"] = "handed_off"
-        return resp(s, "Thanks for the feedback. I'm handing you to a human designer, "
-                    "who will contact you shortly with your feedback in hand.")
+        return resp(s, "Thanks for the feedback. I'm handing you to a human designer with your notes. "
+                    "Our team will contact you shortly.")
     if not s["feedback"]:
         s["status"] = "awaiting_review"
         return resp(s, "What would you like changed? (colours, style, text, layout...)")
