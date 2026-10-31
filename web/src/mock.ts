@@ -232,14 +232,14 @@ export function createMock(opts: { resumed?: boolean } = {}) {
         return generate("");
       }
       if (s.status === "awaiting_review") return resp("Tap \u201cLooks good\u201d or \u201cAsk for changes\u201d under the designs.");
-      if (s.status === "accepted") return resp("Your design is approved.\nOur team will contact you shortly.");
+      if (s.status === "accepted") return resp("Great, design direction accepted! Our team will contact you shortly.");
       if (s.status === "handed_off") return resp("A designer has your details.\nOur team will contact you shortly.");
       return resp("Got it.");
     },
     review(accepted: boolean, feedback: string): ApiResponse {
       if (accepted) {
         s.status = "accepted";
-        return resp("Great, your design is approved!\nOur team will contact you shortly.");
+        return resp("Great, design direction accepted! Our team will contact you shortly.");
       }
       if (s.round >= MAX_ROUNDS) {
         s.status = "handed_off";
