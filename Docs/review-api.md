@@ -38,3 +38,28 @@ The chat then asks only for those. When all are filled, status becomes `pending_
 
 Statuses: need_document, missing_info, need_direction, awaiting_review, accepted, handed_off,
 approved, rejected, needs_info, pending_review.
+
+## Front end (web/src/staff/*)
+
+Routes: `/#/staff` (primary) and `/#/review` (alias). The page also renders when the backend serves
+index.html at the paths `/staff`, `/review`, `/admin` (top level only; nested paths like `/staff/x`
+break relative asset URLs because the build uses base `./`).
+
+Calls the front end makes:
+- `GET /api/staff/clients` on load. Uses `id, business_name, contact_name, email, status, round,
+  image` (row thumbnail), `updated` (date shown). Any failure, or `?mock=1`, switches to demo data
+  (badge "Demo mode (mock data)").
+- `GET /api/staff/clients/:id` when a row is expanded. Uses `fields` (the 11 form keys), `images`,
+  `reference_images`, `round`, `status`, `outbox` (last entry shown as "Last Email: ...").
+- `POST /api/staff/clients/:id/decision` `{decision, fields, note}` after the confirm step
+  (approve/reject) or the field picker (more_info). Uses `status` (row pill), `email.status` +
+  `email.to` (line "Email: Sent (demo) to <to>"; text after the first comma is dropped),
+  `resume_url` (shown as a link). Treated as success unless the response has `ok: false` or a
+  non-2xx code.
+- Chat page: `/?resume=<token>` -> `POST /api/session {resumeToken}`. `missing` (labels or keys) is
+  mapped to form keys, and the form pop-up opens with only those fields; `reply` is shown as the
+  note. Submit goes to the existing `POST /api/form` with the returned `sessionId` (only the shown
+  fields are filled). The `resume` param is removed from the address bar after load.
+
+Status labels handled: need_document, missing_info, need_direction, awaiting_review, accepted,
+handed_off, approved, rejected, needs_info, pending_review.

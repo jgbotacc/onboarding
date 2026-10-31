@@ -23,6 +23,11 @@ export const STATUS_LABELS: Record<string, string> = {
   awaiting_review: "Awaiting review",
   accepted: "Accepted",
   handed_off: "Handed off",
+  // Staff review statuses
+  needs_info: "More info needed",
+  pending_review: "Pending review",
+  approved: "Approved",
+  rejected: "Not approved",
 };
 
 export interface FormFields {

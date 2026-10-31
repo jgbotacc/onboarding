@@ -47,7 +47,6 @@ const SECTIONS: SectionDef[] = [
     fields: [{ key: "requirements_notes", label: "Requirements / Notes", type: "textarea", full: true }],
   },
 ];
-const ALL_FIELDS = SECTIONS.flatMap((s) => s.fields);
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function isUrl(v: string): boolean {
@@ -70,6 +69,10 @@ function validate(f: FieldDef, raw: string): string {
 interface Props {
   onCancel: () => void;
   onSubmit: (fields: FormFields, images: File[]) => void;
+  /** Resume mode: show only these fields (others stay as saved server side). */
+  only?: Key[];
+  /** Resume mode: staff note shown above the fields. */
+  intro?: string;
 }
 
 const MAX_IMAGES = 6;
@@ -144,7 +147,12 @@ function RefImages({ files, onChange }: { files: File[]; onChange: (f: File[]) =
   );
 }
 
-export default function FormModal({ onCancel, onSubmit }: Props) {
+export default function FormModal({ onCancel, onSubmit, only, intro }: Props) {
+  const resume = !!only?.length;
+  const sections = resume
+    ? SECTIONS.map((s) => ({ ...s, fields: s.fields.filter((f) => only!.includes(f.key)) })).filter((s) => s.fields.length)
+    : SECTIONS;
+  const visible = sections.flatMap((s) => s.fields);
   const [values, setValues] = useState<FormFields>({ ...EMPTY_FORM });
   const [errors, setErrors] = useState<Partial<Record<Key, string>>>({});
   const [images, setImages] = useState<File[]>([]);
@@ -175,12 +183,12 @@ export default function FormModal({ onCancel, onSubmit }: Props) {
   const submit = (e: FormEvent) => {
     e.preventDefault();
     const next: Partial<Record<Key, string>> = {};
-    ALL_FIELDS.forEach((f) => {
+    visible.forEach((f) => {
       const m = validate(f, values[f.key]);
       if (m) next[f.key] = m;
     });
     setErrors(next);
-    const firstBad = ALL_FIELDS.find((f) => next[f.key]);
+    const firstBad = visible.find((f) => next[f.key]);
     if (firstBad) {
       dialogRef.current?.querySelector<HTMLElement>(`[name="${firstBad.key}"]`)?.focus();
       return;
@@ -227,15 +235,18 @@ export default function FormModal({ onCancel, onSubmit }: Props) {
         <form className="modal-form" onSubmit={submit} noValidate>
           <div className="modal-head">
             <div>
-              <h2 id="formModalTitle">B2B Registration Form</h2>
-              <p id="formModalDesc">Fields marked * are required.</p>
+              <h2 id="formModalTitle">{resume ? "Update your details" : "B2B Registration Form"}</h2>
+              <p id="formModalDesc">
+                {resume ? "Our team asked you to fill in these fields again. Everything else is already saved." : "Fields marked * are required."}
+              </p>
             </div>
             <button type="button" className="icon-btn" aria-label="Close form" onClick={onCancel}>
               <CloseIcon />
             </button>
           </div>
           <div className="modal-body">
-            {SECTIONS.map((s) => (
+            {resume && intro && <p className="form-intro">{intro}</p>}
+            {sections.map((s) => (
               <fieldset key={s.title} className="form-section">
                 <legend>{s.title}</legend>
                 <div className="form-grid">
@@ -274,12 +285,14 @@ export default function FormModal({ onCancel, onSubmit }: Props) {
                 </div>
               </fieldset>
             ))}
+            {!resume && (
             <fieldset className="form-section">
               <legend>Design references</legend>
               <div className="form-grid">
                 <RefImages files={images} onChange={setImages} />
               </div>
             </fieldset>
+            )}
           </div>
           <div className="modal-foot">
             <button type="button" className="btn" onClick={onCancel}>
