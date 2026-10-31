@@ -99,17 +99,17 @@ export const RULES: Record<FieldKey, Rule> = {
   business_name: {
     ok: (v) => v.length >= 2 && v.length <= 100 && letters(v) >= 1 && !/^[\d\W_]+$/u.test(v) && !junk(v),
     message: "That doesn't look like a business name. Please use your registered or trading name.",
-    example: "Kopi Corner Pte Ltd",
+    example: "Kopi Corner Pte Ltd or Acme Studio",
   },
   business_type: {
     ok: (v) => wordy(v, 2, 60),
     message: "That doesn't look like a business type. Describe what kind of business it is in a word or two.",
-    example: "Cafe, retail shop or IT consultancy",
+    example: "Café, Retail shop or Accounting firm",
   },
   industry: {
     ok: (v) => wordy(v, 2, 60),
     message: "That doesn't look like an industry. Use a word or two for your sector.",
-    example: "Food & Beverage or Healthcare",
+    example: "Food & Beverage, Retail or Professional Services",
   },
   business_website: {
     ok: (v) => WEBSITE_RE.test(v),
@@ -119,7 +119,7 @@ export const RULES: Record<FieldKey, Rule> = {
   contact_name: {
     ok: (v) => v.length >= 2 && v.length <= 80 && letters(v) >= 2 && !/\d/.test(v) && !junk(v),
     message: "That doesn't look like a person's name. Please use letters only.",
-    example: "Tan Ah Hock",
+    example: "Tan Mei Ling or John Lee",
   },
   title_position: {
     ok: (v) => wordy(v, 2, 60),
@@ -129,27 +129,27 @@ export const RULES: Record<FieldKey, Rule> = {
   email: {
     ok: (v) => EMAIL_RE.test(v),
     message: "That doesn't look like an email address.",
-    example: "hello@kopicorner.sg",
+    example: "jo@kopicorner.sg",
   },
   phone_number: {
     ok: (v) => !/[^\d+\s\-().]/.test(v) && /^\d{7,15}$/.test(v.replace(/[+\s\-().]/g, "")),
     message: "That doesn't look like a phone number. Use 7 to 15 digits, with an optional country code.",
-    example: "+65 6123 4567",
+    example: "+65 9123 4567 or (02) 9876-5432",
   },
   design_preferences: {
     ok: (v) => letters(v) >= 3 && hasVowelWord(v) && !junk(v),
     message: "Please describe the look you'd like in a few words.",
-    example: "warm retro kopitiam style, brown and cream colours",
+    example: "warm, minimal, brown and cream",
   },
   expected_annual_revenue: {
     ok: (v) => parseAmount(v) !== null,
-    message: "That doesn't look like an amount. Try a number or write it out in words.",
-    example: "$120,000, about 120k or five thousand dollars",
+    message: "That doesn't look like a revenue figure. It should be an amount, in digits or words.",
+    example: "S$250,000 or five thousand dollars",
   },
   requirements_notes: {
     ok: (v) => letters(v) >= 2,
     message: "Please write your notes in words.",
-    example: "Instagram posts for our new branch opening",
+    example: "Need a logo and 5 Instagram posts by December",
   },
 };
 
