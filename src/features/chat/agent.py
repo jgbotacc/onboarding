@@ -87,28 +87,41 @@ def _after_fields(s, prefix=""):
                     s["images"])
     if s["fields"].get("design_preferences") and not s["round"]:
         s["direction"] = s["fields"]["design_preferences"]
+        if s.get("via_pdf") and not s["refs"]:
+            # PDF path has no reference-image field, so ask for refs before round 1.
+            s["status"] = "need_direction"
+            s["refs_pending"] = True
+            return resp(s, prefix + f"Thanks, {name} is registered. I'll use your design preferences "
+                        f"({s['direction']}). Upload any reference images (JPG or PNG) now, or say 'skip' to start.")
         out = run_round(s)
         out["reply"] = prefix + f"Thanks, {name} is registered. Using your design preferences. " + out["reply"]
         return out
     s["status"] = "need_direction"
-    return resp(s, prefix + f"Thanks, {name} is registered. Optionally upload "
-                "reference images (JPG), then tell me your design direction (e.g. 'minimal, warm, "
+    refs = f"Got {len(s['refs'])} reference image(s). Now tell me" if s["refs"] else \
+        "Optionally upload reference images (JPG or PNG), then tell me"
+    return resp(s, prefix + f"Thanks, {name} is registered. {refs} your design direction (e.g. 'minimal, warm, "
                 "brown and cream') or say 'skip'.")
 
 
 def on_document(s, fields: dict, filename: str):
+    s["via_pdf"] = True
     _set_fields(s, fields)
     found = ", ".join(f"{k.replace('_', ' ')}: {v}" for k, v in fields.items() if v) or "nothing usable"
     return _after_fields(s, f"I read {filename}. Found {found}. ")
 
 
 def on_form(s, fields: dict):
+    s["via_pdf"] = False
     _set_fields(s, fields)
     return _after_fields(s, "Got your registration form. ")
 
 
 def on_refs(s, paths):
     s["refs"].extend(paths)
+    if s["status"] == "need_direction" and s.pop("refs_pending", False):
+        out = run_round(s)  # PDF design preferences + these refs
+        out["reply"] = f"Got {len(paths)} reference image(s). " + out["reply"]
+        return out
     if s["status"] == "need_direction":
         return resp(s, f"Got {len(paths)} reference image(s). Now tell me your design direction, or say 'skip'.")
     return resp(s, f"Saved {len(paths)} reference image(s).") if s["status"] != "missing_info" \
@@ -148,7 +161,8 @@ def on_chat(s, text):
             return resp(s, "That doesn't look like an email address. What's the best contact email?")
         return _after_fields(s)
     if st == "need_direction":
-        s["direction"] = None if SKIP.match(text) else text.strip()
+        pending = s.pop("refs_pending", False)  # 'skip' keeps the PDF's design preferences
+        s["direction"] = (s["direction"] if pending else None) if SKIP.match(text) else text.strip()
         return run_round(s)
     if st == "awaiting_review":
         return on_review(s, False, text)
