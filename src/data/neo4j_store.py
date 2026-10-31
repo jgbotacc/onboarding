@@ -1,4 +1,4 @@
-"""Neo4j store using Junior Dev's graph model (neo4j/schema.cypher, queries.cypher)."""
+"""Neo4j store using the graph model (neo4j/schema.cypher, queries.cypher)."""
 import json
 import os
 
