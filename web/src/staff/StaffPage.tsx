@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { connectStaff, type StaffClient } from "./api";
+import { connectStaff, setOnAuthFail, setStaffKey, StaffAuthError, type StaffClient } from "./api";
 import { FIELDS, type FieldKey } from "./fields";
 import { statusLabel, type Decision, type DecisionResult, type EmailInfo, type StaffDetail, type StaffRow } from "./types";
 import "./staff.css";
@@ -230,6 +230,33 @@ function Detail({ client, row, onDecided, onOpen }: DetailProps) {
   );
 }
 
+/** [staff-key] Passcode screen shown before any staff data loads, and again after a 401. */
+function PasscodeGate({ error, onSubmit }: { error: string; onSubmit: (key: string) => void }) {
+  const [key, setKey] = useState("");
+  return (
+    <form
+      className="staff-gate"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (key.trim()) onSubmit(key.trim());
+      }}
+    >
+      <h2>Staff sign-in</h2>
+      <p className="staff-empty">Enter the staff passcode to see client submissions.</p>
+      <label htmlFor="staffKey">Passcode</label>
+      <input id="staffKey" type="password" autoComplete="current-password" autoFocus value={key} onChange={(e) => setKey(e.target.value)} />
+      {error && (
+        <p className="field-error" role="alert">
+          {error}
+        </p>
+      )}
+      <button type="submit" className="btn primary" disabled={!key.trim()}>
+        Continue
+      </button>
+    </form>
+  );
+}
+
 export default function StaffPage() {
   const [client, setClient] = useState<StaffClient | null>(null);
   const [rows, setRows] = useState<StaffRow[]>([]);
@@ -237,13 +264,28 @@ export default function StaffPage() {
   const [toast, setToast] = useState("");
   const [lightbox, setLightbox] = useState<string | null>(null);
   const toastTimer = useRef<number>(0);
+  const [gate, setGate] = useState<{ error: string } | null>(null);
+
+  const load = () =>
+    connectStaff().then((r) => {
+      if (r.client) {
+        setClient(r.client);
+        setRows(r.rows);
+        setGate(null);
+      } else {
+        setClient(null);
+        setGate({ error: !r.auth ? "" : r.auth.status === 503 ? r.auth.message : "That passcode didn't work. Please try again." });
+      }
+    });
 
   useEffect(() => {
     document.title = "Staff review · Client Onboarding";
-    connectStaff().then(({ client, rows }) => {
-      setClient(client);
-      setRows(rows);
+    setOnAuthFail((e: StaffAuthError) => {
+      setClient(null);
+      setOpen(null);
+      setGate({ error: e.status === 503 ? e.message : "Your session has ended. Please enter the passcode again." });
     });
+    load();
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setLightbox(null);
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -269,6 +311,15 @@ export default function StaffPage() {
         )}
       </header>
       <main className="staff-main">
+        {gate ? (
+          <PasscodeGate
+            error={gate.error}
+            onSubmit={(k) => {
+              setStaffKey(k);
+              load();
+            }}
+          />
+        ) : (
         <div className="staff-column">
           <div className="staff-title">
             <h2>Submissions</h2>
@@ -311,6 +362,7 @@ export default function StaffPage() {
             })}
           </ul>
         </div>
+        )}
       </main>
       {toast && (
         <div className="staff-toast" role="status" aria-live="polite">

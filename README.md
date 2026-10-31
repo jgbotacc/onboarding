@@ -17,6 +17,7 @@ square (1080x1080) marketing mock-up. Up to 3 feedback rounds, then a human hand
 ## API
 `POST /api/session`, `POST /api/upload` (multipart `sessionId`, `files[]`), `POST /api/chat {sessionId,text}`,
 `POST /api/review {sessionId,accepted,feedback}`. All return `{reply, images, status, missing, round}`.
+Security: `POST /api/session` returns `sessionSecret` once (also on a resume link); send it as the `x-session-secret` header (or `sessionSecret` field) on upload, form, chat and review, otherwise 403. Uploads accept only PDF (checked by `%PDF` bytes) and JPG/PNG (decoded and re-saved with Pillow), 10 MB a file. Set `DISABLE_DOCS=1` to hide /docs, /redoc and /openapi.json (the deploy script does).
 
 ## Run locally
 ```

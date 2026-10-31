@@ -3,6 +3,23 @@ import { createMock } from "./mock";
 
 export const API_BASE = "";
 const SESSION_KEY = "onboardingSessionId";
+const SECRET_KEY = "onboardingSessionSecret"; // [session-secret] proves this tab owns the session
+
+const store = (k: string, v: string) => {
+  try {
+    if (v) sessionStorage.setItem(k, v);
+    else sessionStorage.removeItem(k);
+  } catch {
+    /* storage unavailable */
+  }
+};
+const read = (k: string) => {
+  try {
+    return sessionStorage.getItem(k);
+  } catch {
+    return null;
+  }
+};
 
 /** [resume-410] The server answered with an error status (vs a network failure, which stays a plain Error). */
 export class HttpError extends Error {
@@ -11,10 +28,10 @@ export class HttpError extends Error {
   }
 }
 
-async function postJson<T>(path: string, body: unknown): Promise<T> {
+async function postJson<T>(path: string, body: unknown, secret?: string): Promise<T> {
   const r = await fetch(API_BASE + path, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(secret ? { "x-session-secret": secret } : {}) },
     body: JSON.stringify(body ?? {}),
   });
   if (!r.ok) {
@@ -79,14 +96,11 @@ export async function connect(): Promise<Client> {
   const token = resumeToken();
   if (token) {
     try {
-      const r = await postJson<ApiResponse & { sessionId?: string }>("/api/session", { resumeToken: token });
-      if (!r || !r.sessionId) throw new Error("no sessionId");
-      try {
-        sessionStorage.setItem(SESSION_KEY, r.sessionId);
-      } catch {
-        /* storage unavailable */
-      }
-      return { ...realClient(r.sessionId), resume: { missing: r.missing || [], reply: r.reply || "" } };
+      const r = await postJson<ApiResponse & { sessionId?: string; sessionSecret?: string }>("/api/session", { resumeToken: token });
+      if (!r || !r.sessionId || !r.sessionSecret) throw new Error("no sessionId");
+      store(SESSION_KEY, r.sessionId);
+      store(SECRET_KEY, r.sessionSecret);
+      return { ...realClient(r.sessionId, r.sessionSecret), resume: { missing: r.missing || [], reply: r.reply || "" } };
     } catch (e) {
       // [resume-410] The server answered: the link is used (410) or unknown (404). Say so; don't fall back to demo mode.
       // Only real network failures (no answer) fall through to mock.
@@ -94,35 +108,34 @@ export async function connect(): Promise<Client> {
         dropResumeParam();
         const used = e.status === 410;
         return {
-          ...realClient(""),
+          ...realClient("", ""),
           linkClosed: { status: used ? "link_used" : "link_invalid", message: e.detail || (used ? LINK_USED_MSG : LINK_INVALID_MSG) },
         };
       }
       return mockClient();
     }
   }
-  let saved: string | null = null;
+  const saved = read(SESSION_KEY);
+  const savedSecret = read(SECRET_KEY);
   try {
-    saved = sessionStorage.getItem(SESSION_KEY);
-  } catch {
-    /* storage unavailable */
-  }
-  try {
-    const r = await postJson<{ sessionId?: string }>("/api/session", saved ? { sessionId: saved } : {});
+    const r = await postJson<{ sessionId?: string; sessionSecret?: string }>(
+      "/api/session",
+      saved && savedSecret ? { sessionId: saved, sessionSecret: savedSecret } : {},
+    );
     if (!r || !r.sessionId) throw new Error("no sessionId");
     const sessionId = r.sessionId;
-    try {
-      sessionStorage.setItem(SESSION_KEY, sessionId);
-    } catch {
-      /* storage unavailable */
-    }
-    return realClient(sessionId);
+    // A new session comes with its secret (returned once); a resumed one keeps the saved secret.
+    const secret = r.sessionSecret || (sessionId === saved ? savedSecret || "" : "");
+    if (!secret) throw new Error("no session secret");
+    store(SESSION_KEY, sessionId);
+    store(SECRET_KEY, secret);
+    return realClient(sessionId, secret);
   } catch {
     return mockClient();
   }
 }
 
-function realClient(sessionId: string): Client {
+function realClient(sessionId: string, secret: string): Client {
   return {
     mock: false,
     sessionId,
@@ -130,12 +143,21 @@ function realClient(sessionId: string): Client {
       const fd = new FormData();
       fd.append("sessionId", sessionId);
       files.forEach((f) => fd.append("files[]", f, f.name));
-      const res = await fetch(API_BASE + "/api/upload", { method: "POST", body: fd });
-      if (!res.ok) throw new Error("HTTP " + res.status);
+      const res = await fetch(API_BASE + "/api/upload", { method: "POST", body: fd, headers: { "x-session-secret": secret } });
+      if (!res.ok) {
+        let detail = "";
+        try {
+          const j = await res.json();
+          detail = typeof j?.detail === "string" ? j.detail : "";
+        } catch {
+          /* not JSON */
+        }
+        throw new HttpError(res.status, detail);
+      }
       return res.json();
     },
-    form: (fields) => postJson("/api/form", { sessionId, fields: { ...EMPTY_FORM, ...fields } }),
-    chat: (text) => postJson("/api/chat", { sessionId, text }),
-    review: (accepted, feedback) => postJson("/api/review", { sessionId, accepted, feedback: feedback || "" }),
+    form: (fields) => postJson("/api/form", { sessionId, fields: { ...EMPTY_FORM, ...fields } }, secret),
+    chat: (text) => postJson("/api/chat", { sessionId, text }, secret),
+    review: (accepted, feedback) => postJson("/api/review", { sessionId, accepted, feedback: feedback || "" }, secret),
   };
 }
