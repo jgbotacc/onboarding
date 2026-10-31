@@ -72,6 +72,7 @@ export default function App() {
         return;
       }
       setMessages([{ id: nextId++, role: "assistant", text: GREETING, images: [], status: "registering", round: 0, choices: true }]);
+      inputRef.current?.focus();
     });
     return () => {
       alive = false;
@@ -132,25 +133,6 @@ export default function App() {
   // Keep the start choices (upload / form) until the client is registered, so sending a
   // reference image first no longer hides "Fill in a new form".
   const started = messages.some((m) => m.role === "user") && !["registering", "need_document"].includes(status);
-
-  // Message box stays hidden until a PDF is uploaded or the form is sent (or on a resume link).
-  const showDock = started || !!client?.resume;
-
-  useEffect(() => {
-    if (showDock) inputRef.current?.focus();
-  }, [showDock]);
-
-  // Before the chat starts there is no Send button, so "Upload PDF" uploads straight away.
-  const uploadNow = (list: FileList) => {
-    if (!client || busy) return;
-    const ok: File[] = [];
-    const bad: string[] = [];
-    Array.from(list).forEach((f) => (isAcceptable(f) ? ok.push(f) : bad.push(f.name)));
-    if (bad.length) push({ role: "error", text: "Only PDF and JPG files are supported: " + bad.join(", ") });
-    if (!ok.length) return;
-    push({ role: "user", text: "", files: ok.map((f) => f.name) });
-    run(() => client.upload(ok));
-  };
 
   // Form path: reference images (optional) go to /api/upload first so the session holds them
   // as style refs, then /api/form registers the client and starts round 1 with those refs.
@@ -227,10 +209,7 @@ export default function App() {
     e.preventDefault();
     dragDepth.current = 0;
     setDragging(false);
-    if (e.dataTransfer?.files?.length) {
-      if (showDock) addFiles(e.dataTransfer.files);
-      else uploadNow(e.dataTransfer.files);
-    }
+    if (e.dataTransfer?.files?.length) addFiles(e.dataTransfer.files);
   };
 
   const lastReviewId = [...messages].reverse().find((m) => m.role === "assistant" && m.status === "awaiting_review")?.id;
@@ -337,22 +316,6 @@ export default function App() {
         </div>
       </main>
 
-      <input
-        ref={fileRef}
-        type="file"
-        id="fileInput"
-        accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
-        multiple
-        hidden
-        onChange={(e) => {
-          if (e.target.files) {
-            if (showDock) addFiles(e.target.files);
-            else uploadNow(e.target.files);
-          }
-          e.target.value = "";
-        }}
-      />
-      {showDock && (
       <footer className="dock">
         <div className="column">
           {missing.length > 0 && (
@@ -382,6 +345,18 @@ export default function App() {
             </div>
           )}
           <form className={"composer" + (feedbackMode ? " feedback" : "")} id="composer" onSubmit={onSubmit} autoComplete="off">
+            <input
+              ref={fileRef}
+              type="file"
+              id="fileInput"
+              accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+              multiple
+              hidden
+              onChange={(e) => {
+                if (e.target.files) addFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
             <button type="button" className="btn-icon" id="attachBtn" title="Attach PDF or JPG" aria-label="Attach files" onClick={() => fileRef.current?.click()}>
               <PaperclipIcon />
             </button>
@@ -402,7 +377,6 @@ export default function App() {
           {feedbackMode && <div className="hint">Your next message is sent as feedback on this round.</div>}
         </div>
       </footer>
-      )}
 
       {dragging && <div className="drop-overlay">Drop PDF or JPG files to attach</div>}
       {formOpen && (
