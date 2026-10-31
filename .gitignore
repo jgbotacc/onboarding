@@ -9,5 +9,6 @@ web/dist/
 .daytona_sandbox
 *.sqlite3
 .env*
+!.env.example
 credentials*.txt
 Neo4j-*.txt

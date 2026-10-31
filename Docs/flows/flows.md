@@ -23,7 +23,7 @@ The SaaS staff review page at `/#/staff`, the three decisions and their emails, 
 14. I need more information: staff tick fields and add a note.
 15. The email carries a one-time link, `/?resume=<token>`.
 16. The link opens the chat asking only for the ticked fields, and the answers are sense-checked.
-17. The three decision emails. All go to willhanjg01@gmail.com for the demo.
+17. The three decision emails. All go to the address in `ONBOARDING_NOTIFY_EMAIL` for the demo.
 
 ## What makes it stand out
 Client (`client-flow.png`):

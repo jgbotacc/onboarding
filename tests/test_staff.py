@@ -7,10 +7,10 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from src.app import app  # noqa: E402
 from helpers import new_session, resume, staff_client  # noqa: E402
-from src.shared.config import DEMO_EMAIL_TO  # noqa: E402
+from src.shared.config import notify_email_to  # noqa: E402
 
 c = staff_client(app)
-BASE = {"business_name": "Acme Cafe", "contact_name": "Jo", "email": "jo@acme.co", "industry": "F&B"}
+BASE = {"business_name": "Acme Cafe", "contact_name": "Jo", "email": "jo@acme.example", "industry": "F&B"}
 
 
 def _body(sid):
@@ -36,9 +36,9 @@ def test_list_and_detail():
 def test_approve():
     sid = _client()
     d = c.post(f"/api/staff/clients/{sid}/decision", json={"decision": "approve"}).json()
-    assert d["status"] == "approved" and d["email"]["to"] == DEMO_EMAIL_TO
+    assert d["status"] == "approved" and d["email"]["to"] == notify_email_to() == "ops@example.com"
     assert "operations team will get in contact" in _body(sid)
-    assert "Client email on file: jo@acme.co" in _body(sid)
+    assert "Client email on file: jo@acme.example" in _body(sid)
     assert d["email"]["status"].startswith("Sent")
 
 

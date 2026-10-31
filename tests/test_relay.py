@@ -74,9 +74,9 @@ def test_resend_via_relay(monkeypatch):
 
     monkeypatch.setattr(relay, "post", fake_post)
     from src.features.staff import email
-    s = {"fields": {"business_name": "Acme", "contact_name": "Jo", "email": "jo@acme.co"}}
+    s = {"fields": {"business_name": "Acme", "contact_name": "Jo", "email": "jo@acme.example"}}
     m = email.send("approve", s, [], None, None)
-    assert sent[0][0] == "/api/resend" and sent[0][1]["to"] == ["willhanjg01@gmail.com"]
+    assert sent[0][0] == "/api/resend" and sent[0][1]["to"] == ["ops@example.com"]
     assert m["status"] == "Sent" and m["provider"] == "resend (relay)" and m["id"] == "email_123"
 
 
@@ -108,3 +108,14 @@ def test_posts_are_exactly_1080_relay_and_direct(monkeypatch):
     assert _media_size(providers.generate({"business_name": "Acme"}, [], 1)[0]) == (1080, 1080)
     monkeypatch.delenv("MODEL_API_KEY")  # placeholder
     assert _media_size(providers.generate({"business_name": "Acme"}, [], 1)[0]) == (1080, 1080)
+
+
+def test_no_notify_email_skips_send(monkeypatch):
+    _relay_env(monkeypatch)
+    monkeypatch.delenv("ONBOARDING_NOTIFY_EMAIL", raising=False)
+    sent = []
+    monkeypatch.setattr(relay, "post", lambda *a, **k: sent.append(a) or httpx.Response(200, json={"id": "x"}))
+    from src.features.staff import email
+    m = email.send("approve", {"fields": {"business_name": "A"}}, [], None, None)
+    assert sent == [] and m["to"] == "" and m["provider"] == "outbox"
+    assert m["status"].startswith("Not sent (demo)") and "ONBOARDING_NOTIFY_EMAIL" in m["status"]

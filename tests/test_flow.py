@@ -19,7 +19,7 @@ def test_flow():
     sid = new_session(c)
     r = c.post("/api/upload", data={"sessionId": sid}, files={"files[]": ("b.pdf", open(pdf, "rb"), "application/pdf")}).json()
     assert r["missing"] == ["Email"], r
-    r = c.post("/api/chat", json={"sessionId": sid, "text": "hello@kopicorner.sg"}).json()
+    r = c.post("/api/chat", json={"sessionId": sid, "text": "hello@kopicorner.example"}).json()
     assert r["status"] == "need_direction", r
     r = c.post("/api/chat", json={"sessionId": sid, "text": "warm retro kopitiam"}).json()
     assert r["status"] == "awaiting_review" and r["round"] == 1 and r["images"]
@@ -35,7 +35,7 @@ def test_form_with_design_preferences_generates_immediately():
     sid = new_session(c)
     r = c.post("/api/form", json={"sessionId": sid, "fields": {"business_name": "Acme", "contact_name": "Jo"}}).json()
     assert r["missing"] == ["Email"] and r["status"] == "missing_info", r
-    r = c.post("/api/form", json={"sessionId": sid, "fields": {"email": "jo@acme.co", "design_preferences": "minimal blue"}}).json()
+    r = c.post("/api/form", json={"sessionId": sid, "fields": {"email": "jo@acme.example", "design_preferences": "minimal blue"}}).json()
     assert r["status"] == "awaiting_review" and r["round"] == 1 and r["images"], r
 
 
@@ -50,7 +50,7 @@ def test_form_with_reference_images_uploaded_first():
                files={"files[]": ("ref.jpg", buf.getvalue(), "image/jpeg")})
     assert r.status_code == 200 and r.json()["status"] == "need_document", r.text
     r = c.post("/api/form", json={"sessionId": sid, "fields": {
-        "business_name": "Acme", "contact_name": "Jo", "email": "jo@acme.co", "design_preferences": "minimal blue"}}).json()
+        "business_name": "Acme", "contact_name": "Jo", "email": "jo@acme.example", "design_preferences": "minimal blue"}}).json()
     assert r["status"] == "awaiting_review" and r["round"] == 1 and r["images"], r
     from src.app import store
     assert len(store.load(sid)["refs"]) == 1
@@ -64,5 +64,5 @@ def test_png_reference_upload_then_form():
     r = c.post("/api/upload", data={"sessionId": sid}, files={"files[]": ("ref.png", buf.getvalue(), "image/png")})
     assert r.status_code == 200, r.text
     r = c.post("/api/form", json={"sessionId": sid, "fields": {"business_name": "Acme", "contact_name": "Jo",
-               "email": "jo@acme.co", "design_preferences": "minimal"}}).json()
+               "email": "jo@acme.example", "design_preferences": "minimal"}}).json()
     assert r["round"] == 1 and r["images"]

@@ -9,7 +9,7 @@ lines = ["B2B Registration Form", "Business Name: Kopi Corner Pte Ltd", "Busines
          "Industry: F&B", "Contact Name: Ah Hock Tan", "Title/Position: Owner", "Phone Number: +65 6123 4567",
          "Requirements / Notes: Launch post for new branch"]
 if "--full" in sys.argv:
-    lines += ["Email: hello@kopicorner.sg", "Design Preferences: warm retro kopitiam, brown and cream"]
+    lines += ["Email: hello@kopicorner.example", "Design Preferences: warm retro kopitiam, brown and cream"]
 for i, t in enumerate(lines):
     c.drawString(72, 760 - i * 24, t)
 c.save()
