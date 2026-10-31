@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
 import { connect, type Client } from "./api";
-import { MAX_ROUNDS, STATUS_LABELS, type ApiResponse, type FormFields } from "./types";
+import { EMPTY_FORM, MAX_ROUNDS, STATUS_LABELS, type ApiResponse, type FormFields } from "./types";
 import FormModal from "./FormModal";
+import { FIELDS, toFieldKeys } from "./staff/fields";
 import { CheckboxIcon, CloseIcon, FileIcon, ImageIcon, PaperclipIcon, SendIcon } from "./icons";
 
 type Msg =
@@ -15,6 +16,10 @@ const GREETING = "Welcome. To get started, upload a PDF with your business detai
 const isAcceptable = (f: File) => /\.(pdf|jpe?g|png)$/i.test(f.name) || f.type === "application/pdf" || f.type === "image/jpeg" || f.type === "image/png";
 
 let nextId = 1;
+
+// Resume link: `missing` may hold form keys or labels.
+const FIELD_LABEL: Record<keyof FormFields, string> = Object.fromEntries(FIELDS.map((f) => [f.key, f.label])) as Record<keyof FormFields, string>;
+const toFormKeys = (missing: string[]) => toFieldKeys(missing).filter((k) => k in EMPTY_FORM);
 
 const ASSET = import.meta.env.BASE_URL;
 const AGENT_NAME = "Onboarding agent";
@@ -35,6 +40,8 @@ export default function App() {
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  // Resume link (/?resume=<token>): fields staff asked the client to fill in again.
+  const [refill, setRefill] = useState<{ keys: (keyof FormFields)[]; note: string } | null>(null);
   const dragDepth = useRef(0);
   const chatRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -47,6 +54,23 @@ export default function App() {
     connect().then((c) => {
       if (!alive) return;
       setClient(c);
+      if (c.resume) {
+        const keys = toFormKeys(c.resume.missing);
+        setMessages([{ id: nextId++, role: "assistant", text: c.resume.reply || "Welcome back. Please update the fields below.", images: [], status: "missing_info", round: 0 }]);
+        setStatus("missing_info");
+        if (keys.length) {
+          setRefill({ keys, note: c.resume.reply });
+          setFormOpen(true);
+        } else setMissing(c.resume.missing);
+        try {
+          const u = new URL(window.location.href);
+          u.searchParams.delete("resume"); // one-time token: drop it from the address bar
+          window.history.replaceState(null, "", u.toString());
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
       setMessages([{ id: nextId++, role: "assistant", text: GREETING, images: [], status: "registering", round: 0, choices: true }]);
       inputRef.current?.focus();
     });
@@ -115,6 +139,12 @@ export default function App() {
   const submitForm = (fields: FormFields, images: File[] = []) => {
     if (!client || busy) return;
     setFormOpen(false);
+    if (refill) {
+      setRefill(null);
+      push({ role: "user", text: "Updated my details", files: refill.keys.map((k) => FIELD_LABEL[k]) });
+      run(() => client.form(fields));
+      return;
+    }
     push({
       role: "user",
       text: "Submitted registration form",
@@ -349,7 +379,16 @@ export default function App() {
       </footer>
 
       {dragging && <div className="drop-overlay">Drop PDF or JPG files to attach</div>}
-      {formOpen && <FormModal onCancel={() => setFormOpen(false)} onSubmit={submitForm} />}
+      {formOpen && (
+        <FormModal onCancel={() => setFormOpen(false)} onSubmit={submitForm} only={refill?.keys} intro={refill?.note} />
+      )}
+      {!formOpen && refill && (
+        <div className="refill-bar">
+          <button type="button" className="btn primary" onClick={() => setFormOpen(true)}>
+            Update requested details
+          </button>
+        </div>
+      )}
       {lightbox && (
         <div className="lightbox" id="lightbox" onClick={() => setLightbox(null)} role="dialog" aria-label="Image preview">
           <img src={lightbox} alt="Enlarged image" />

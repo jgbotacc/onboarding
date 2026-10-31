@@ -11,8 +11,9 @@ export interface StaffRow {
   email: string;
   status: string;
   round: number;
-  submitted_at: string; // ISO 8601
-  thumb: string | null; // latest generated image URL
+  industry?: string | null;
+  updated: string | null; // ISO 8601 (UTC), last activity
+  image: string | null; // latest generated image URL
 }
 
 /** GET /api/staff/clients/:id */
@@ -23,13 +24,25 @@ export interface StaffDetail {
   reference_images: string[];
   status: string;
   round: number;
+  /** Emails sent for this client so far (oldest first). */
+  outbox?: EmailInfo[];
+}
+
+export interface EmailInfo {
+  /** "Sent" | "Sent (demo)" | "Sent (demo), <provider> failed: ..." (also tolerates "sent" / "sent_demo"). */
+  status: string;
+  to?: string;
+  recipient?: string;
+  subject?: string;
+  sent_at?: string;
 }
 
 /** POST /api/staff/clients/:id/decision -> DecisionResult */
 export interface DecisionResult {
-  ok: boolean;
-  status: string;
-  email?: { status: "sent" | "sent_demo" | string; to?: string; resume_url?: string; error?: string };
+  ok?: boolean; // treated as success unless explicitly false
+  status: string; // client status after the decision
+  email?: EmailInfo;
+  resume_url?: string | null; // more_info only
 }
 
 export interface DecisionBody {
@@ -49,7 +62,8 @@ export const STAFF_STATUS_LABELS: Record<string, string> = {
   handed_off: "Handed off",
   approved: "Approved",
   rejected: "Rejected",
-  more_info_requested: "More info requested",
+  needs_info: "More info requested",
+  pending_review: "Pending staff review",
 };
 
 export const statusLabel = (s: string) => STAFF_STATUS_LABELS[s] || s.replace(/_/g, " ");

@@ -2,6 +2,9 @@
 import type { DecisionBody, DecisionResult, StaffDetail, StaffRow } from "./types";
 
 function art(title: string, sub: string, bg: string, fg: string): string {
+  const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  title = esc(title);
+  sub = esc(sub);
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">` +
     `<rect width="512" height="512" fill="${bg}"/>` +
@@ -81,7 +84,7 @@ const DETAILS: StaffDetail[] = [
 
 const SUBMITTED = ["2026-10-31T09:12:00Z", "2026-10-30T14:40:00Z", "2026-10-29T03:05:00Z"];
 
-const STATUS_AFTER: Record<string, string> = { approve: "approved", reject: "rejected", more_info: "more_info_requested" };
+const STATUS_AFTER: Record<string, string> = { approve: "approved", reject: "rejected", more_info: "needs_info" };
 
 export function createStaffMock() {
   const db = DETAILS.map((d) => ({ ...d }));
@@ -96,8 +99,9 @@ export function createStaffMock() {
           email: d.fields.email || "",
           status: d.status,
           round: d.round,
-          submitted_at: SUBMITTED[i] || SUBMITTED[0],
-          thumb: d.images[d.images.length - 1] || null,
+          industry: d.fields.industry || "",
+          updated: SUBMITTED[i] || SUBMITTED[0],
+          image: d.images[d.images.length - 1] || null,
         })),
       ),
     detail: (id: string): Promise<StaffDetail> => {
@@ -109,13 +113,10 @@ export function createStaffMock() {
       if (!d) return Promise.reject(new Error("HTTP 404"));
       d.status = STATUS_AFTER[body.decision];
       return wait({
-        ok: true,
+        ...d,
         status: d.status,
-        email: {
-          status: "sent_demo",
-          to: d.fields.email,
-          ...(body.decision === "more_info" ? { resume_url: "/?resume=demo-token&mock=1" } : {}),
-        },
+        email: { status: "Sent (demo)", to: d.fields.email, subject: "Mock email", sent_at: new Date().toISOString() },
+        resume_url: body.decision === "more_info" ? "./?resume=demo-token&mock=1" : null,
       });
     },
   };

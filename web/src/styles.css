@@ -179,6 +179,9 @@ button { font: inherit; }
 .field input:focus, .field textarea:focus { border-color: var(--accent); }
 .field.invalid input, .field.invalid textarea { border-color: var(--danger); }
 .field-error { font-size: 12px; line-height: 16px; color: var(--danger); }
+/* Form: resume mode note */
+.form-intro { margin: 16px 0 0; padding: 8px 12px; border-radius: var(--r); background: var(--accent-soft); color: var(--text); font-size: 13px; line-height: 20px; }
+
 /* Form: optional reference images */
 .field-hint { margin: 0; font-size: 12px; line-height: 16px; color: var(--text-3); }
 .ref-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
@@ -245,3 +248,6 @@ button { font: inherit; }
   .welcome .agent-label { display: none; }
   .welcome-body { max-width: 100%; }
 }
+
+/* Resume link: reopen the refill form */
+.refill-bar { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); z-index: 4; }

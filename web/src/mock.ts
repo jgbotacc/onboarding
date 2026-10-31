@@ -29,7 +29,7 @@ interface MockState {
   refs: number;
 }
 
-export function createMock() {
+export function createMock(opts: { resumed?: boolean } = {}) {
   const s: MockState = { registered: false, missing: [], round: 0, status: "registering", designDirection: "", refs: 0 };
 
   const resp = (reply: string, images: string[] = []): ApiResponse => ({
@@ -76,6 +76,13 @@ export function createMock() {
       return resp(`Got ${files.length} more file(s). I'll use them in the next round.`);
     },
     form(fields: FormFields): ApiResponse {
+      if (opts.resumed && !s.registered) {
+        // Resume link: the client is already registered server side; only the flagged fields come back.
+        s.registered = true;
+        s.missing = [];
+        if (fields.design_preferences.trim()) s.designDirection = fields.design_preferences.trim();
+        return askMissing("Thanks, your updated details are saved and sent to our team. ");
+      }
       s.registered = true;
       s.missing = REQUIRED.filter((r) => !(fields[r.key] || "").trim() || (r.key === "email" && !EMAIL_RE.test(fields.email))).map((r) => r.label);
       if (fields.design_preferences.trim()) s.designDirection = fields.design_preferences.trim();
