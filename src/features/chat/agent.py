@@ -54,6 +54,8 @@ def _after_fields(s, prefix=""):
     name = s["fields"]["business_name"]
     if s.get("resumed"):
         s["resumed"] = False
+        if s.get("resume"):
+            s["resume"]["used"] = True
         if s.pop("design_changed", False) and s["round"] < MAX_ROUNDS:
             s["direction"] = s["fields"].get("design_preferences") or s["direction"]
             out = run_round(s)

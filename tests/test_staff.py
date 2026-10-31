@@ -79,3 +79,15 @@ def test_rollback_invalid_decision_leaves_client_unchanged():
     after = c.get(f"/api/staff/clients/{sid}").json()
     assert after["status"] == before["status"] and after["decisions"] == [] and after["outbox"] == []
     assert c.post("/api/session", json={"resumeToken": "bogus"}).status_code == 404
+
+
+def test_used_resume_token_returns_410():
+    sid = _client()
+    tok = c.post(f"/api/staff/clients/{sid}/decision", json={"decision": "more_info",
+                 "fields": ["phone_number"]}).json()["resume_url"].split("resume=")[1]
+    assert c.post("/api/session", json={"resumeToken": tok}).status_code == 200
+    assert c.post("/api/session", json={"resumeToken": tok}).status_code == 200  # reload before submit is fine
+    c.post("/api/chat", json={"sessionId": sid, "text": "+65 6000 0000"})
+    r = c.post("/api/session", json={"resumeToken": tok})
+    assert r.status_code == 410 and "already been used" in r.json()["detail"]
+    assert c.get(f"/api/resume/{tok}").status_code == 410

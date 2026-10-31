@@ -83,10 +83,14 @@ def make_router(store, save):
 
 
 def resume(store, token: str):
-    """Load a client by resume token and switch it into refill mode. Returns (state, response) or None."""
+    """Load a client by resume token and switch it into refill mode. Returns (state, response) or None.
+    Raises 410 once the requested fields have been submitted (link already used).
+    Re-opening the link before submitting is allowed (page reloads)."""
     s = store.find_by_token(token)
-    if not s or not s.get("resume"):
+    if not s or not s.get("resume") or s.get("resume_token") != token:
         return None
+    if s["resume"].get("used"):
+        raise HTTPException(410, "This link has already been used. Your details were submitted; "
+                                 "our team will be in touch.")
     out = agent.start_resume(s, s["resume"]["fields"], s["resume"].get("note"))
-    s["resume"]["used"] = True
     return s, out
