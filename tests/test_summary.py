@@ -34,7 +34,8 @@ def test_summary_only_lists_fields_with_values_and_formats_revenue():
     s["fields"] = {"business_name": "Acme", "contact_name": "Jo", "email": "jo@acme.example",
                    "expected_annual_revenue": "five thousand dollars", "industry": ""}
     assert agent.summary(s) == ("Business name: Acme\nContact name: Jo\nEmail: jo@acme.example\n"
-                                "Expected annual revenue: S$5,000\n\n" + CLOSE)
+                                "Expected annual revenue: S$5,000\n\n"
+                                "Using your business information. Here is a mockup.")  # no design preferences
     s["fields"]["expected_annual_revenue"] = "S$400k - 500k"  # ranges stay as typed
     assert "Expected annual revenue: S$400k - 500k" in agent.summary(s)
 
@@ -95,3 +96,31 @@ def test_client_facing_labels_are_sentence_case_everywhere():
     s["fields"] = {"business_name": "Acme", "contact_name": "Jo", "email": "jo@acme.sg"}
     r = agent.start_resume(s, ["requirements_notes", "expected_annual_revenue"], None)
     assert r["missing"] == ["Requirements / notes", "Expected annual revenue"], r["missing"]
+
+
+def test_first_mockup_line_without_design_preferences():
+    from src.features.chat import agent
+    s = agent.new_session()
+    r = agent.on_form(s, {"business_name": "Kopi Corner Pte Ltd", "contact_name": "Tan Mei Ling", "email": "jo@kopi.sg"})
+    assert r["status"] == "need_direction"
+    r = agent.on_chat(s, "skip")
+    assert r["reply"].endswith("\n\nUsing your business information. Here is a mockup."), r["reply"]
+    s = agent.new_session()
+    agent.on_form(s, {"business_name": "Kopi Corner Pte Ltd", "contact_name": "Tan Mei Ling", "email": "jo@kopi.sg"})
+    r = agent.on_chat(s, "minimal, warm")  # a direction typed in chat counts as a design preference
+    assert r["reply"].endswith("\n\n" + CLOSE) and "Design preferences: minimal, warm\n" in r["reply"], r["reply"]
+
+
+def test_form_opener_comes_back_after_chat_fixes():
+    from src.features.chat import agent
+    s = agent.new_session()
+    r = agent.on_form(s, {"business_name": "Kopi Corner Pte Ltd", "contact_name": "Tan Mei Ling",
+                          "email": "jo@kopi.sg", "phone_number": "123", "design_preferences": "warm, minimal"})
+    assert r["reply"].startswith("I just need one fix:"), r["reply"]
+    r = agent.on_chat(s, "+65 9123 4567")
+    assert r["reply"].startswith("Got your registration form. Thanks, Kopi Corner Pte Ltd is registered.\n\n"), r["reply"]
+    # a later PDF upload replaces the form opener
+    s = agent.new_session()
+    agent.on_form(s, {"business_name": "Kopi Corner Pte Ltd"})
+    r = agent.on_document(s, {"business_name": "Kopi Corner Pte Ltd", "contact_name": "Tan", "email": "jo@kopi.sg"}, "k.pdf")
+    assert r["reply"].startswith("Thanks, I've read k.pdf and registered"), r["reply"]

@@ -21,9 +21,9 @@ type Key = FieldKey;
 
 /** config.py LABELS: used for the `missing` list (Still needed card). */
 const LABELS: Record<Key, string> = {
-  business_name: "Business Name", contact_name: "Contact Name", email: "Email", business_type: "Business Type",
-  industry: "Industry", business_website: "Business Website", title_position: "Title/Position", phone_number: "Phone Number",
-  design_preferences: "Design Preferences", expected_annual_revenue: "Expected Annual Revenue", requirements_notes: "Requirements / Notes",
+  business_name: "Business name", contact_name: "Contact name", email: "Email", business_type: "Business type",
+  industry: "Industry", business_website: "Business website", title_position: "Title / position", phone_number: "Phone number",
+  design_preferences: "Design preferences", expected_annual_revenue: "Expected annual revenue", requirements_notes: "Requirements / notes",
 };
 const MANDATORY: Key[] = ["business_name", "contact_name", "email"];
 
@@ -37,6 +37,7 @@ const SUMMARY: [Key, string][] = [
 const ORDER: Record<string, number> = Object.fromEntries(SUMMARY.map(([k], i) => [k, i]));
 const label = (k: Key) => SUMMARY.find(([x]) => x === k)?.[1] || LABELS[k] || k;
 const SUMMARY_CLOSE = "Using your design preferences and business information. Here is a mockup.";
+const SUMMARY_CLOSE_NO_PREFS = "Using your business information. Here is a mockup.";
 const UPDATED = "Here is the updated mockup. Happy with this direction? Accept it, or tell me what to change.";
 
 /** validate.py EXAMPLES (first only), WHAT and LIMITS. */
@@ -159,6 +160,8 @@ interface MockState {
   round: number;
   viaPdf: boolean;
   pdfName: string | null;
+  /** "Got your registration form. " waits here until every field is valid (form path). */
+  opener: string;
   refsPending: boolean;
   refill: Key[];
   resumed: boolean;
@@ -168,7 +171,7 @@ interface MockState {
 export function createMock(opts: { resumed?: boolean } = {}) {
   const s: MockState = {
     status: "need_document", fields: {}, invalid: {}, refs: 0, direction: null, round: 0, viaPdf: false,
-    pdfName: null, refsPending: false, refill: [], resumed: false, designChanged: false,
+    pdfName: null, opener: "", refsPending: false, refill: [], resumed: false, designChanged: false,
   };
   if (opts.resumed) {
     // Resume link (staff "I need more information"): an earlier round exists; these fields come back.
@@ -230,7 +233,8 @@ export function createMock(opts: { resumed?: boolean } = {}) {
     const lines = SUMMARY.filter(([k]) => (f[k] || "").trim() && !s.invalid[k]).map(
       ([k, l]) => `${l}: ${k === "expected_annual_revenue" ? money(f[k]!.trim()) : f[k]!.trim()}`,
     );
-    return lines.join("\n") + "\n\n" + SUMMARY_CLOSE;
+    const close = (f.design_preferences || "").trim() && !s.invalid.design_preferences ? SUMMARY_CLOSE : SUMMARY_CLOSE_NO_PREFS;
+    return lines.join("\n") + "\n\n" + close;
   };
 
   const runRound = (): ApiResponse => {
@@ -239,14 +243,15 @@ export function createMock(opts: { resumed?: boolean } = {}) {
     return resp(s.round === 1 ? summary() : UPDATED, images());
   };
 
-  const afterFields = (prefix = "", touched?: Key[], okPrefix = ""): ApiResponse => {
+  const afterFields = (prefix = "", touched?: Key[]): ApiResponse => {
     if (missingKeys().length) {
       s.status = "missing_info";
       const still = (touched || []).filter((k) => s.invalid[k]);
       const lines = touched && touched.length === 1 && still.length ? problemLines(still) : problemLines();
       return resp(prefix + fixMessage(lines));
     }
-    prefix += okPrefix;
+    prefix += s.opener;
+    s.opener = "";
     const name = s.fields.business_name;
     const pdf = s.pdfName;
     s.pdfName = null;
@@ -284,6 +289,7 @@ export function createMock(opts: { resumed?: boolean } = {}) {
     s.viaPdf = true;
     setFields(fields);
     s.pdfName = filename;
+    s.opener = "";
     return afterFields();
   };
 
@@ -352,7 +358,9 @@ export function createMock(opts: { resumed?: boolean } = {}) {
     form(fields: FormFields): ApiResponse {
       s.viaPdf = false;
       setFields(fields);
-      return afterFields("", undefined, "Got your registration form. ");
+      s.opener = "Got your registration form. ";
+      s.pdfName = null;
+      return afterFields();
     },
     chat(text: string): ApiResponse {
       const st = s.status;

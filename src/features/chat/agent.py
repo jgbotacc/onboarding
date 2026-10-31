@@ -72,15 +72,16 @@ def problem_lines(s, only=None):
             for k in keys]
 
 
-def _after_fields(s, prefix="", touched=None, ok_prefix=""):
-    """ok_prefix is only used when every field is valid; problems get just the short fix lines."""
+def _after_fields(s, prefix="", touched=None):
+    """Problems get just the short fix lines. The opener ('Got your registration form.' or the PDF name)
+    waits in the session until every field is valid, so it also shows after fixes made in chat."""
     if missing_keys(s):
         s["status"] = "missing_info"
         # A single re-entered field that is still wrong: just that one line.
         still = [k for k in (touched or []) if k in s.get("invalid", {})]
         lines = problem_lines(s, only=still) if touched and len(touched) == 1 and still else problem_lines(s)
         return resp(s, prefix + fix_message(lines))
-    prefix += ok_prefix
+    prefix += s.pop("opener", "")
     name = s["fields"]["business_name"]
     pdf = s.pop("pdf_name", None)
     thanks = f"Thanks, I've read {pdf} and registered {name}." if pdf else f"Thanks, {name} is registered."
@@ -118,13 +119,16 @@ def on_document(s, fields: dict, filename: str):
     s["via_pdf"] = True
     _set_fields(s, fields)
     s["pdf_name"] = filename
+    s.pop("opener", None)
     return _after_fields(s)
 
 
 def on_form(s, fields: dict):
     s["via_pdf"] = False
     _set_fields(s, fields)
-    return _after_fields(s, ok_prefix="Got your registration form. ")
+    s["opener"] = "Got your registration form. "
+    s.pop("pdf_name", None)
+    return _after_fields(s)
 
 
 def on_refs(s, paths):
@@ -166,6 +170,7 @@ def label(k):
 
 
 SUMMARY_CLOSE = "Using your design preferences and business information. Here is a mockup."
+SUMMARY_CLOSE_NO_PREFS = "Using your business information. Here is a mockup."
 
 
 def _money(v):
@@ -186,7 +191,9 @@ def summary(s):
         v = str(f.get(k) or "").strip()
         if v and k not in bad:
             lines.append(f"{label}: {_money(v) if k == 'expected_annual_revenue' else v}")
-    return "\n".join(lines) + "\n\n" + SUMMARY_CLOSE
+    close = SUMMARY_CLOSE if str(f.get("design_preferences") or "").strip() and "design_preferences" not in bad \
+        else SUMMARY_CLOSE_NO_PREFS
+    return "\n".join(lines) + "\n\n" + close
 
 
 def run_round(s):
