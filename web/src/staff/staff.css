@@ -95,3 +95,11 @@
 .staff-cc-value { font-size: 15px; line-height: 22px; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
 a.staff-cc-value { color: var(--accent); text-decoration: none; }
 a.staff-cc-value:hover { text-decoration: underline; }
+
+/* [staff-key] passcode screen */
+.staff-gate { max-width: 360px; margin: 48px auto; padding: 24px; background: #fff; border: 1px solid var(--border, #e5e7eb); border-radius: 12px; display: flex; flex-direction: column; gap: 10px; }
+.staff-gate h2 { margin: 0; font-size: 18px; }
+.staff-gate label { font-size: 13px; font-weight: 600; }
+.staff-gate input { padding: 9px 11px; border: 1px solid var(--border, #d1d5db); border-radius: 8px; font: inherit; }
+.staff-gate input:focus { outline: 2px solid var(--accent, #2563eb); outline-offset: 1px; }
+.staff-gate .btn { align-self: flex-start; }
