@@ -4,7 +4,7 @@ import os
 from datetime import datetime, timezone
 
 from src.shared import relay
-from src.shared.config import DEMO_EMAIL_TO, EMAIL_FROM, LABELS
+from src.shared.config import EMAIL_FROM, LABELS, NOTIFY_EMAIL_ENV, notify_email_to
 
 
 def _now():
@@ -64,12 +64,17 @@ def compose(decision: str, s: dict, fields: list[str], note: str | None, resume_
 
 def send(decision, s, fields, note, resume_url):
     subject, body = compose(decision, s, fields, note, resume_url)
+    to = notify_email_to()
     prov = get_provider()
-    try:
-        status = prov.send(DEMO_EMAIL_TO, subject, body)
-    except Exception as e:
-        print(f"[email] {prov.name} failed, kept in outbox: {e}")
-        status, prov = f"Sent (demo), {prov.name} failed: {str(e)[:120]}", OutboxProvider()
-    return {"to": DEMO_EMAIL_TO, "subject": subject, "body": body, "sent_at": _now(),
+    if not to:
+        print(f"[email] {NOTIFY_EMAIL_ENV} not set, kept in outbox (not sent)")
+        status, prov = f"Not sent (demo), {NOTIFY_EMAIL_ENV} not set", OutboxProvider()
+    else:
+        try:
+            status = prov.send(to, subject, body)
+        except Exception as e:
+            print(f"[email] {prov.name} failed, kept in outbox: {e}")
+            status, prov = f"Sent (demo), {prov.name} failed: {str(e)[:120]}", OutboxProvider()
+    return {"to": to, "subject": subject, "body": body, "sent_at": _now(),
             "status": status, "provider": prov.name + (" (relay)" if prov.name == "resend" and relay.enabled() else ""),
             "id": getattr(prov, "last_id", None)}

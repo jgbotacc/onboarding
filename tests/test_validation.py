@@ -59,7 +59,7 @@ def _sid():
 def test_form_path_flags_invalid_and_blocks_until_fixed():
     sid = _sid()
     r = c.post("/api/form", json={"sessionId": sid, "fields": {
-        "business_name": "Acme", "contact_name": "Jo", "email": "jo@acme.co",
+        "business_name": "Acme", "contact_name": "Jo", "email": "jo@acme.example",
         "business_type": "123", "expected_annual_revenue": "cat", "phone_number": "12345"}}).json()
     assert {"reply", "images", "status", "missing", "round", "invalid"} <= set(r)
     assert r["status"] == "missing_info"
@@ -85,14 +85,14 @@ def test_chat_path_reasks_with_example():
     r = c.post("/api/chat", json={"sessionId": sid, "text": "cat"}).json()
     assert r["status"] == "missing_info" and r["invalid"][0]["field"] == "email"
     assert "valid email" in r["reply"] and "jo@kopicorner.sg" in r["reply"]
-    r = c.post("/api/chat", json={"sessionId": sid, "text": "jo@acme.co"}).json()
+    r = c.post("/api/chat", json={"sessionId": sid, "text": "jo@acme.example"}).json()
     assert r["invalid"] == [] and r["status"] == "need_direction", r
 
 
 def test_chat_revenue_line_from_text():
     sid = _sid()
     c.post("/api/form", json={"sessionId": sid, "fields": {
-        "business_name": "Acme", "contact_name": "Jo", "email": "jo@acme.co", "expected_annual_revenue": "cat"}})
+        "business_name": "Acme", "contact_name": "Jo", "email": "jo@acme.example", "expected_annual_revenue": "cat"}})
     r = c.post("/api/chat", json={"sessionId": sid, "text": "S$250,000"}).json()
     assert r["invalid"] == [] and r["status"] == "need_direction", r
 
@@ -100,7 +100,7 @@ def test_chat_revenue_line_from_text():
 def test_resume_link_answer_is_checked():
     sid = _sid()
     c.post("/api/form", json={"sessionId": sid, "fields": {
-        "business_name": "Acme", "contact_name": "Jo", "email": "jo@acme.co", "design_preferences": "minimal"}})
+        "business_name": "Acme", "contact_name": "Jo", "email": "jo@acme.example", "design_preferences": "minimal"}})
     d = c.post(f"/api/staff/clients/{sid}/decision",
                json={"decision": "more_info", "fields": ["expected_annual_revenue"]}).json()
     token = d["resume_url"].split("resume=")[1]

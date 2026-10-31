@@ -17,7 +17,7 @@ A storyboard of real screenshots from a local run of the app (placeholder images
 12. I need more information: staff tick fields and add a note.
 13. The email carries a one-time link `/?resume=<token>`.
 14. The link reopens the chat (`POST /api/session {resumeToken}`), which asks only for the flagged fields.
-15. All emails go to willhanjg01@gmail.com for the demo, with the client's email shown in the body.
+15. All emails go to the address in `ONBOARDING_NOTIFY_EMAIL` for the demo, with the client's email shown in the body.
 
 ## Data flow (`data-flow.png`)
 What moves between the browser, the FastAPI back end in the Daytona sandbox, the Vercel relay, Neo4j Aura, Meta Muse Image and Resend, with real endpoint names and Neo4j labels from `neo4j/schema.cypher` and `src/data/neo4j_store.py`.

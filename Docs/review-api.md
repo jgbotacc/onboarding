@@ -26,9 +26,10 @@ Body: `{decision: "approve" | "reject" | "more_info", fields: [keys], note}`
 Returns the client detail plus `email` (the sent message) and `resume_url` (more_info only).
 400 on unknown field keys or an empty more_info; nothing is changed in that case.
 
-Every email goes to the demo address `willhanjg01@gmail.com` (DEMO_EMAIL_TO); the client's own
+Every email goes to the one address in the `ONBOARDING_NOTIFY_EMAIL` env var; the client's own
 email appears in the body as "Client email on file: ...". Provider: Resend when `RESEND_API_KEY`
-is set, otherwise the outbox (status "Sent (demo)").
+is set, otherwise the outbox (status "Sent (demo)"). If `ONBOARDING_NOTIFY_EMAIL` is unset, nothing is
+sent and the message is kept in the outbox with status "Not sent (demo), ONBOARDING_NOTIFY_EMAIL not set".
 
 ## Resume
 `POST /api/session {resumeToken}` -> the client's session in the usual response shape
