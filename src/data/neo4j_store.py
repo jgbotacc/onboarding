@@ -23,6 +23,12 @@ FOREACH (_ IN CASE WHEN NOT g.accepted AND g.n >= 3 THEN [1] ELSE [] END |
   SET c.status='handed_off')
 FOREACH (_ IN CASE WHEN NOT g.accepted AND g.n < 3 THEN [1] ELSE [] END | SET c.status='generating')
 RETURN c.status"""
+REFS_Q = """
+MERGE (c:Client {id:$clientId})
+WITH c UNWIND $refs AS r
+MERGE (ri:ReferenceImage {id:r.id})
+  SET ri.url='/media/' + split(r.path, '/')[-1], ri.path=r.path, ri.filename=r.filename, ri.uploadedAt=datetime()
+MERGE (c)-[:PROVIDED]->(ri)"""
 FIELDS_Q = """
 MERGE (c:Client {id:$clientId})
 MERGE (d:Document {id:$clientId + '-doc'}) MERGE (c)-[:UPLOADED]->(d)
@@ -64,7 +70,9 @@ class Neo4jStore:
         return json.loads(rows[0]["s"]) if rows and rows[0]["s"] else None
 
     def event(self, sid, kind, payload):
-        if kind == "round":
+        if kind == "refs":
+            self._run(REFS_Q, clientId=sid, refs=payload["refs"])
+        elif kind == "round":
             self._run(ROUND_Q, clientId=sid, imageUrls=payload["images"])
         elif kind == "review":
             self._run(FEEDBACK_Q, clientId=sid, feedback=payload.get("feedback") or "",

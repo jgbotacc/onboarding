@@ -77,7 +77,7 @@ async def upload(request: Request):
     form = await request.form()
     s = _load(str(form.get("sessionId", "")))
     files = [v for k, v in form.multi_items() if k in ("files", "files[]") and hasattr(v, "read")]
-    out, refs = None, []
+    out, refs, ref_meta = None, [], []
     for f in files:
         data = await f.read()
         name = (f.filename or "").lower()
@@ -88,14 +88,18 @@ async def upload(request: Request):
                 fields = {}
             out = agent.on_document(s, fields, f.filename)
         elif name.endswith((".jpg", ".jpeg", ".png")) or (f.content_type or "").startswith("image/"):
-            p = MEDIA_DIR / f"ref-{uuid.uuid4().hex}{Path(name).suffix or '.jpg'}"
+            rid = uuid.uuid4().hex
+            p = MEDIA_DIR / f"ref-{rid}{Path(name).suffix or '.jpg'}"
             p.write_bytes(data)
             refs.append(str(p))
+            ref_meta.append({"id": rid, "path": str(p), "filename": f.filename})
     if refs:
         r = agent.on_refs(s, refs)
         out = r if not out else dict(out, reply=out["reply"] + " " + r["reply"])
     if not out:
-        raise HTTPException(400, "Upload a PDF or JPG")
+        raise HTTPException(400, "Upload a PDF, JPG or PNG")
+    if ref_meta:
+        store.event(s["id"], "refs", {"refs": ref_meta})
     return _done(s, out)
 
 

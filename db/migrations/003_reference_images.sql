@@ -1,0 +1,4 @@
+CREATE TABLE IF NOT EXISTS reference_images (
+  id TEXT PRIMARY KEY, session_id TEXT NOT NULL, path TEXT NOT NULL, filename TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);

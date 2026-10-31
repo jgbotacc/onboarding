@@ -53,3 +53,15 @@ def test_form_with_reference_images_uploaded_first():
     assert r["status"] == "awaiting_review" and r["round"] == 1 and r["images"], r
     from src.app import store
     assert len(store.load(sid)["refs"]) == 1
+
+
+def test_png_reference_upload_then_form():
+    import io
+    from PIL import Image
+    buf = io.BytesIO(); Image.new("RGB", (64, 64), "#2563eb").save(buf, "PNG")
+    sid = c.post("/api/session", json={}).json()["sessionId"]
+    r = c.post("/api/upload", data={"sessionId": sid}, files={"files[]": ("ref.png", buf.getvalue(), "image/png")})
+    assert r.status_code == 200, r.text
+    r = c.post("/api/form", json={"sessionId": sid, "fields": {"business_name": "Acme", "contact_name": "Jo",
+               "email": "jo@acme.co", "design_preferences": "minimal"}}).json()
+    assert r["round"] == 1 and r["images"]

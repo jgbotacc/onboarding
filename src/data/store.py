@@ -28,6 +28,9 @@ class SqliteStore:
 
     def event(self, sid: str, kind: str, payload: dict):
         with self.lock:
+            for ref in payload.get("refs", []) if kind == "refs" else []:
+                self.db.execute("INSERT OR IGNORE INTO reference_images(id, session_id, path, filename) VALUES(?,?,?,?)",
+                                (ref["id"], sid, ref["path"], ref.get("filename")))
             self.db.execute("INSERT INTO events(session_id, kind, payload) VALUES(?,?,?)",
                             (sid, kind, json.dumps(payload)))
             self.db.commit()

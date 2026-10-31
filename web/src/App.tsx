@@ -12,7 +12,7 @@ type Msg =
 type NewMsg = Msg extends infer T ? (T extends Msg ? Omit<T, "id"> : never) : never;
 
 const GREETING = "Welcome. To get started, upload a PDF with your business details (plus any JPG reference images), or fill in a registration form.";
-const isAcceptable = (f: File) => /\.(pdf|jpe?g)$/i.test(f.name) || f.type === "application/pdf" || f.type === "image/jpeg";
+const isAcceptable = (f: File) => /\.(pdf|jpe?g|png)$/i.test(f.name) || f.type === "application/pdf" || f.type === "image/jpeg" || f.type === "image/png";
 
 let nextId = 1;
 
@@ -319,7 +319,7 @@ export default function App() {
               ref={fileRef}
               type="file"
               id="fileInput"
-              accept=".pdf,.jpg,.jpeg,application/pdf,image/jpeg"
+              accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
               multiple
               hidden
               onChange={(e) => {
