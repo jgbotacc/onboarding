@@ -38,7 +38,7 @@ def _pdf_with_prefs():
     sid = new_session(c)
     r = _upload(sid, ("b.pdf", _pdf(), "application/pdf"))
     assert r["status"] == "need_direction" and r["round"] == 0 and not r["images"], r
-    assert "JPG or PNG" in r["reply"] and PREFS in r["reply"] and "'skip'" in r["reply"], r
+    assert "JPG or PNG" in r["reply"] and PREFS in r["reply"] and '"skip"' in r["reply"], r
     return sid
 
 

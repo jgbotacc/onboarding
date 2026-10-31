@@ -68,7 +68,7 @@ def problem_lines(s, only=None):
     if only:
         keys = [k for k in keys if k in only]
     keys = sorted(keys, key=lambda k: ORDER.get(k, len(ORDER)))
-    return [fix_line(k, label(k), s["fields"].get(k, ""), bad[k]) if k in bad else missing_line(label(k))
+    return [fix_line(k, label(k), s["fields"].get(k, ""), bad[k]) if k in bad else missing_line(k, label(k))
             for k in keys]
 
 
@@ -82,6 +82,8 @@ def _after_fields(s, prefix="", touched=None, ok_prefix=""):
         return resp(s, prefix + fix_message(lines))
     prefix += ok_prefix
     name = s["fields"]["business_name"]
+    pdf = s.pop("pdf_name", None)
+    thanks = f"Thanks, I've read {pdf} and registered {name}." if pdf else f"Thanks, {name} is registered."
     if s.get("resumed"):
         s["resumed"] = False
         if s.get("resume"):
@@ -100,22 +102,23 @@ def _after_fields(s, prefix="", touched=None, ok_prefix=""):
             # PDF path has no reference-image field, so ask for refs before round 1.
             s["status"] = "need_direction"
             s["refs_pending"] = True
-            return resp(s, prefix + f"Thanks, {name} is registered. I'll use your design preferences "
-                        f"({s['direction']}). Upload any reference images (JPG or PNG) now, or say 'skip' to start.")
+            return resp(s, prefix + f"{thanks}\n\nI'll go with your design preferences: {s['direction']}\n\n"
+                        "Want to add reference images (JPG or PNG)? Upload them now, or type \"skip\" to start.")
         out = run_round(s)
-        out["reply"] = prefix + f"Thanks, {name} is registered.\n\n" + out["reply"]
+        out["reply"] = prefix + f"{thanks}\n\n" + out["reply"]
         return out
     s["status"] = "need_direction"
     refs = f"Got {len(s['refs'])} reference image(s). Now tell me" if s["refs"] else \
-        "Optionally upload reference images (JPG or PNG), then tell me"
-    return resp(s, prefix + f"Thanks, {name} is registered. {refs} your design direction (e.g. 'minimal, warm, "
-                "brown and cream') or say 'skip'.")
+        "You can upload reference images (JPG or PNG) if you have any. Then tell me"
+    return resp(s, prefix + f"{thanks}\n\n{refs} your design direction, something like \"minimal, warm, "
+                "brown and cream\", or type \"skip\".")
 
 
 def on_document(s, fields: dict, filename: str):
     s["via_pdf"] = True
     _set_fields(s, fields)
-    return _after_fields(s, ok_prefix=f"I read {filename}. ")
+    s["pdf_name"] = filename
+    return _after_fields(s)
 
 
 def on_form(s, fields: dict):
@@ -227,8 +230,8 @@ def start_resume(s, fields: list[str], note: str | None):
     s["status"] = "missing_info"
     if not s["refill"]:
         return resp(s, "Welcome back! " + (note or "Please reply with the requested details."))
-    head = "Welcome back! Our team needs a bit more information" + (f": {note.strip().rstrip('.')}." if note else ".")
-    return resp(s, head + "\nPlease update:\n" + "\n".join(label(f) for f in s["refill"]))
+    head = "Welcome back! Our team needs a little more from you" + (f":\n\n{note.strip()}" if note else ".")
+    return resp(s, head + "\n\nCould you update:\n" + "\n".join(f"• {label(f)}" for f in s["refill"]))
 
 
 def on_review(s, accepted: bool, feedback: str | None):

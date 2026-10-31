@@ -11,6 +11,13 @@ from src.app import app  # noqa: E402
 from helpers import new_session, resume, staff_client  # noqa: E402
 from src.features.intake.validate import check, parse_amount  # noqa: E402
 
+BT = '• Business type: "{}" isn\'t a business type. Something like "Restaurant" works.'
+REV = '• Expected annual revenue: "cat" isn\'t an amount. Something like "S$250,000" works.'
+
+
+def one(line):
+    return f"I just need one fix:\n\n{line}\n\nJust type the correction here."
+
 c = staff_client(app)
 
 PASS = [
@@ -69,10 +76,11 @@ def test_form_path_flags_invalid_and_blocks_until_fixed():
     assert set(bad["expected_annual_revenue"]) == {"field", "label", "message", "example"}
     assert "Expected Annual Revenue" in r["missing"]
     assert r["reply"] == (
-        "A few details need fixing:\n"
-        'Business type: "123" isn\'t a business type (e.g. Café).\n'
-        'Phone number: "12345" isn\'t a phone number (e.g. +65 9123 4567).\n'
-        'Expected annual revenue: "cat" isn\'t a revenue figure (e.g. S$250,000).'), r["reply"]
+        "I just need three fixes:\n\n" + BT.format("123") + "\n"
+        '• Phone number: "12345" isn\'t a phone number. Something like "+65 6123 4567" works.\n'
+        + REV + "\n\nJust type the corrections here."), r["reply"]
+    assert bad["business_type"]["message"] == 'That isn\'t a business type. Something like "Restaurant" works.'
+    assert bad["expected_annual_revenue"]["example"] == "S$250,000"
     assert "Acme" not in r["reply"] and "Got your registration form" not in r["reply"]
     from src.app import store
     if store.kind == "sqlite":
@@ -89,7 +97,7 @@ def test_chat_path_reasks_with_example():
     c.post("/api/form", json={"sessionId": sid, "fields": {"business_name": "Acme", "contact_name": "Jo"}})
     r = c.post("/api/chat", json={"sessionId": sid, "text": "cat"}).json()
     assert r["status"] == "missing_info" and r["invalid"][0]["field"] == "email"
-    assert r["reply"] == 'Email: "cat" isn\'t an email address (e.g. jo@kopicorner.sg).', r["reply"]
+    assert r["reply"] == one('• Email: "cat" isn\'t an email address. Something like "name@business.com" works.'), r["reply"]
     r = c.post("/api/chat", json={"sessionId": sid, "text": "jo@acme.example"}).json()
     assert r["invalid"] == [] and r["status"] == "need_direction", r
 
@@ -113,7 +121,7 @@ def test_resume_link_answer_is_checked():
     r = c.post("/api/chat", json={"sessionId": sid, "text": "cat"}).json()
     assert r["status"] == "missing_info" and r["invalid"][0]["field"] == "expected_annual_revenue"
     assert "Expected Annual Revenue" in r["missing"]
-    assert r["reply"] == 'Expected annual revenue: "cat" isn\'t a revenue figure (e.g. S$250,000).', r["reply"]
+    assert r["reply"] == one(REV), r["reply"]
     r = c.post("/api/chat", json={"sessionId": sid, "text": "five thousand dollars"}).json()
     assert r["invalid"] == [] and r["status"] == "pending_review", r
 
@@ -121,9 +129,10 @@ def test_resume_link_answer_is_checked():
 def test_missing_fields_listed_one_per_line():
     sid = _sid()
     r = c.post("/api/form", json={"sessionId": sid, "fields": {"business_name": "Acme", "business_type": "123"}}).json()
-    assert r["reply"] == ("A few details need fixing:\n"
-                          'Business type: "123" isn\'t a business type (e.g. Café).\n'
-                          "Contact name: missing.\nEmail: missing."), r["reply"]
+    assert r["reply"] == ("I just need three fixes:\n\n" + BT.format("123") + "\n"
+                          '• Contact name: I couldn\'t find one. Something like "Tan Mei Ling" works.\n'
+                          '• Email: I couldn\'t find one. Something like "name@business.com" works.\n\n'
+                          "Just type the corrections here."), r["reply"]
 
 
 def test_single_reentered_field_still_wrong_gets_one_line():
@@ -132,9 +141,9 @@ def test_single_reentered_field_still_wrong_gets_one_line():
         "business_name": "Acme", "contact_name": "Jo", "email": "jo@acme.example",
         "business_type": "123", "expected_annual_revenue": "cat"}})
     r = c.post("/api/chat", json={"sessionId": sid, "text": "456"}).json()
-    assert r["reply"] == 'Business type: "456" isn\'t a business type (e.g. Café).', r["reply"]
+    assert r["reply"] == one(BT.format("456")), r["reply"]
     r = c.post("/api/chat", json={"sessionId": sid, "text": "Restaurant"}).json()
-    assert r["reply"] == 'Expected annual revenue: "cat" isn\'t a revenue figure (e.g. S$250,000).', r["reply"]
+    assert r["reply"] == one(REV), r["reply"]
 
 
 def test_pdf_with_invalid_fields_does_not_dump_fields():
@@ -143,9 +152,9 @@ def test_pdf_with_invalid_fields_does_not_dump_fields():
     r = agent.on_document(s, {"business_name": "Slice & Stone", "contact_name": "Jin", "email": "jin@slice.sg",
                               "business_type": "123", "expected_annual_revenue": "cat",
                               "title_position": "Owner"}, "form.pdf")
-    assert r["reply"].startswith("A few details need fixing:\n") and "Slice" not in r["reply"], r["reply"]
-    assert "form.pdf" not in r["reply"] and "title position" not in r["reply"]
-    assert len(r["reply"].splitlines()) == 3
+    assert r["reply"] == "I just need two fixes:\n\n" + BT.format("123") + "\n" + REV + \
+        "\n\nJust type the corrections here.", r["reply"]
+    assert "Slice" not in r["reply"] and "form.pdf" not in r["reply"]
 
 
 def test_too_long_value_is_not_echoed():
@@ -153,4 +162,19 @@ def test_too_long_value_is_not_echoed():
     s = agent.new_session()
     r = agent.on_form(s, {"business_name": "Acme", "contact_name": "Jo", "email": "jo@acme.sg",
                           "requirements_notes": "x " * 3000})
-    assert r["reply"] == "Requirements / notes: too long (max 4000 characters).", r["reply"]
+    assert r["reply"] == one("• Requirements / notes: that's a bit long. Please keep it under 4000 characters."), r["reply"]
+
+
+def test_resume_welcome_and_pdf_valid_reply_read_naturally():
+    from src.features.chat import agent
+    s = agent.new_session()
+    s["fields"] = {"business_name": "Acme", "contact_name": "Jo", "email": "jo@acme.sg"}
+    r = agent.start_resume(s, ["expected_annual_revenue"], "Please confirm your revenue.")
+    assert r["reply"] == ("Welcome back! Our team needs a little more from you:\n\nPlease confirm your revenue.\n\n"
+                          "Could you update:\n• Expected annual revenue"), r["reply"]
+    s = agent.new_session()
+    r = agent.on_document(s, {"business_name": "Slice & Stone Pizzeria Pte Ltd", "contact_name": "Jin",
+                              "email": "jin@slice.sg", "design_preferences": "Warm and rustic"}, "x.pdf")
+    assert r["reply"] == ("Thanks, I've read x.pdf and registered Slice & Stone Pizzeria Pte Ltd.\n\n"
+                          "I'll go with your design preferences: Warm and rustic\n\n"
+                          'Want to add reference images (JPG or PNG)? Upload them now, or type "skip" to start.'), r["reply"]
