@@ -117,6 +117,8 @@ app.mount("/media", StaticFiles(directory=MEDIA_DIR), name="media")
 if not (WEB / "index.html").exists() and (WEB.parent / "index.html").exists() \
         and not (WEB.parent / "package.json").exists():
     WEB = WEB.parent  # plain HTML front end (pre-React)
+if not (WEB / "index.html").exists() and (ROOT / "web" / "legacy" / "index.html").exists():
+    WEB = ROOT / "web" / "legacy"  # React build missing: serve legacy plain-HTML UI
 if (WEB / "index.html").exists():
     app.mount("/", StaticFiles(directory=WEB, html=True), name="web")
 else:
