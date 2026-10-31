@@ -5,6 +5,9 @@ A client uploads a PDF with business details (and optional JPG reference images)
 registers them, asks for any missing mandatory fields, takes a design direction, and generates a
 square (1080x1080) marketing mock-up. Up to 3 feedback rounds, then a human handoff.
 
+## How it works
+![Client onboarding flow](Docs/flows/client-flow.png)
+
 ## Layout
 - `src/app.py` FastAPI app (API + serves `web/dist`, or `web/` plain HTML, or a stub)
 - `src/features/intake` PDF parsing (pypdf) + regex extraction (LLM if `OPENAI_API_KEY`)
