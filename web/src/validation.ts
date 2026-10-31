@@ -91,73 +91,42 @@ const WEBSITE_RE = /^(?:https?:\/\/)?(?:www\.)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+
 
 interface Rule {
   ok: (v: string) => boolean;
+  /** What the field is, for "\"123\" isn't a business type". */
+  what: string;
+  /** Short note shown under the field. */
   message: string;
-  example: string;
+  examples: string[];
 }
 
+const rule = (ok: Rule["ok"], what: string, message: string, examples: string[]): Rule => ({ ok, what, message, examples });
+
 export const RULES: Record<FieldKey, Rule> = {
-  business_name: {
-    ok: (v) => v.length >= 2 && v.length <= 100 && letters(v) >= 1 && !/^[\d\W_]+$/u.test(v) && !junk(v),
-    message: "That doesn't look like a business name. Please use your registered or trading name.",
-    example: "Kopi Corner Pte Ltd or Acme Studio",
-  },
-  business_type: {
-    ok: (v) => wordy(v, 2, 60),
-    message: "That doesn't look like a business type. Describe what kind of business it is in a word or two.",
-    example: "Café, Retail shop or Accounting firm",
-  },
-  industry: {
-    ok: (v) => wordy(v, 2, 60),
-    message: "That doesn't look like an industry. Use a word or two for your sector.",
-    example: "Food & Beverage, Retail or Professional Services",
-  },
-  business_website: {
-    ok: (v) => WEBSITE_RE.test(v),
-    message: "That doesn't look like a website address. Include the domain ending, like .com or .sg.",
-    example: "kopicorner.sg or https://www.kopicorner.sg",
-  },
-  contact_name: {
-    ok: (v) => v.length >= 2 && v.length <= 80 && letters(v) >= 2 && !/\d/.test(v) && !junk(v),
-    message: "That doesn't look like a person's name. Please use letters only.",
-    example: "Tan Mei Ling or John Lee",
-  },
-  title_position: {
-    ok: (v) => wordy(v, 2, 60),
-    message: "That doesn't look like a job title.",
-    example: "Owner or Marketing Manager",
-  },
-  email: {
-    ok: (v) => EMAIL_RE.test(v),
-    message: "That doesn't look like an email address.",
-    example: "jo@kopicorner.sg",
-  },
-  phone_number: {
-    ok: (v) => !/[^\d+\s\-().]/.test(v) && /^\d{7,15}$/.test(v.replace(/[+\s\-().]/g, "")),
-    message: "That doesn't look like a phone number. Use 7 to 15 digits, with an optional country code.",
-    example: "+65 9123 4567 or (02) 9876-5432",
-  },
-  design_preferences: {
-    ok: (v) => letters(v) >= 3 && hasVowelWord(v) && !junk(v),
-    message: "Please describe the look you'd like in a few words.",
-    example: "warm, minimal, brown and cream",
-  },
-  expected_annual_revenue: {
-    ok: (v) => parseAmount(v) !== null,
-    message: "That doesn't look like a revenue figure. It should be an amount, in digits or words.",
-    example: "S$250,000 or five thousand dollars",
-  },
-  requirements_notes: {
-    ok: (v) => letters(v) >= 2,
-    message: "Please write your notes in words.",
-    example: "Need a logo and 5 Instagram posts by December",
-  },
+  business_name: rule(
+    (v) => v.length >= 2 && v.length <= 100 && letters(v) >= 1 && !/^[\d\W_]+$/u.test(v) && !junk(v),
+    "a business name", "That doesn't look like a business name.", ["Kopi Corner Pte Ltd", "Acme Studio"]),
+  business_type: rule((v) => wordy(v, 2, 60), "a business type", "That doesn't look like a business type.", ["Restaurant", "Café", "Retail shop"]),
+  industry: rule((v) => wordy(v, 2, 60), "an industry", "That doesn't look like an industry.", ["Food & Beverage", "Retail"]),
+  business_website: rule((v) => WEBSITE_RE.test(v), "a website", "That doesn't look like a website. Include the ending, like .com or .sg.", ["kopicorner.sg", "https://www.kopicorner.sg"]),
+  contact_name: rule(
+    (v) => v.length >= 2 && v.length <= 80 && letters(v) >= 2 && !/\d/.test(v) && !junk(v),
+    "a name", "That doesn't look like a name. Letters only, please.", ["Tan Mei Ling", "John Lee"]),
+  title_position: rule((v) => wordy(v, 2, 60), "a job title", "That doesn't look like a job title.", ["Owner", "Marketing Manager"]),
+  email: rule((v) => EMAIL_RE.test(v), "an email address", "That doesn't look like an email address.", ["jo@kopicorner.sg"]),
+  phone_number: rule(
+    (v) => !/[^\d+\s\-().]/.test(v) && /^\d{7,15}$/.test(v.replace(/[+\s\-().]/g, "")),
+    "a phone number", "That doesn't look like a phone number. Use 7 to 15 digits.", ["+65 9123 4567", "(02) 9876-5432"]),
+  design_preferences: rule((v) => letters(v) >= 3 && hasVowelWord(v) && !junk(v), "a design style", "Describe the look you like in a few words.", ["warm, minimal, brown and cream"]),
+  expected_annual_revenue: rule((v) => parseAmount(v) !== null, "an amount", "That doesn't look like an amount. Digits or words are fine.", ["S$250,000", "five thousand dollars"]),
+  requirements_notes: rule((v) => letters(v) >= 2, "a note", "Please write this in words.", ["Need a logo and 5 Instagram posts by December"]),
 };
+
+export const exampleText = (key: FieldKey) => (RULES[key]?.examples || []).join(" or ");
 
 /** Null when the value is fine (empty optional fields are fine). */
 export function validateField(key: FieldKey, raw: string, label = "", required = false): FieldIssue | null {
   const v = (raw || "").trim();
-  if (!v) return required ? { field: key, label, message: `${label || "This field"} is required.`, example: RULES[key]?.example } : null;
+  if (!v) return required ? { field: key, label, message: `${label || "This field"} is required.`, example: exampleText(key) } : null;
   const r = RULES[key];
   if (!r || r.ok(v)) return null;
-  return { field: key, label, message: r.message, example: r.example };
+  return { field: key, label, message: r.message, example: exampleText(key) };
 }

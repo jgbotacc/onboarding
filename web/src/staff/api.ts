@@ -29,7 +29,7 @@ export const setStaffKey = (k: string) => {
 /** The server refused the passcode (401) or staff access isn't set up (503). */
 export class StaffAuthError extends Error {
   constructor(public status: number) {
-    super(status === 503 ? "Staff access is not set up on this server." : "Passcode needed");
+    super(status === 503 ? "Staff access isn't set up yet." : "Passcode needed");
   }
 }
 

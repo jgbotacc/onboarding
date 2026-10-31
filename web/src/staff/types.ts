@@ -52,18 +52,18 @@ export interface DecisionBody {
 }
 
 export const STAFF_STATUS_LABELS: Record<string, string> = {
-  need_document: "Registering",
-  registering: "Registering",
-  missing_info: "Missing info",
-  need_direction: "Needs direction",
-  generating: "Generating",
-  awaiting_review: "Awaiting client review",
+  need_document: "Getting started",
+  registering: "Getting started",
+  missing_info: "Needs details",
+  need_direction: "Choosing a style",
+  generating: "Making designs",
+  awaiting_review: "Client reviewing",
   accepted: "Client accepted",
-  handed_off: "Handed off",
+  handed_off: "With a designer",
   approved: "Approved",
   rejected: "Rejected",
   needs_info: "More info requested",
-  pending_review: "Pending staff review",
+  pending_review: "Ready for review",
 };
 
 export const statusLabel = (s: string) => STAFF_STATUS_LABELS[s] || s.replace(/_/g, " ");

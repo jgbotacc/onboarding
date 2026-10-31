@@ -60,8 +60,8 @@ export interface Client {
   linkClosed?: { status: "link_used" | "link_invalid"; message: string };
 }
 
-export const LINK_USED_MSG = "This link has already been used. Your details are saved, and our team will be in touch.";
-const LINK_INVALID_MSG = "This link is no longer valid. If you still need to update your details, please contact our team.";
+export const LINK_USED_MSG = "This link has already been used. Your details are saved, and we'll be in touch.";
+const LINK_INVALID_MSG = "This link has expired. Need to change something? Just get in touch with us.";
 
 const dropResumeParam = () => {
   try {
@@ -78,7 +78,7 @@ const resumeToken = () => new URLSearchParams(window.location.search).get("resum
 const MOCK_USED = "used"; // [resume-410] ?mock=1&resume=used previews the used-link state
 const MOCK_RESUME = {
   missing: ["business_website", "phone_number", "design_preferences"],
-  reply: "Our team needs a few more details before approving your designs: please add a working website link, a phone number and a bit more on your design preferences. (Demo note)",
+  reply: "We need a few more things before we can approve your designs:\n\n\u2022 A working website link\n\u2022 A phone number\n\u2022 A bit more about the style you like\n\n(Sample note)",
 };
 
 function mockClient(): Client {
