@@ -4,6 +4,8 @@ import os
 
 import httpx
 
+from src.shared import relay
+
 ROUND_Q = """
 MATCH (c:Client {id:$clientId})
 OPTIONAL MATCH (c)-[:HAS_ROUND]->(prev:GenerationRound) WHERE NOT (prev)-[:NEXT]->()
@@ -41,16 +43,22 @@ MERGE (fl)-[:OF_TYPE]->(fd)"""
 class Neo4jStore:
     kind = "neo4j"
 
-    def __init__(self, uri, user, pw):
-        """Uses the HTTPS Query API (port 443): Bolt port 7687 is blocked on the box and on Daytona."""
-        host = uri.split("://", 1)[1].split(":")[0].split("/")[0]
-        db = os.getenv("NEO4J_DATABASE") or "neo4j"
-        self.url, self.auth = f"https://{host}/db/{db}/query/v2", (user, pw)
+    def __init__(self, uri=None, user=None, pw=None, via_relay=False):
+        """Uses the HTTPS Query API (port 443): Bolt port 7687 is blocked on the box and on Daytona.
+        With via_relay, queries go through the Vercel relay, which adds the Aura credentials."""
         self.http = httpx.Client(timeout=20)
+        self.via_relay = via_relay
+        if via_relay:
+            self.kind = "neo4j (relay)"
+            self.url, self.auth, self.hdrs = relay.url("/api/neo4j"), None, relay.headers()
+        else:
+            host = uri.split("://", 1)[1].split(":")[0].split("/")[0]
+            db = os.getenv("NEO4J_DATABASE") or "neo4j"
+            self.url, self.auth, self.hdrs = f"https://{host}/db/{db}/query/v2", (user, pw), {}
         self._run("RETURN 1 AS ok")
 
     def _run(self, q, **p):
-        r = self.http.post(self.url, auth=self.auth, json={"statement": q, "parameters": p})
+        r = self.http.post(self.url, auth=self.auth, headers=self.hdrs, json={"statement": q, "parameters": p})
         body = r.json()
         if r.status_code >= 400 or body.get("errors"):
             raise RuntimeError(f"Neo4j query failed: {body.get('errors') or r.status_code}")
@@ -84,9 +92,9 @@ class Neo4jStore:
                       "note:$note, createdAt:datetime()}) MERGE (c)-[:HAS_DECISION]->(d)", id=sid, did=payload["id"],
                       decision=payload["decision"], fields=payload["fields"], note=payload["note"] or "")
         elif kind == "email":
-            self._run("MATCH (c:Client {id:$id}) CREATE (e:Email {to:$to, subject:$subject, body:$body, status:$status, "
+            self._run("MATCH (c:Client {id:$id}) CREATE (e:Email {to:$to, subject:$subject, body:$body, status:$status, emailId:$eid, "
                       "sentAt:$sent_at}) MERGE (c)-[:SENT_EMAIL]->(e)", id=sid, **{k: payload[k] for k in
-                      ("to", "subject", "body", "status", "sent_at")})
+                      ("to", "subject", "body", "status", "sent_at")}, eid=payload.get("id") or "")
         elif kind == "refs":
             self._run(REFS_Q, clientId=sid, refs=payload["refs"])
         elif kind == "round":

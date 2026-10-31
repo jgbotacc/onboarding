@@ -3,6 +3,7 @@ Resend is used when RESEND_API_KEY is set; on failure the message is still kept 
 import os
 from datetime import datetime, timezone
 
+from src.shared import relay
 from src.shared.config import DEMO_EMAIL_TO, EMAIL_FROM, LABELS
 
 
@@ -22,16 +23,20 @@ class ResendProvider:
 
     def send(self, to, subject, body):
         import httpx
-        r = httpx.post("https://api.resend.com/emails", timeout=20,
-                       headers={"Authorization": f"Bearer {os.environ['RESEND_API_KEY']}"},
-                       json={"from": EMAIL_FROM, "to": [to], "subject": subject, "text": body})
+        msg = {"from": EMAIL_FROM, "to": [to], "subject": subject, "text": body}
+        if relay.enabled():
+            r = relay.post("/api/resend", json=msg, timeout=20)
+        else:
+            r = httpx.post("https://api.resend.com/emails", timeout=20, json=msg,
+                           headers={"Authorization": f"Bearer {os.environ['RESEND_API_KEY']}"})
         if r.status_code >= 400:
             raise RuntimeError(f"Resend HTTP {r.status_code}: {r.text[:200]}")
+        self.last_id = (r.json() or {}).get("id")
         return "Sent"
 
 
 def get_provider():
-    return ResendProvider() if os.getenv("RESEND_API_KEY") else OutboxProvider()
+    return ResendProvider() if (os.getenv("RESEND_API_KEY") or relay.enabled()) else OutboxProvider()
 
 
 def compose(decision: str, s: dict, fields: list[str], note: str | None, resume_url: str | None):
@@ -66,4 +71,5 @@ def send(decision, s, fields, note, resume_url):
         print(f"[email] {prov.name} failed, kept in outbox: {e}")
         status, prov = f"Sent (demo), {prov.name} failed: {str(e)[:120]}", OutboxProvider()
     return {"to": DEMO_EMAIL_TO, "subject": subject, "body": body, "sent_at": _now(),
-            "status": status, "provider": prov.name}
+            "status": status, "provider": prov.name + (" (relay)" if prov.name == "resend" and relay.enabled() else ""),
+            "id": getattr(prov, "last_id", None)}

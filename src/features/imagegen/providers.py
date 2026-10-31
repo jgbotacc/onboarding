@@ -6,6 +6,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
+from src.shared import relay
 from src.shared.config import MEDIA_DIR
 
 NAMED = {"red": "#d64545", "blue": "#2563eb", "green": "#2f9e57", "brown": "#7a4b2a", "cream": "#f3e9d2",
@@ -135,10 +136,14 @@ def build_prompt(brief: dict) -> str:
     return ". ".join(parts) + "."
 
 
-def _data_url(path: str) -> str:
-    import base64, mimetypes
-    mime = mimetypes.guess_type(path)[0] or "image/png"
-    return f"data:{mime};base64," + base64.b64encode(Path(path).read_bytes()).decode()
+def _data_url(path: str, max_side: int = 1024) -> str:
+    """JPEG data URL, downscaled so several images fit the relay's 4.5 MB body limit."""
+    import base64, io
+    im = Image.open(path).convert("RGB")
+    im.thumbnail((max_side, max_side))
+    buf = io.BytesIO()
+    im.save(buf, "JPEG", quality=85)
+    return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
 class MuseProvider:
@@ -155,7 +160,7 @@ class MuseProvider:
             images.append(prev)
             prompt = (f"Revise this marketing post. Client feedback: {brief.get('feedback') or 'improve it'}. "
                       f"Keep what works. Context: " + prompt)
-        images += [r for r in refs if Path(r).exists()][: 10 - len(images)]
+        images += [r for r in refs if Path(r).exists()][: 6 - len(images)]
         body = {"model": os.getenv("MUSE_MODEL", "muse-image-1.0"), "prompt": prompt[:3900], "n": 1,
                 "response_format": "b64_json", "output_format": "png", "size": "1024x1024"}
         path = "/images/generations"
@@ -164,8 +169,11 @@ class MuseProvider:
             body["images"] = [{"image_url": _data_url(i)} for i in images]
             if refs and round_n == 1:
                 body["prompt"] = "Use the attached images as style references. " + body["prompt"]
-        r = httpx.post(self.base + path, json=body, timeout=180,
-                       headers={"Authorization": f"Bearer {os.environ['MODEL_API_KEY']}"})
+        if relay.enabled():
+            r = relay.post("/api/muse?op=" + path.rsplit("/", 1)[-1], json=body, timeout=90)
+        else:
+            r = httpx.post(self.base + path, json=body, timeout=180,
+                           headers={"Authorization": f"Bearer {os.environ['MODEL_API_KEY']}"})
         if r.status_code >= 400:
             raise RuntimeError(f"Muse {path} HTTP {r.status_code}: {r.text[:300]}")
         name = f"{uuid.uuid4().hex}.png"
@@ -174,7 +182,7 @@ class MuseProvider:
 
 
 def get_provider():
-    if os.getenv("MODEL_API_KEY") and os.getenv("IMAGE_PROVIDER", "muse") == "muse":
+    if (os.getenv("MODEL_API_KEY") or relay.enabled()) and os.getenv("IMAGE_PROVIDER", "muse") == "muse":
         return MuseProvider()
     if os.getenv("IMAGE_PROVIDER") == "openai" and os.getenv("OPENAI_API_KEY"):
         return OpenAIProvider()

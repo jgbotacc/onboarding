@@ -53,7 +53,16 @@ class SqliteStore:
 
 
 def get_store():
+    from src.shared import relay
     env = neo4j_env()
+    if relay.enabled():
+        try:
+            from src.data.neo4j_store import Neo4jStore
+            st = Neo4jStore(via_relay=True)
+            print("[data] Using Neo4j store via relay")
+            return st
+        except Exception as e:
+            print(f"[data] Neo4j relay unavailable ({e})")
     if env:
         try:
             from src.data.neo4j_store import Neo4jStore
@@ -62,6 +71,6 @@ def get_store():
             return st
         except Exception as e:
             print(f"[data] Neo4j unavailable ({e}); FALLING BACK to SQLite at {SQLITE_PATH}")
-    else:
+    if not env:
         print(f"[data] NEO4J_* env not set; FALLING BACK to SQLite at {SQLITE_PATH}")
     return SqliteStore()
