@@ -12,7 +12,8 @@ ROOT = Path(__file__).resolve().parents[1]
 ID_FILE = ROOT / ".daytona_sandbox"
 PORT = 8000
 SKIP = {".git", "var", "node_modules", "__pycache__", ".env", ".daytona_sandbox", ".pytest_cache"}
-APP_ENV = ["NEO4J_URI", "NEO4J_USERNAME", "NEO4J_PASSWORD", "GEMINI_API_KEY", "GEMINI_IMAGE_MODEL", "OPENAI_API_KEY", "MODEL_API_KEY", "IMAGE_PROVIDER"]
+APP_ENV = ["NEO4J_URI", "NEO4J_USERNAME", "NEO4J_PASSWORD", "GEMINI_API_KEY", "GEMINI_IMAGE_MODEL", "OPENAI_API_KEY", "MODEL_API_KEY", "IMAGE_PROVIDER", "PUBLIC_BASE_URL"]
+# RESEND_API_KEY is deliberately not passed: the sandbox cannot reach api.resend.com, outbox is used there.
 
 
 def bundle() -> bytes:
@@ -61,6 +62,7 @@ def main():
         sb.process.create_session("web")
     except Exception:
         pass
+    env.setdefault("PUBLIC_BASE_URL", sb.get_preview_link(PORT).url)
     envs = " ".join(f"{k}='{v}'" for k, v in env.items())
     sb.process.execute_session_command("web", SessionExecuteRequest(
         command=f"cd {home}/app && {envs} nohup python -m uvicorn src.app:app --host 0.0.0.0 --port {PORT} "
