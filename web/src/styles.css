@@ -70,7 +70,6 @@ button { font: inherit; }
 .thumb:hover { border-color: #c9cdd4; }
 .thumb img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; }
 
-.round { margin-top: 8px; font-size: 12px; line-height: 16px; color: var(--text-2); font-variant-numeric: tabular-nums; }
 .review, .choices { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .btn {
   height: 28px; padding: 0 12px; border-radius: var(--r); font-size: 13px; font-weight: 500; cursor: pointer;
