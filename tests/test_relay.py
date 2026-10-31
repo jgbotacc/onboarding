@@ -13,8 +13,8 @@ from src.shared import relay  # noqa: E402
 
 
 
-def _png_b64():
-    buf = io.BytesIO(); Image.new("RGB", (8, 8), "blue").save(buf, "PNG")
+def _png_b64(size=(8, 8)):
+    buf = io.BytesIO(); Image.new("RGB", size, "blue").save(buf, "PNG")
     return base64.b64encode(buf.getvalue()).decode()
 
 
@@ -88,3 +88,23 @@ def test_relay_failure_falls_back(monkeypatch):
     assert providers.generate({"business_name": "Acme"}, [], 1)[0].startswith("/media/")  # placeholder
     m = email.send("approve", {"fields": {"business_name": "A"}}, [], None, None)
     assert m["status"].startswith("Sent (demo)") and m["provider"] == "outbox"
+
+
+def _media_size(url):
+    from src.shared.config import MEDIA_DIR
+    return Image.open(MEDIA_DIR / url.rsplit("/", 1)[-1]).size
+
+
+def test_posts_are_exactly_1080_relay_and_direct(monkeypatch):
+    from src.features.imagegen import providers
+    big = httpx.Response(200, json={"data": [{"b64_json": _png_b64((1600, 1600))}]})
+    _relay_env(monkeypatch)  # relay mode
+    monkeypatch.setattr(relay, "post", lambda *a, **k: big)
+    assert _media_size(providers.generate({"business_name": "Acme"}, [], 1)[0]) == (1080, 1080)
+    monkeypatch.delenv("RELAY_URL")  # direct mode
+    monkeypatch.setenv("MODEL_API_KEY", "test-key")
+    monkeypatch.setattr(httpx, "post", lambda *a, **k: big)
+    assert providers.get_provider().name == "muse"
+    assert _media_size(providers.generate({"business_name": "Acme"}, [], 1)[0]) == (1080, 1080)
+    monkeypatch.delenv("MODEL_API_KEY")  # placeholder
+    assert _media_size(providers.generate({"business_name": "Acme"}, [], 1)[0]) == (1080, 1080)

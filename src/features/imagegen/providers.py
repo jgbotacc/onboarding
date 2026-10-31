@@ -191,10 +191,25 @@ def get_provider():
     return PlaceholderProvider()
 
 
+POST_SIZE = (1080, 1080)
+
+
+def to_post_size(url: str) -> str:
+    """Resize a stored /media image to exactly 1080x1080 (LANCZOS). Muse returns ~1600x1600 regardless of size."""
+    path = MEDIA_DIR / url.rsplit("/", 1)[-1]
+    with Image.open(path) as im:
+        if im.size == POST_SIZE:
+            return url
+        out = im.convert("RGB").resize(POST_SIZE, Image.LANCZOS)
+    out.save(path, "PNG")
+    return url
+
+
 def generate(brief, refs, round_n):
     prov = get_provider()
     try:
-        return prov.generate(brief, refs, round_n)
+        urls = prov.generate(brief, refs, round_n)
     except Exception as e:
         print(f"[imagegen] {prov.name} failed, using placeholder: {e}")
-        return PlaceholderProvider().generate(brief, refs, round_n)
+        urls = PlaceholderProvider().generate(brief, refs, round_n)
+    return [to_post_size(u) for u in urls]
