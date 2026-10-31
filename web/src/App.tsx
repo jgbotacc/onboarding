@@ -47,6 +47,9 @@ export default function App() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const closed = !!client?.linkClosed; // [resume-410]
+  // [chat-gate] The chat box stays hidden on the start screen until a PDF upload succeeds, the form is
+  // submitted, or a resume-link session loads. Reference-image-only uploads don't count.
+  const [chatReady, setChatReady] = useState(false);
   // [field-validation] Reply held back while the form stays open on server `invalid`; shown if the client cancels.
   const heldRef = useRef<{ user: NewMsg; r: ApiResponse } | null>(null);
   const uploadedRef = useRef<File[]>([]); // reference images already sent, so a resubmit doesn't re-upload
@@ -58,6 +61,7 @@ export default function App() {
     connect().then((c) => {
       if (!alive) return;
       setClient(c);
+      if (c.linkClosed || c.resume) setChatReady(true); // [chat-gate]
       if (c.linkClosed) {
         // [resume-410] Used/unknown resume link: show the message, no start choices, chat closed.
         setMessages([{ id: nextId++, role: "assistant", text: c.linkClosed.message, images: [], status: c.linkClosed.status, round: 0 }]);
@@ -132,12 +136,22 @@ export default function App() {
     [push, render],
   );
 
+  const hasPdf = (fs: File[]) => fs.some((f) => /\.pdf$/i.test(f.name) || f.type === "application/pdf");
+
   const addFiles = (list: FileList | File[]) => {
     const ok: File[] = [];
     const bad: string[] = [];
     Array.from(list).forEach((f) => (isAcceptable(f) ? ok.push(f) : bad.push(f.name)));
     if (bad.length) push({ role: "error", text: "Only PDF and JPG files are supported: " + bad.join(", ") });
-    if (ok.length) setFiles((prev) => [...prev, ...ok]);
+    if (!ok.length) return;
+    if (!chatReady) {
+      // [chat-gate] No chat box yet: "Upload PDF" (or a drop) sends the files straight away.
+      if (!client || busy) return;
+      push({ role: "user", text: "", files: ok.map((f) => f.name) });
+      run(() => client.upload(ok)).then((done) => done && hasPdf(ok) && setChatReady(true));
+      return;
+    }
+    setFiles((prev) => [...prev, ...ok]);
   };
 
   // Keep the start choices (upload / form) until the client is registered, so sending a
@@ -178,6 +192,7 @@ export default function App() {
     heldRef.current = null;
     setFormOpen(false);
     setRefill(null);
+    setChatReady(true); // [chat-gate]
     push(user);
     render(r);
   };
@@ -189,6 +204,7 @@ export default function App() {
     if (held) {
       // Closed with values still rejected: show the agent's re-ask (with examples) in the chat.
       setRefill(null);
+      setChatReady(true); // [chat-gate] the form was submitted; fixes continue in the chat
       push(held.user);
       render(held.r);
     }
@@ -216,6 +232,7 @@ export default function App() {
     push({ role: "user", text: t, files: fs.map((f) => f.name) });
     if (fs.length) {
       const ok = await run(() => client.upload(fs));
+      if (ok && hasPdf(fs)) setChatReady(true);
       if (!ok || !t) return;
     }
     const asFeedback = feedbackMode && status === "awaiting_review";
@@ -354,6 +371,20 @@ export default function App() {
         </div>
       </main>
 
+      {/* [chat-gate] kept outside the dock so "Upload PDF" works before the chat box shows */}
+      <input
+        ref={fileRef}
+        type="file"
+        id="fileInput"
+        accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+        multiple
+        hidden
+        onChange={(e) => {
+          if (e.target.files) addFiles(e.target.files);
+          e.target.value = "";
+        }}
+      />
+      {chatReady && (
       <footer className="dock">
         <div className="column">
           {missing.length > 0 && (
@@ -383,18 +414,6 @@ export default function App() {
             </div>
           )}
           <form className={"composer" + (feedbackMode ? " feedback" : "")} id="composer" onSubmit={onSubmit} autoComplete="off">
-            <input
-              ref={fileRef}
-              type="file"
-              id="fileInput"
-              accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
-              multiple
-              hidden
-              onChange={(e) => {
-                if (e.target.files) addFiles(e.target.files);
-                e.target.value = "";
-              }}
-            />
             <button type="button" className="btn-icon" id="attachBtn" title="Attach PDF or JPG" aria-label="Attach files" disabled={closed} onClick={() => fileRef.current?.click()}>
               <PaperclipIcon />
             </button>
@@ -416,6 +435,7 @@ export default function App() {
           {feedbackMode && <div className="hint">Your next message is sent as feedback on this round.</div>}
         </div>
       </footer>
+      )}
 
       {dragging && <div className="drop-overlay">Drop PDF or JPG files to attach</div>}
       {formOpen && (
