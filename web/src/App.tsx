@@ -46,6 +46,7 @@ export default function App() {
   const chatRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const closed = !!client?.linkClosed; // [resume-410]
   // [field-validation] Reply held back while the form stays open on server `invalid`; shown if the client cancels.
   const heldRef = useRef<{ user: NewMsg; r: ApiResponse } | null>(null);
   const uploadedRef = useRef<File[]>([]); // reference images already sent, so a resubmit doesn't re-upload
@@ -57,6 +58,12 @@ export default function App() {
     connect().then((c) => {
       if (!alive) return;
       setClient(c);
+      if (c.linkClosed) {
+        // [resume-410] Used/unknown resume link: show the message, no start choices, chat closed.
+        setMessages([{ id: nextId++, role: "assistant", text: c.linkClosed.message, images: [], status: c.linkClosed.status, round: 0 }]);
+        setStatus(c.linkClosed.status);
+        return;
+      }
       if (c.resume) {
         const keys = toFormKeys(c.resume.missing);
         setMessages([{ id: nextId++, role: "assistant", text: c.resume.reply || "Welcome back. Please update the fields below.", images: [], status: "missing_info", round: 0 }]);
@@ -200,7 +207,7 @@ export default function App() {
   };
 
   const send = async () => {
-    if (!client || busy) return;
+    if (!client || busy || client.linkClosed) return;
     const t = text.trim();
     const fs = files.slice();
     if (!t && !fs.length) return;
@@ -388,7 +395,7 @@ export default function App() {
                 e.target.value = "";
               }}
             />
-            <button type="button" className="btn-icon" id="attachBtn" title="Attach PDF or JPG" aria-label="Attach files" onClick={() => fileRef.current?.click()}>
+            <button type="button" className="btn-icon" id="attachBtn" title="Attach PDF or JPG" aria-label="Attach files" disabled={closed} onClick={() => fileRef.current?.click()}>
               <PaperclipIcon />
             </button>
             <textarea
@@ -396,11 +403,12 @@ export default function App() {
               id="textInput"
               rows={1}
               value={text}
-              placeholder={feedbackMode ? "Describe what you'd like changed" : "Message"}
+              placeholder={closed ? "This link is closed" : feedbackMode ? "Describe what you'd like changed" : "Message"}
+              disabled={closed}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={onKeyDown}
             />
-            <button type="submit" className="btn-send" id="sendBtn" disabled={busy || !client}>
+            <button type="submit" className="btn-send" id="sendBtn" disabled={busy || !client || closed}>
               <span>Send</span>
               <SendIcon />
             </button>

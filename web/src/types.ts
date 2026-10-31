@@ -38,6 +38,9 @@ export const STATUS_LABELS: Record<string, string> = {
   pending_review: "Pending review",
   approved: "Approved",
   rejected: "Not approved",
+  // [resume-410] Resume link states
+  link_used: "Details submitted",
+  link_invalid: "Link expired",
 };
 
 export interface FormFields {
