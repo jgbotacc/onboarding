@@ -7,6 +7,7 @@ import uuid
 
 from src.features.imagegen.providers import generate
 from src.features.intake.extract import EMAIL, extract_fields
+from src.features.intake.validate import check, reask
 from src.shared.config import LABELS, MANDATORY, MAX_ROUNDS, MEDIA_DIR
 
 SKIP = re.compile(r"^\s*(skip|no|none|nope|n/a|go ahead|proceed)\b", re.I)
@@ -20,9 +21,14 @@ DESIGN_KEYS = {"design_preferences", "requirements_notes"}
 
 
 def missing_keys(s):
-    if s.get("refill"):
-        return list(s["refill"])
-    return [key for key, _ in MANDATORY if not s["fields"].get(key)]
+    """Invalid fields first (they are what we ask about next), then empty mandatory / staff-requested ones."""
+    bad = list(s.get("invalid", {}))
+    base = list(s["refill"]) if s.get("refill") else [key for key, _ in MANDATORY if not s["fields"].get(key)]
+    return bad + [k for k in base if k not in bad]
+
+
+def invalid(s):
+    return [{"field": k, "label": LABELS.get(k, k), **p} for k, p in s.get("invalid", {}).items()]
 
 
 def missing(s):
@@ -31,9 +37,19 @@ def missing(s):
 
 def _set_fields(s, fields: dict):
     """Apply field values; tracks re-filled fields during a staff 'more info' request."""
+    bad = s.setdefault("invalid", {})
     for k, v in fields.items():
         if v is None or not str(v).strip():
+            if k in bad and k not in dict(MANDATORY):  # cleared an invalid optional field
+                bad.pop(k)
+                s["fields"].pop(k, None)
             continue
+        problem = check(k, v)
+        if problem:  # saved (valid=false) so staff can see it, but counted as missing until fixed
+            s["fields"][k] = str(v).strip()
+            bad[k] = problem
+            continue
+        bad.pop(k, None)
         if k in DESIGN_KEYS and s["fields"].get(k) != str(v).strip() and s.get("resumed"):
             s["design_changed"] = True
         s["fields"][k] = str(v).strip()
@@ -43,13 +59,18 @@ def _set_fields(s, fields: dict):
 
 def resp(s, reply, images=None):
     return {"reply": reply, "images": images or [], "status": s["status"], "missing": missing(s),
-            "round": s["round"]}
+            "round": s["round"], "invalid": invalid(s)}
 
 
 def _after_fields(s, prefix=""):
     m = missing(s)
     if m:
         s["status"] = "missing_info"
+        bad = s.get("invalid", {})
+        if bad:
+            fixes = " ".join(reask(k, LABELS.get(k, k), p) for k, p in bad.items())
+            rest = [LABELS.get(k, k) for k in missing_keys(s) if k not in bad]
+            return resp(s, prefix + fixes + (" I also still need: " + ", ".join(rest) + "." if rest else ""))
         return resp(s, prefix + "I still need: " + ", ".join(m) + f". What is your {m[0].lower()}?")
     name = s["fields"]["business_name"]
     if s.get("resumed"):
@@ -77,7 +98,7 @@ def _after_fields(s, prefix=""):
 
 def on_document(s, fields: dict, filename: str):
     _set_fields(s, fields)
-    found = ", ".join(f"{k.replace('_', ' ')}: {v}" for k, v in fields.items()) or "nothing usable"
+    found = ", ".join(f"{k.replace('_', ' ')}: {v}" for k, v in fields.items() if v) or "nothing usable"
     return _after_fields(s, f"I read {filename}. Found {found}. ")
 
 
@@ -98,12 +119,11 @@ def _fill_from_text(s, text):
     m = missing_keys(s)
     got = {k: v for k, v in extract_fields(text).items() if not s.get("refill") or k in m}
     if not got and m:
-        if m[0] == "email":
-            e = re.search(EMAIL, text)
-            if not e:
-                return False
-            text = e.group(0)
-        got = {m[0]: text.strip()}
+        if m[0] in s.get("invalid", {}) and m[0] not in dict(MANDATORY) and SKIP.match(text):
+            got = {m[0]: ""}  # 'skip' clears an invalid optional field
+        else:
+            e = re.search(EMAIL, text) if m[0] == "email" else None
+            got = {m[0]: (e.group(0) if e else text).strip()}
     _set_fields(s, got)
     return True
 

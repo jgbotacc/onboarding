@@ -36,7 +36,7 @@ MERGE (c:Client {id:$clientId})
 MERGE (d:Document {id:$clientId + '-doc'}) MERGE (c)-[:UPLOADED]->(d)
 WITH d UNWIND $fields AS v
 MATCH (fd:FieldDef {key:v.key})
-MERGE (d)-[:HAS_FIELD]->(fl:Field {key:v.key, docId:d.id}) SET fl.value=v.value, fl.valid=true
+MERGE (d)-[:HAS_FIELD]->(fl:Field {key:v.key, docId:d.id}) SET fl.value=v.value, fl.valid=v.valid, fl.issue=v.issue
 MERGE (fl)-[:OF_TYPE]->(fd)"""
 
 
@@ -72,7 +72,9 @@ class Neo4jStore:
                   state=json.dumps(st), token=st.get("resume_token"))
         if st["fields"]:
             self._run(FIELDS_Q, clientId=st["id"],
-                      fields=[{"key": k, "value": v} for k, v in st["fields"].items()])
+                      fields=[{"key": k, "value": v, "valid": k not in st.get("invalid", {}),
+                               "issue": st.get("invalid", {}).get(k, {}).get("message")}
+                              for k, v in st["fields"].items()])
 
     def list_states(self):
         rows = self._run("MATCH (c:Client) WHERE c.state IS NOT NULL RETURN c.state AS s")
