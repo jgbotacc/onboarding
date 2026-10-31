@@ -16,7 +16,8 @@ Stack: `web (FastAPI + React/Vite, Neo4j Aura, Daytona, Vercel relay)`
 │   ├── FILE-STRUCTURE.md     this file
 │   └── flows/
 │       ├── flows.md          user flow and data flow, step by step
-│       ├── user-flow.png     end-to-end user flow storyboard
+│       ├── client-flow.png   client chat flow, with stand-out features
+│       ├── staff-flow.png    staff review flow, with stand-out features
 │       └── data-flow.png     data flow between browser, back end and services
 ├── src/
 │   ├── app.py                FastAPI entry point (API + serves web/dist)
@@ -41,7 +42,7 @@ Stack: `web (FastAPI + React/Vite, Neo4j Aura, Daytona, Vercel relay)`
 |------|-----------------|
 | `/README.md` | How to run, build and test |
 | `/Docs` | Form, API contract, flows and this file |
-| `/Docs/flows` | `flows.md` (steps), `user-flow.png` (storyboard), `data-flow.png` (services and endpoints) |
+| `/Docs/flows` | `flows.md` (steps), `client-flow.png` and `staff-flow.png` (annotated storyboards), `data-flow.png` (services and endpoints) |
 | `/src/features/<feature>` | One folder per feature; no cross-feature imports except via `/src/shared` |
 | `/src/shared` | Config constants and the relay client |
 | `/src/data` | DB access layer; features call it, never the DB directly |
@@ -54,5 +55,6 @@ Stack: `web (FastAPI + React/Vite, Neo4j Aura, Daytona, Vercel relay)`
 
 ## Added files and folders
 - `Docs/flows/flows.md`: user flow and data flow, step by step
-- `Docs/flows/user-flow.png`: end-to-end user flow storyboard (chat and staff page)
+- `Docs/flows/client-flow.png`: client chat flow storyboard, with stand-out features
+- `Docs/flows/staff-flow.png`: staff review flow storyboard, with stand-out features
 - `Docs/flows/data-flow.png`: data flow between browser, back end, relay, Neo4j, Muse and Resend
