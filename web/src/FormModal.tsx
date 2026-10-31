@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { CloseIcon, ImageIcon } from "./icons";
-import { EMPTY_FORM, type FormFields } from "./types";
+import { EMPTY_FORM, type FieldIssue, type FormFields } from "./types";
+import { validateField } from "./validation"; // [field-validation]
 
 type Key = keyof FormFields;
 interface FieldDef {
@@ -48,27 +49,19 @@ const SECTIONS: SectionDef[] = [
   },
 ];
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-function isUrl(v: string): boolean {
-  try {
-    const u = new URL(/^https?:\/\//i.test(v) ? v : "https://" + v);
-    return u.hostname.includes(".");
-  } catch {
-    return false;
-  }
-}
-
-function validate(f: FieldDef, raw: string): string {
-  const v = raw.trim();
-  if (f.required && !v) return `${f.label} is required.`;
-  if (v && f.type === "email" && !EMAIL_RE.test(v)) return "Enter a valid email address, like name@company.com.";
-  if (v && f.type === "url" && !isUrl(v)) return "Enter a valid website, like company.com.";
-  return "";
-}
+// [field-validation] Instant checks (message + example) from ./validation; server `invalid` always wins.
+type Issue = { message: string; example?: string; server?: boolean };
+const validate = (f: FieldDef, raw: string): Issue | undefined => validateField(f.key, raw, f.label, f.required) || undefined;
+const ALL_FIELDS = SECTIONS.flatMap((s) => s.fields);
+const norm = (t: string) => t.toLowerCase().replace(/[^a-z]/g, "");
+/** Server may name a field by key or label. */
+const issueKey = (field: string): Key | undefined =>
+  ALL_FIELDS.find((f) => f.key === field || norm(f.label) === norm(field) || norm(f.key) === norm(field))?.key;
 
 interface Props {
   onCancel: () => void;
-  onSubmit: (fields: FormFields, images: File[]) => void;
+  /** [field-validation] Resolve with the server's `invalid` list to keep the form open with those errors. */
+  onSubmit: (fields: FormFields, images: File[]) => void | FieldIssue[] | Promise<void | FieldIssue[] | undefined>;
   /** Resume mode: show only these fields (others stay as saved server side). */
   only?: Key[];
   /** Resume mode: staff note shown above the fields. */
@@ -149,14 +142,17 @@ function RefImages({ files, onChange }: { files: File[]; onChange: (f: File[]) =
 
 export default function FormModal({ onCancel, onSubmit, only, intro }: Props) {
   const resume = !!only?.length;
+  const [values, setValues] = useState<FormFields>({ ...EMPTY_FORM });
+  const [errors, setErrors] = useState<Partial<Record<Key, Issue>>>({});
+  const [otherIssues, setOtherIssues] = useState<FieldIssue[]>([]); // [field-validation] server issues for unknown fields
+  const [submitting, setSubmitting] = useState(false);
+  // [field-validation] Resume form: also show any field the server rejected, even if staff didn't flag it.
+  const [extra, setExtra] = useState<Key[]>([]);
   const sections = resume
-    ? SECTIONS.map((s) => ({ ...s, fields: s.fields.filter((f) => only!.includes(f.key)) })).filter((s) => s.fields.length)
+    ? SECTIONS.map((s) => ({ ...s, fields: s.fields.filter((f) => only!.includes(f.key) || extra.includes(f.key)) })).filter((s) => s.fields.length)
     : SECTIONS;
   const visible = sections.flatMap((s) => s.fields);
-  const [values, setValues] = useState<FormFields>({ ...EMPTY_FORM });
-  const [errors, setErrors] = useState<Partial<Record<Key, string>>>({});
   const [images, setImages] = useState<File[]>([]);
-  const [touched, setTouched] = useState<Partial<Record<Key, boolean>>>({});
   const dialogRef = useRef<HTMLDivElement>(null);
   const restoreRef = useRef<Element | null>(null);
 
@@ -171,31 +167,64 @@ export default function FormModal({ onCancel, onSubmit, only, intro }: Props) {
     };
   }, []);
 
+  // [field-validation] Editing a field clears its error; blur re-checks it.
   const set = (f: FieldDef, v: string) => {
     setValues((p) => ({ ...p, [f.key]: v }));
-    if (touched[f.key] || errors[f.key]) setErrors((p) => ({ ...p, [f.key]: validate(f, v) }));
+    if (errors[f.key]) setErrors((p) => ({ ...p, [f.key]: undefined }));
   };
   const blur = (f: FieldDef) => {
-    setTouched((p) => ({ ...p, [f.key]: true }));
-    setErrors((p) => ({ ...p, [f.key]: validate(f, values[f.key]) }));
+    // Keep a server error until the value is edited.
+    setErrors((p) => (p[f.key]?.server ? p : { ...p, [f.key]: validate(f, values[f.key]) }));
   };
 
-  const submit = (e: FormEvent) => {
+  const focusFirst = (keys: Key[]) => {
+    // Wait a frame so newly shown fields (resume form) are in the DOM.
+    requestAnimationFrame(() => {
+      const order = ALL_FIELDS.map((f) => f.key).filter((k) => keys.includes(k));
+      const el = order.length ? dialogRef.current?.querySelector<HTMLElement>(`[name="${order[0]}"]`) : dialogRef.current?.querySelector<HTMLElement>(".form-alert");
+      el?.scrollIntoView({ block: "center", behavior: "smooth" });
+      el?.focus({ preventScroll: true });
+    });
+  };
+
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const next: Partial<Record<Key, string>> = {};
+    if (submitting) return;
+    const next: Partial<Record<Key, Issue>> = {};
     visible.forEach((f) => {
       const m = validate(f, values[f.key]);
       if (m) next[f.key] = m;
     });
     setErrors(next);
-    const firstBad = visible.find((f) => next[f.key]);
-    if (firstBad) {
-      dialogRef.current?.querySelector<HTMLElement>(`[name="${firstBad.key}"]`)?.focus();
+    setOtherIssues([]);
+    const bad = visible.filter((f) => next[f.key]).map((f) => f.key);
+    if (bad.length) {
+      focusFirst(bad);
       return;
     }
     const trimmed = { ...values };
     (Object.keys(trimmed) as Key[]).forEach((k) => (trimmed[k] = trimmed[k].trim()));
-    onSubmit(trimmed, images);
+    setSubmitting(true);
+    let invalid: FieldIssue[] = [];
+    try {
+      invalid = (await onSubmit(trimmed, images)) || [];
+    } finally {
+      setSubmitting(false);
+    }
+    if (!invalid.length) return;
+    // [field-validation] Server rejected some values: keep the form open, show message + example per field.
+    const fromServer: Partial<Record<Key, Issue>> = {};
+    const unknown: FieldIssue[] = [];
+    invalid.forEach((i) => {
+      const k = issueKey(i.field);
+      if (k) fromServer[k] = { message: i.message, example: i.example, server: true };
+      else unknown.push(i);
+    });
+    const keys = Object.keys(fromServer) as Key[];
+    if (resume) setExtra((p) => [...p, ...keys.filter((k) => !only!.includes(k) && !p.includes(k))]);
+    setErrors(fromServer);
+    setOtherIssues(unknown);
+    focusFirst(keys);
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -246,6 +275,16 @@ export default function FormModal({ onCancel, onSubmit, only, intro }: Props) {
           </div>
           <div className="modal-body">
             {resume && intro && <p className="form-intro">{intro}</p>}
+            {otherIssues.length > 0 && (
+              <div className="form-alert field-error" role="alert" tabIndex={-1}>
+                {otherIssues.map((i) => (
+                  <div key={i.field}>
+                    <strong>{i.label || i.field}:</strong> {i.message}
+                    {i.example && !i.message.includes(i.example) && <span className="field-example"> e.g. {i.example}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
             {sections.map((s) => (
               <fieldset key={s.title} className="form-section">
                 <legend>{s.title}</legend>
@@ -253,6 +292,8 @@ export default function FormModal({ onCancel, onSubmit, only, intro }: Props) {
                   {s.fields.map((f) => {
                     const id = "f_" + f.key;
                     const err = errors[f.key];
+                    // [field-validation] Skip the example if the server message already quotes it.
+                    const ex = err?.example && !err.message.includes(err.example) ? err.example : "";
                     const common = {
                       id,
                       name: f.key,
@@ -275,8 +316,9 @@ export default function FormModal({ onCancel, onSubmit, only, intro }: Props) {
                           <input {...common} type={f.type || "text"} onChange={(e) => set(f, e.target.value)} />
                         )}
                         {err && (
-                          <div className="field-error" id={id + "_err"}>
-                            {err}
+                          <div className="field-error" id={id + "_err"} role="alert">
+                            <span>{err.message}</span>
+                            {ex && <span className="field-example">e.g. {ex}</span>}
                           </div>
                         )}
                       </div>
@@ -298,8 +340,8 @@ export default function FormModal({ onCancel, onSubmit, only, intro }: Props) {
             <button type="button" className="btn" onClick={onCancel}>
               Cancel
             </button>
-            <button type="submit" className="btn primary" id="formSubmit">
-              Submit
+            <button type="submit" className="btn primary" id="formSubmit" disabled={submitting} aria-busy={submitting || undefined}>
+              {submitting ? "Checking\u2026" : "Submit"}
             </button>
           </div>
         </form>

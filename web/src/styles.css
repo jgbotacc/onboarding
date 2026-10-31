@@ -251,3 +251,7 @@ button { font: inherit; }
 
 /* Resume link: reopen the refill form */
 .refill-bar { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); z-index: 4; }
+/* [field-validation] message + example under a field */
+.field-error { display: flex; flex-direction: column; gap: 2px; }
+.field-example { color: var(--text-2); font-style: italic; }
+.form-alert { padding: 8px 12px; border: 1px solid var(--danger); border-radius: 8px; margin-bottom: 12px; }

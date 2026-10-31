@@ -1,4 +1,5 @@
-import { ApiResponse, MAX_ROUNDS, type FormFields } from "./types";
+import { ApiResponse, MAX_ROUNDS, type FieldIssue, type FormFields } from "./types";
+import { validateField, type FieldKey } from "./validation"; // [field-validation]
 
 const REQUIRED: { key: "business_name" | "contact_name" | "email"; label: string }[] = [
   { key: "business_name", label: "Business name" },
@@ -59,6 +60,38 @@ export function createMock(opts: { resumed?: boolean } = {}) {
     return generate(prefix);
   };
 
+  // [field-validation] Mock of the server's sense checks on /api/form: the shared rules, plus a
+  // server-only check for placeholder domains so the "server invalid" path demos with ?mock=1.
+  const LABELS: Record<string, string> = {
+    business_name: "Business Name", business_type: "Business Type", industry: "Industry", business_website: "Business Website",
+    contact_name: "Contact Name", title_position: "Title/Position", email: "Email", phone_number: "Phone Number",
+    design_preferences: "Design Preferences", expected_annual_revenue: "Expected Annual Revenue", requirements_notes: "Requirements / Notes",
+  };
+  const PLACEHOLDER = /(^|[@./])(example|test|mailinator|domain)\.(com|org|net)$/i;
+  const checkFields = (fields: FormFields): FieldIssue[] => {
+    const out: FieldIssue[] = [];
+    (Object.keys(fields) as FieldKey[]).forEach((k) => {
+      const v = (fields[k] || "").trim();
+      const label = LABELS[k] || k;
+      const issue = validateField(k, v, label);
+      if (issue) out.push(issue);
+      else if (v && k === "email" && PLACEHOLDER.test(v))
+        out.push({ field: k, label, message: "That looks like a placeholder email address. Please use one we can reach you at.", example: "hello@kopicorner.sg" });
+      else if (v && k === "business_website" && PLACEHOLDER.test(v.replace(/^https?:\/\//i, "").replace(/\/.*$/, "")))
+        out.push({ field: k, label, message: "That looks like a placeholder website. Please use your real site, or leave it blank.", example: "kopicorner.sg" });
+    });
+    return out;
+  };
+  const reAsk = (invalid: FieldIssue[]): ApiResponse => ({
+    ...resp(
+      "Some details don't look quite right. Please re-enter: " +
+        invalid.map((i) => `${(i.label || i.field).toLowerCase()} (e.g. ${i.example})`).join("; ") +
+        ".",
+    ),
+    status: s.registered ? s.status : "missing_info",
+    invalid,
+  });
+
   const handlers = {
     upload(files: File[]): ApiResponse {
       const pdfs = files.filter((f) => /\.pdf$/i.test(f.name)).length;
@@ -76,6 +109,8 @@ export function createMock(opts: { resumed?: boolean } = {}) {
       return resp(`Got ${files.length} more file(s). I'll use them in the next round.`);
     },
     form(fields: FormFields): ApiResponse {
+      const invalid = checkFields(fields); // [field-validation]
+      if (invalid.length) return reAsk(invalid);
       if (opts.resumed && !s.registered) {
         // Resume link: the client is already registered server side; only the flagged fields come back.
         s.registered = true;

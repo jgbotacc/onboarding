@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
 import { connect, type Client } from "./api";
-import { EMPTY_FORM, MAX_ROUNDS, STATUS_LABELS, type ApiResponse, type FormFields } from "./types";
+import { EMPTY_FORM, MAX_ROUNDS, STATUS_LABELS, type ApiResponse, type FieldIssue, type FormFields } from "./types";
 import FormModal from "./FormModal";
 import { FIELDS, toFieldKeys } from "./staff/fields";
 import { CheckboxIcon, CloseIcon, FileIcon, ImageIcon, PaperclipIcon, SendIcon } from "./icons";
@@ -46,6 +46,9 @@ export default function App() {
   const chatRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  // [field-validation] Reply held back while the form stays open on server `invalid`; shown if the client cancels.
+  const heldRef = useRef<{ user: NewMsg; r: ApiResponse } | null>(null);
+  const uploadedRef = useRef<File[]>([]); // reference images already sent, so a resubmit doesn't re-upload
 
   const push = useCallback((m: NewMsg) => setMessages((prev) => [...prev, { ...m, id: nextId++ } as Msg]), []);
 
@@ -136,24 +139,52 @@ export default function App() {
 
   // Form path: reference images (optional) go to /api/upload first so the session holds them
   // as style refs, then /api/form registers the client and starts round 1 with those refs.
-  const submitForm = (fields: FormFields, images: File[] = []) => {
+  // [field-validation] The form stays open while it submits. If the server returns `invalid`,
+  // the issues go back to the form (shown under each field) and nothing is posted to the chat yet.
+  const submitForm = async (fields: FormFields, images: File[] = []): Promise<FieldIssue[] | undefined> => {
     if (!client || busy) return;
-    setFormOpen(false);
-    if (refill) {
+    const user: NewMsg = refill
+      ? { role: "user", text: "Updated my details", files: refill.keys.map((k) => FIELD_LABEL[k]) }
+      : { role: "user", text: "Submitted registration form", files: [...(fields.business_name ? [fields.business_name] : []), ...images.map((f) => f.name)] };
+    setBusy(true);
+    let r: ApiResponse;
+    try {
+      const fresh = images.filter((f) => !uploadedRef.current.includes(f));
+      if (!refill && fresh.length) {
+        await client.upload(fresh);
+        uploadedRef.current = [...uploadedRef.current, ...fresh];
+      }
+      r = await client.form(fields);
+    } catch (e) {
+      setFormOpen(false);
       setRefill(null);
-      push({ role: "user", text: "Updated my details", files: refill.keys.map((k) => FIELD_LABEL[k]) });
-      run(() => client.form(fields));
+      push(user);
+      push({ role: "error", text: `Something went wrong (${(e as Error).message}). Please try again.` });
       return;
+    } finally {
+      setBusy(false);
     }
-    push({
-      role: "user",
-      text: "Submitted registration form",
-      files: [...(fields.business_name ? [fields.business_name] : []), ...images.map((f) => f.name)],
-    });
-    run(async () => {
-      if (images.length) await client.upload(images);
-      return client.form(fields);
-    });
+    if (r.invalid?.length) {
+      heldRef.current = { user, r };
+      return r.invalid;
+    }
+    heldRef.current = null;
+    setFormOpen(false);
+    setRefill(null);
+    push(user);
+    render(r);
+  };
+
+  const cancelForm = () => {
+    setFormOpen(false);
+    const held = heldRef.current;
+    heldRef.current = null;
+    if (held) {
+      // Closed with values still rejected: show the agent's re-ask (with examples) in the chat.
+      setRefill(null);
+      push(held.user);
+      render(held.r);
+    }
   };
 
   const startFeedback = () => {
@@ -380,7 +411,7 @@ export default function App() {
 
       {dragging && <div className="drop-overlay">Drop PDF or JPG files to attach</div>}
       {formOpen && (
-        <FormModal onCancel={() => setFormOpen(false)} onSubmit={submitForm} only={refill?.keys} intro={refill?.note} />
+        <FormModal onCancel={cancelForm} onSubmit={submitForm} only={refill?.keys} intro={refill?.note} />
       )}
       {!formOpen && refill && (
         <div className="refill-bar">

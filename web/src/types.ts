@@ -12,6 +12,16 @@ export interface ApiResponse {
   status: Status | string;
   missing: string[];
   round: number;
+  /** [field-validation] Values the server rejected; the reply asks to re-enter them with an example. */
+  invalid?: FieldIssue[];
+}
+
+/** [field-validation] One rejected field: `field` is the form key (a label is tolerated). */
+export interface FieldIssue {
+  field: string;
+  label?: string;
+  message: string;
+  example?: string;
 }
 
 export const MAX_ROUNDS = 3;
