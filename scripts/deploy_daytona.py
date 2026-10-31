@@ -13,7 +13,7 @@ ID_FILE = ROOT / ".daytona_sandbox"
 PORT = 8000
 SKIP = {".git", "var", "node_modules", "__pycache__", ".env", ".daytona_sandbox", ".pytest_cache"}
 APP_ENV = ["NEO4J_URI", "NEO4J_USERNAME", "NEO4J_PASSWORD", "GEMINI_API_KEY", "GEMINI_IMAGE_MODEL", "OPENAI_API_KEY", "MODEL_API_KEY", "IMAGE_PROVIDER", "PUBLIC_BASE_URL",
-           "RELAY_URL", "RELAY_SECRET"]
+           "RELAY_URL", "RELAY_SECRET", "STAFF_PASSCODE", "DISABLE_DOCS"]
 # RESEND_API_KEY is deliberately not passed: the sandbox cannot reach api.resend.com, outbox is used there.
 
 
@@ -64,6 +64,9 @@ def main():
     except Exception:
         pass
     env.setdefault("PUBLIC_BASE_URL", sb.get_preview_link(PORT).url)
+    env.setdefault("DISABLE_DOCS", "1")  # no /docs, /redoc or /openapi.json on the public sandbox
+    if not env.get("STAFF_PASSCODE"):
+        print("WARNING: STAFF_PASSCODE not set; staff pages will answer 503 (fail closed)")
     envs = " ".join(f"{k}='{v}'" for k, v in env.items())
     sb.process.execute_session_command("web", SessionExecuteRequest(
         command=f"cd {home}/app && {envs} nohup python -m uvicorn src.app:app --host 0.0.0.0 --port {PORT} "

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
-import { connect, type Client } from "./api";
+import { connect, HttpError, type Client } from "./api";
 import { EMPTY_FORM, MAX_ROUNDS, STATUS_LABELS, type ApiResponse, type FieldIssue, type FormFields } from "./types";
 import FormModal from "./FormModal";
 import { FIELDS, toFieldKeys } from "./staff/fields";
@@ -127,7 +127,11 @@ export default function App() {
         render(await p());
         return true;
       } catch (e) {
-        push({ role: "error", text: `Something went wrong (${(e as Error).message}). Please try again.` });
+        // [upload-check] Show the server's reason for a rejected file (e.g. "must be JPG or PNG").
+        const text = e instanceof HttpError && e.status === 400 && e.detail
+          ? e.detail
+          : `Something went wrong (${(e as Error).message}). Please try again.`;
+        push({ role: "error", text });
         return false;
       } finally {
         setBusy(false);
