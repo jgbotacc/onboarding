@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
 import { connect, type Client } from "./api";
-import { EMPTY_FORM, MAX_ROUNDS, STATUS_LABELS, type ApiResponse, type FormFields } from "./types";
+import { EMPTY_FORM, MAX_ROUNDS, STATUS_LABELS, type ApiResponse, type FieldIssue, type FormFields } from "./types";
 import FormModal from "./FormModal";
 import { FIELDS, toFieldKeys } from "./staff/fields";
 import { CheckboxIcon, CloseIcon, FileIcon, ImageIcon, PaperclipIcon, SendIcon } from "./icons";
@@ -46,6 +46,13 @@ export default function App() {
   const chatRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const closed = !!client?.linkClosed; // [resume-410]
+  // [chat-gate] The chat box stays hidden on the start screen until a PDF upload succeeds, the form is
+  // submitted, or a resume-link session loads. Reference-image-only uploads don't count.
+  const [chatReady, setChatReady] = useState(false);
+  // [field-validation] Reply held back while the form stays open on server `invalid`; shown if the client cancels.
+  const heldRef = useRef<{ user: NewMsg; r: ApiResponse } | null>(null);
+  const uploadedRef = useRef<File[]>([]); // reference images already sent, so a resubmit doesn't re-upload
 
   const push = useCallback((m: NewMsg) => setMessages((prev) => [...prev, { ...m, id: nextId++ } as Msg]), []);
 
@@ -54,6 +61,13 @@ export default function App() {
     connect().then((c) => {
       if (!alive) return;
       setClient(c);
+      if (c.linkClosed || c.resume) setChatReady(true); // [chat-gate]
+      if (c.linkClosed) {
+        // [resume-410] Used/unknown resume link: show the message, no start choices, chat closed.
+        setMessages([{ id: nextId++, role: "assistant", text: c.linkClosed.message, images: [], status: c.linkClosed.status, round: 0 }]);
+        setStatus(c.linkClosed.status);
+        return;
+      }
       if (c.resume) {
         const keys = toFormKeys(c.resume.missing);
         setMessages([{ id: nextId++, role: "assistant", text: c.resume.reply || "Welcome back. Please update the fields below.", images: [], status: "missing_info", round: 0 }]);
@@ -122,12 +136,22 @@ export default function App() {
     [push, render],
   );
 
+  const hasPdf = (fs: File[]) => fs.some((f) => /\.pdf$/i.test(f.name) || f.type === "application/pdf");
+
   const addFiles = (list: FileList | File[]) => {
     const ok: File[] = [];
     const bad: string[] = [];
     Array.from(list).forEach((f) => (isAcceptable(f) ? ok.push(f) : bad.push(f.name)));
     if (bad.length) push({ role: "error", text: "Only PDF and JPG files are supported: " + bad.join(", ") });
-    if (ok.length) setFiles((prev) => [...prev, ...ok]);
+    if (!ok.length) return;
+    if (!chatReady) {
+      // [chat-gate] No chat box yet: "Upload PDF" (or a drop) sends the files straight away.
+      if (!client || busy) return;
+      push({ role: "user", text: "", files: ok.map((f) => f.name) });
+      run(() => client.upload(ok)).then((done) => done && hasPdf(ok) && setChatReady(true));
+      return;
+    }
+    setFiles((prev) => [...prev, ...ok]);
   };
 
   // Keep the start choices (upload / form) until the client is registered, so sending a
@@ -136,24 +160,54 @@ export default function App() {
 
   // Form path: reference images (optional) go to /api/upload first so the session holds them
   // as style refs, then /api/form registers the client and starts round 1 with those refs.
-  const submitForm = (fields: FormFields, images: File[] = []) => {
+  // [field-validation] The form stays open while it submits. If the server returns `invalid`,
+  // the issues go back to the form (shown under each field) and nothing is posted to the chat yet.
+  const submitForm = async (fields: FormFields, images: File[] = []): Promise<FieldIssue[] | undefined> => {
     if (!client || busy) return;
-    setFormOpen(false);
-    if (refill) {
+    const user: NewMsg = refill
+      ? { role: "user", text: "Updated my details", files: refill.keys.map((k) => FIELD_LABEL[k]) }
+      : { role: "user", text: "Submitted registration form", files: [...(fields.business_name ? [fields.business_name] : []), ...images.map((f) => f.name)] };
+    setBusy(true);
+    let r: ApiResponse;
+    try {
+      const fresh = images.filter((f) => !uploadedRef.current.includes(f));
+      if (!refill && fresh.length) {
+        await client.upload(fresh);
+        uploadedRef.current = [...uploadedRef.current, ...fresh];
+      }
+      r = await client.form(fields);
+    } catch (e) {
+      setFormOpen(false);
       setRefill(null);
-      push({ role: "user", text: "Updated my details", files: refill.keys.map((k) => FIELD_LABEL[k]) });
-      run(() => client.form(fields));
+      push(user);
+      push({ role: "error", text: `Something went wrong (${(e as Error).message}). Please try again.` });
       return;
+    } finally {
+      setBusy(false);
     }
-    push({
-      role: "user",
-      text: "Submitted registration form",
-      files: [...(fields.business_name ? [fields.business_name] : []), ...images.map((f) => f.name)],
-    });
-    run(async () => {
-      if (images.length) await client.upload(images);
-      return client.form(fields);
-    });
+    if (r.invalid?.length) {
+      heldRef.current = { user, r };
+      return r.invalid;
+    }
+    heldRef.current = null;
+    setFormOpen(false);
+    setRefill(null);
+    setChatReady(true); // [chat-gate]
+    push(user);
+    render(r);
+  };
+
+  const cancelForm = () => {
+    setFormOpen(false);
+    const held = heldRef.current;
+    heldRef.current = null;
+    if (held) {
+      // Closed with values still rejected: show the agent's re-ask (with examples) in the chat.
+      setRefill(null);
+      setChatReady(true); // [chat-gate] the form was submitted; fixes continue in the chat
+      push(held.user);
+      render(held.r);
+    }
   };
 
   const startFeedback = () => {
@@ -169,7 +223,7 @@ export default function App() {
   };
 
   const send = async () => {
-    if (!client || busy) return;
+    if (!client || busy || client.linkClosed) return;
     const t = text.trim();
     const fs = files.slice();
     if (!t && !fs.length) return;
@@ -178,6 +232,7 @@ export default function App() {
     push({ role: "user", text: t, files: fs.map((f) => f.name) });
     if (fs.length) {
       const ok = await run(() => client.upload(fs));
+      if (ok && hasPdf(fs)) setChatReady(true);
       if (!ok || !t) return;
     }
     const asFeedback = feedbackMode && status === "awaiting_review";
@@ -316,6 +371,20 @@ export default function App() {
         </div>
       </main>
 
+      {/* [chat-gate] kept outside the dock so "Upload PDF" works before the chat box shows */}
+      <input
+        ref={fileRef}
+        type="file"
+        id="fileInput"
+        accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+        multiple
+        hidden
+        onChange={(e) => {
+          if (e.target.files) addFiles(e.target.files);
+          e.target.value = "";
+        }}
+      />
+      {chatReady && (
       <footer className="dock">
         <div className="column">
           {missing.length > 0 && (
@@ -345,19 +414,7 @@ export default function App() {
             </div>
           )}
           <form className={"composer" + (feedbackMode ? " feedback" : "")} id="composer" onSubmit={onSubmit} autoComplete="off">
-            <input
-              ref={fileRef}
-              type="file"
-              id="fileInput"
-              accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
-              multiple
-              hidden
-              onChange={(e) => {
-                if (e.target.files) addFiles(e.target.files);
-                e.target.value = "";
-              }}
-            />
-            <button type="button" className="btn-icon" id="attachBtn" title="Attach PDF or JPG" aria-label="Attach files" onClick={() => fileRef.current?.click()}>
+            <button type="button" className="btn-icon" id="attachBtn" title="Attach PDF or JPG" aria-label="Attach files" disabled={closed} onClick={() => fileRef.current?.click()}>
               <PaperclipIcon />
             </button>
             <textarea
@@ -365,11 +422,12 @@ export default function App() {
               id="textInput"
               rows={1}
               value={text}
-              placeholder={feedbackMode ? "Describe what you'd like changed" : "Message"}
+              placeholder={closed ? "This link is closed" : feedbackMode ? "Describe what you'd like changed" : "Message"}
+              disabled={closed}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={onKeyDown}
             />
-            <button type="submit" className="btn-send" id="sendBtn" disabled={busy || !client}>
+            <button type="submit" className="btn-send" id="sendBtn" disabled={busy || !client || closed}>
               <span>Send</span>
               <SendIcon />
             </button>
@@ -377,10 +435,11 @@ export default function App() {
           {feedbackMode && <div className="hint">Your next message is sent as feedback on this round.</div>}
         </div>
       </footer>
+      )}
 
       {dragging && <div className="drop-overlay">Drop PDF or JPG files to attach</div>}
       {formOpen && (
-        <FormModal onCancel={() => setFormOpen(false)} onSubmit={submitForm} only={refill?.keys} intro={refill?.note} />
+        <FormModal onCancel={cancelForm} onSubmit={submitForm} only={refill?.keys} intro={refill?.note} />
       )}
       {!formOpen && refill && (
         <div className="refill-bar">
