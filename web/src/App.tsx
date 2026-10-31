@@ -12,7 +12,7 @@ type Msg =
 
 type NewMsg = Msg extends infer T ? (T extends Msg ? Omit<T, "id"> : never) : never;
 
-const GREETING = "Welcome. To get started, upload a PDF with your business details (plus any JPG reference images), or fill in a registration form.";
+const GREETING = "Hi! Let's get you set up.\nUpload a PDF with your business details, or fill in a quick form.";
 const isAcceptable = (f: File) => /\.(pdf|jpe?g|png)$/i.test(f.name) || f.type === "application/pdf" || f.type === "image/jpeg" || f.type === "image/png";
 
 let nextId = 1;
@@ -22,7 +22,18 @@ const FIELD_LABEL: Record<keyof FormFields, string> = Object.fromEntries(FIELDS.
 const toFormKeys = (missing: string[]) => toFieldKeys(missing).filter((k) => k in EMPTY_FORM);
 
 const ASSET = import.meta.env.BASE_URL;
-const AGENT_NAME = "Onboarding agent";
+const AGENT_NAME = "Onboarding assistant";
+
+/** One line per "\n"; "• " lines get a hanging indent; blank lines become a small gap. */
+function MsgText({ text }: { text: string }) {
+  return (
+    <div className="msg-text">
+      {text.split("\n").map((line, i) =>
+        !line.trim() ? <div key={i} className="gap" /> : <div key={i} className={line.startsWith("\u2022 ") ? "li" : undefined}>{line}</div>,
+      )}
+    </div>
+  );
+}
 
 function Avatar() {
   return <img className="avatar" src={ASSET + "agent-64.png"} alt="" aria-hidden="true" width={32} height={32} />;
@@ -70,7 +81,7 @@ export default function App() {
       }
       if (c.resume) {
         const keys = toFormKeys(c.resume.missing);
-        setMessages([{ id: nextId++, role: "assistant", text: c.resume.reply || "Welcome back. Please update the fields below.", images: [], status: "missing_info", round: 0 }]);
+        setMessages([{ id: nextId++, role: "assistant", text: c.resume.reply || "Welcome back! Just update the fields below.", images: [], status: "missing_info", round: 0 }]);
         setStatus("missing_info");
         if (keys.length) {
           setRefill({ keys, note: c.resume.reply });
@@ -130,7 +141,7 @@ export default function App() {
         // [upload-check] Show the server's reason for a rejected file (e.g. "must be JPG or PNG").
         const text = e instanceof HttpError && e.status === 400 && e.detail
           ? e.detail
-          : `Something went wrong (${(e as Error).message}). Please try again.`;
+          : (console.error(e), "Sorry, that didn't go through. Please try again.");
         push({ role: "error", text });
         return false;
       } finally {
@@ -146,7 +157,7 @@ export default function App() {
     const ok: File[] = [];
     const bad: string[] = [];
     Array.from(list).forEach((f) => (isAcceptable(f) ? ok.push(f) : bad.push(f.name)));
-    if (bad.length) push({ role: "error", text: "Only PDF and JPG files are supported: " + bad.join(", ") });
+    if (bad.length) push({ role: "error", text: "I can only take PDF, JPG or PNG files. Skipped: " + bad.join(", ") });
     if (!ok.length) return;
     if (!chatReady) {
       // [chat-gate] No chat box yet: "Upload PDF" (or a drop) sends the files straight away.
@@ -170,7 +181,7 @@ export default function App() {
     if (!client || busy) return;
     const user: NewMsg = refill
       ? { role: "user", text: "Updated my details", files: refill.keys.map((k) => FIELD_LABEL[k]) }
-      : { role: "user", text: "Submitted registration form", files: [...(fields.business_name ? [fields.business_name] : []), ...images.map((f) => f.name)] };
+      : { role: "user", text: "Sent my registration form", files: [...(fields.business_name ? [fields.business_name] : []), ...images.map((f) => f.name)] };
     setBusy(true);
     let r: ApiResponse;
     try {
@@ -184,7 +195,8 @@ export default function App() {
       setFormOpen(false);
       setRefill(null);
       push(user);
-      push({ role: "error", text: `Something went wrong (${(e as Error).message}). Please try again.` });
+      console.error(e);
+      push({ role: "error", text: "Sorry, that didn't go through. Please try again." });
       return;
     } finally {
       setBusy(false);
@@ -278,13 +290,13 @@ export default function App() {
     <div className="app" onDragEnter={onDragEnter} onDragOver={(e) => e.preventDefault()} onDragLeave={onDragLeave} onDrop={onDrop}>
       <header className="header">
         <img className="header-avatar" src={ASSET + "agent-64.png"} alt="" aria-hidden="true" width={24} height={24} />
-        <h1>Client Onboarding</h1>
+        <h1>Client onboarding</h1>
         <span className="pill" id="statusPill" data-status={status}>
           {STATUS_LABELS[status] || status.replace(/_/g, " ")}
         </span>
         {client?.mock && (
           <span className="badge-demo" id="demoBadge">
-            Demo mode (mock data)
+            Demo (sample data)
           </span>
         )}
       </header>
@@ -312,13 +324,13 @@ export default function App() {
                   <div className="welcome-body">
                     <div className="agent-label">{AGENT_NAME}</div>
                     <div className="msg assistant speech">
-                      <div>{m.text}</div>
+                      <MsgText text={m.text} />
                       <div className="choices">
                         <button type="button" className="btn primary" id="choiceUpload" disabled={busy} onClick={() => fileRef.current?.click()}>
                           Upload PDF
                         </button>
                         <button type="button" className="btn" id="choiceForm" disabled={busy} onClick={() => setFormOpen(true)}>
-                          Fill in a new form
+                          Fill in a form
                         </button>
                       </div>
                     </div>
@@ -331,7 +343,7 @@ export default function App() {
               <div key={m.id} className="row assistant">
               <Avatar />
               <div className="msg assistant">
-                {m.text && <div>{m.text}</div>}
+                {m.text && <MsgText text={m.text} />}
                 {m.images.length > 0 && (
                   <div className="img-grid">
                     {m.images.map((src, i) => (
@@ -348,7 +360,7 @@ export default function App() {
                         Looks good
                       </button>
                       <button type="button" className={"btn" + (active && feedbackMode ? " on" : "")} disabled={!active || busy} onClick={startFeedback}>
-                        Request changes
+                        Ask for changes
                       </button>
                     </div>
                   </>
@@ -413,7 +425,7 @@ export default function App() {
             </div>
           )}
           <form className={"composer" + (feedbackMode ? " feedback" : "")} id="composer" onSubmit={onSubmit} autoComplete="off">
-            <button type="button" className="btn-icon" id="attachBtn" title="Attach PDF or JPG" aria-label="Attach files" disabled={closed} onClick={() => fileRef.current?.click()}>
+            <button type="button" className="btn-icon" id="attachBtn" title="Attach a PDF or image" aria-label="Attach files" disabled={closed} onClick={() => fileRef.current?.click()}>
               <PaperclipIcon />
             </button>
             <textarea
@@ -421,7 +433,7 @@ export default function App() {
               id="textInput"
               rows={1}
               value={text}
-              placeholder={closed ? "This link is closed" : feedbackMode ? "Describe what you'd like changed" : "Message"}
+              placeholder={closed ? "This link is closed" : feedbackMode ? "What would you like changed?" : "Type a message"}
               disabled={closed}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={onKeyDown}
@@ -431,19 +443,19 @@ export default function App() {
               <SendIcon />
             </button>
           </form>
-          {feedbackMode && <div className="hint">Your next message is sent as feedback on this round.</div>}
+          {feedbackMode && <div className="hint">I'll use your next message as feedback.</div>}
         </div>
       </footer>
       )}
 
-      {dragging && <div className="drop-overlay">Drop PDF or JPG files to attach</div>}
+      {dragging && <div className="drop-overlay">Drop your PDF or images here</div>}
       {formOpen && (
         <FormModal onCancel={cancelForm} onSubmit={submitForm} only={refill?.keys} intro={refill?.note} />
       )}
       {!formOpen && refill && (
         <div className="refill-bar">
           <button type="button" className="btn primary" onClick={() => setFormOpen(true)}>
-            Update requested details
+            Update my details
           </button>
         </div>
       )}

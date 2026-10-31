@@ -19,33 +19,33 @@ interface SectionDef {
 
 const SECTIONS: SectionDef[] = [
   {
-    title: "Business information",
+    title: "Your business",
     fields: [
-      { key: "business_name", label: "Business Name", required: true, autoComplete: "organization" },
-      { key: "business_type", label: "Business Type" },
+      { key: "business_name", label: "Business name", required: true, autoComplete: "organization" },
+      { key: "business_type", label: "Business type" },
       { key: "industry", label: "Industry" },
-      { key: "business_website", label: "Business Website", type: "url", autoComplete: "url" },
+      { key: "business_website", label: "Website", type: "url", autoComplete: "url" },
     ],
   },
   {
-    title: "Primary contact",
+    title: "Contact",
     fields: [
-      { key: "contact_name", label: "Contact Name", required: true, autoComplete: "name" },
-      { key: "title_position", label: "Title/Position", autoComplete: "organization-title" },
+      { key: "contact_name", label: "Contact name", required: true, autoComplete: "name" },
+      { key: "title_position", label: "Job title", autoComplete: "organization-title" },
       { key: "email", label: "Email", type: "email", required: true, autoComplete: "email" },
-      { key: "phone_number", label: "Phone Number", type: "tel", autoComplete: "tel" },
+      { key: "phone_number", label: "Phone number", type: "tel", autoComplete: "tel" },
     ],
   },
   {
-    title: "Business profile",
+    title: "Style and size",
     fields: [
-      { key: "design_preferences", label: "Design Preferences" },
-      { key: "expected_annual_revenue", label: "Expected Annual Revenue" },
+      { key: "design_preferences", label: "Design preferences" },
+      { key: "expected_annual_revenue", label: "Expected annual revenue" },
     ],
   },
   {
-    title: "Additional information",
-    fields: [{ key: "requirements_notes", label: "Requirements / Notes", type: "textarea", full: true }],
+    title: "Anything else",
+    fields: [{ key: "requirements_notes", label: "Notes", type: "textarea", full: true }],
   },
 ];
 
@@ -84,17 +84,17 @@ function RefImages({ files, onChange }: { files: File[]; onChange: (f: File[]) =
     const ok = all.filter(isImage);
     const room = MAX_IMAGES - files.length;
     const msgs: string[] = [];
-    if (ok.length < all.length) msgs.push("Only JPG and PNG images are supported.");
-    if (ok.length > room) msgs.push(`Up to ${MAX_IMAGES} images.`);
+    if (ok.length < all.length) msgs.push("Only JPG or PNG images, please.");
+    if (ok.length > room) msgs.push(`You can add up to ${MAX_IMAGES}.`);
     setNote(msgs.join(" "));
     if (room > 0 && ok.length) onChange([...files, ...ok.slice(0, room)]);
   };
 
   return (
     <div className="field full">
-      <label htmlFor="f_ref_images">Reference images (optional)</label>
+      <label htmlFor="f_ref_images">Images you like (optional)</label>
       <p className="field-hint" id="f_ref_images_hint">
-        JPG or PNG examples of styles you like. We use them as style references for your first designs.
+        JPG or PNG. We'll use them as style inspiration for your first designs.
       </p>
       <input
         ref={inputRef}
@@ -264,9 +264,9 @@ export default function FormModal({ onCancel, onSubmit, only, intro }: Props) {
         <form className="modal-form" onSubmit={submit} noValidate>
           <div className="modal-head">
             <div>
-              <h2 id="formModalTitle">{resume ? "Update your details" : "B2B Registration Form"}</h2>
+              <h2 id="formModalTitle">{resume ? "Update your details" : "Registration form"}</h2>
               <p id="formModalDesc">
-                {resume ? "Our team asked you to fill in these fields again. Everything else is already saved." : "Fields marked * are required."}
+                {resume ? "Our team needs these again. Everything else is saved." : "Fields marked * are required."}
               </p>
             </div>
             <button type="button" className="icon-btn" aria-label="Close form" onClick={onCancel}>
@@ -280,7 +280,7 @@ export default function FormModal({ onCancel, onSubmit, only, intro }: Props) {
                 {otherIssues.map((i) => (
                   <div key={i.field}>
                     <strong>{i.label || i.field}:</strong> {i.message}
-                    {i.example && !i.message.includes(i.example) && <span className="field-example"> e.g. {i.example}</span>}
+                    {i.example && !i.message.includes(i.example) && <span className="field-example"> For example: {i.example}</span>}
                   </div>
                 ))}
               </div>
@@ -318,7 +318,7 @@ export default function FormModal({ onCancel, onSubmit, only, intro }: Props) {
                         {err && (
                           <div className="field-error" id={id + "_err"} role="alert">
                             <span>{err.message}</span>
-                            {ex && <span className="field-example">e.g. {ex}</span>}
+                            {ex && <span className="field-example">For example: {ex}</span>}
                           </div>
                         )}
                       </div>
@@ -329,7 +329,7 @@ export default function FormModal({ onCancel, onSubmit, only, intro }: Props) {
             ))}
             {!resume && (
             <fieldset className="form-section">
-              <legend>Design references</legend>
+              <legend>Reference images</legend>
               <div className="form-grid">
                 <RefImages files={images} onChange={setImages} />
               </div>

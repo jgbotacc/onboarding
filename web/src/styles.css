@@ -60,6 +60,9 @@ button { font: inherit; }
 .chat .column { display: flex; flex-direction: column; gap: 8px; }
 
 .msg { max-width: 78%; padding: 8px 12px; border-radius: var(--r-lg); white-space: pre-wrap; overflow-wrap: anywhere; }
+.msg-text { white-space: pre-line; }
+.msg-text .li { padding-left: 1.1em; text-indent: -1.1em; }
+.msg-text .gap { height: 8px; }
 .msg.assistant { align-self: flex-start; background: var(--surface); border: 1px solid var(--border); }
 .msg.user { align-self: flex-end; background: var(--accent); color: #fff; }
 .msg.user .files { margin-top: 4px; font-size: 12px; line-height: 16px; color: #dbe6ff; }

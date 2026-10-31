@@ -4,17 +4,17 @@ export type FieldKey = keyof FormFields;
 
 /** The 11 registration form keys, in form order, with their display labels. */
 export const FIELDS: { key: FieldKey; label: string }[] = [
-  { key: "business_name", label: "Business Name" },
-  { key: "business_type", label: "Business Type" },
+  { key: "business_name", label: "Business name" },
+  { key: "business_type", label: "Business type" },
   { key: "industry", label: "Industry" },
-  { key: "business_website", label: "Business Website" },
-  { key: "contact_name", label: "Contact Name" },
-  { key: "title_position", label: "Title/Position" },
+  { key: "business_website", label: "Website" },
+  { key: "contact_name", label: "Contact name" },
+  { key: "title_position", label: "Job title" },
   { key: "email", label: "Email" },
-  { key: "phone_number", label: "Phone Number" },
-  { key: "design_preferences", label: "Design Preferences" },
-  { key: "expected_annual_revenue", label: "Expected Annual Revenue" },
-  { key: "requirements_notes", label: "Requirements / Notes" },
+  { key: "phone_number", label: "Phone number" },
+  { key: "design_preferences", label: "Design preferences" },
+  { key: "expected_annual_revenue", label: "Expected annual revenue" },
+  { key: "requirements_notes", label: "Notes" },
 ];
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z]/g, "");

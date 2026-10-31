@@ -27,19 +27,21 @@ export interface FieldIssue {
 export const MAX_ROUNDS = 3;
 
 export const STATUS_LABELS: Record<string, string> = {
-  registering: "Registering",
-  missing_info: "Missing info",
-  generating: "Generating",
-  awaiting_review: "Awaiting review",
-  accepted: "Accepted",
-  handed_off: "Handed off",
+  registering: "Getting started",
+  need_document: "Getting started",
+  missing_info: "Needs details",
+  need_direction: "Choosing a style",
+  generating: "Making designs",
+  awaiting_review: "Ready to review",
+  accepted: "Approved",
+  handed_off: "With a designer",
   // Staff review statuses
   needs_info: "More info needed",
-  pending_review: "Pending review",
+  pending_review: "With our team",
   approved: "Approved",
   rejected: "Not approved",
   // [resume-410] Resume link states
-  link_used: "Details submitted",
+  link_used: "Details sent",
   link_invalid: "Link expired",
 };
 
