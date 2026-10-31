@@ -10,18 +10,18 @@ MAX_ROUNDS = 3
 
 # Source of truth: Docs/b2b-registration-form.html (* = mandatory)
 MANDATORY = [
-    ("business_name", "Business Name"),
-    ("contact_name", "Contact Name"),
+    ("business_name", "Business name"),
+    ("contact_name", "Contact name"),
     ("email", "Email"),
 ]
 OPTIONAL = [
-    ("business_type", "Business Type"), ("industry", "Industry"), ("business_website", "Business Website"),
-    ("title_position", "Title/Position"), ("phone_number", "Phone Number"),
-    ("design_preferences", "Design Preferences"), ("expected_annual_revenue", "Expected Annual Revenue"),
-    ("requirements_notes", "Requirements / Notes"),
+    ("business_type", "Business type"), ("industry", "Industry"), ("business_website", "Business website"),
+    ("title_position", "Title / position"), ("phone_number", "Phone number"),
+    ("design_preferences", "Design preferences"), ("expected_annual_revenue", "Expected annual revenue"),
+    ("requirements_notes", "Requirements / notes"),
 ]
 FORM_KEYS = [k for k, _ in MANDATORY + OPTIONAL]
-LABELS = dict(MANDATORY + OPTIONAL)
+LABELS = dict(MANDATORY + OPTIONAL)  # sentence case, as shown to clients (replies, missing, invalid)
 
 
 def neo4j_env():

@@ -81,3 +81,17 @@ def test_every_end_of_flow_says_team_will_contact():
         s = agent.new_session()
         s["status"] = st
         assert agent.on_chat(s, "hi")["reply"].endswith(end), st
+
+
+def test_client_facing_labels_are_sentence_case_everywhere():
+    from src.features.chat import agent
+    from src.shared.config import LABELS
+    assert all(LABELS[k] == lbl for k, lbl in agent.SUMMARY), "config LABELS and reply labels drifted"
+    s = agent.new_session()
+    r = agent.on_form(s, {"business_name": "Acme", "business_type": "123", "title_position": "###"})
+    assert r["missing"] == ["Business type", "Title / position", "Contact name", "Email"], r["missing"]
+    assert {i["label"] for i in r["invalid"]} == {"Business type", "Title / position"}
+    s = agent.new_session()
+    s["fields"] = {"business_name": "Acme", "contact_name": "Jo", "email": "jo@acme.sg"}
+    r = agent.start_resume(s, ["requirements_notes", "expected_annual_revenue"], None)
+    assert r["missing"] == ["Requirements / notes", "Expected annual revenue"], r["missing"]

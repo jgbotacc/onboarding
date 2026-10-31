@@ -52,14 +52,14 @@ def test_more_info_resume_flow():
     sid = _client()
     d = c.post(f"/api/staff/clients/{sid}/decision",
                json={"decision": "more_info", "fields": ["phone_number", "business_website"], "note": "Need these"}).json()
-    assert d["status"] == "needs_info" and "?resume=" in d["resume_url"] and "Phone Number" in _body(sid)
+    assert d["status"] == "needs_info" and "?resume=" in d["resume_url"] and "Phone number" in _body(sid)
     token = d["resume_url"].split("resume=")[1]
     r = resume(c, token).json()
-    assert r["sessionId"] == sid and r["missing"] == ["Phone Number", "Business Website"]
+    assert r["sessionId"] == sid and r["missing"] == ["Phone number", "Business website"]
     g = c.get(f"/api/resume/{token}").json()
     assert g["fields_to_refill"] == ["phone_number", "business_website"] and g["note"] == "Need these"
     r = c.post("/api/chat", json={"sessionId": sid, "text": "+65 6123 4567"}).json()
-    assert r["missing"] == ["Business Website"], r
+    assert r["missing"] == ["Business website"], r
     r = c.post("/api/chat", json={"sessionId": sid, "text": "acme.co"}).json()
     assert r["status"] == "pending_review" and r["round"] == 1, r  # no new image round
     d = c.get(f"/api/staff/clients/{sid}").json()

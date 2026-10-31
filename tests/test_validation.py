@@ -74,7 +74,7 @@ def test_form_path_flags_invalid_and_blocks_until_fixed():
     bad = {i["field"]: i for i in r["invalid"]}
     assert set(bad) == {"business_type", "expected_annual_revenue", "phone_number"}
     assert set(bad["expected_annual_revenue"]) == {"field", "label", "message", "example"}
-    assert "Expected Annual Revenue" in r["missing"]
+    assert "Expected annual revenue" in r["missing"]
     assert r["reply"] == (
         "I just need three fixes:\n\n" + BT.format("123") + "\n"
         '• Phone number: "12345" isn\'t a phone number. Something like "+65 6123 4567" works.\n'
@@ -120,7 +120,7 @@ def test_resume_link_answer_is_checked():
     resume(c, token)
     r = c.post("/api/chat", json={"sessionId": sid, "text": "cat"}).json()
     assert r["status"] == "missing_info" and r["invalid"][0]["field"] == "expected_annual_revenue"
-    assert "Expected Annual Revenue" in r["missing"]
+    assert "Expected annual revenue" in r["missing"]
     assert r["reply"] == one(REV), r["reply"]
     r = c.post("/api/chat", json={"sessionId": sid, "text": "five thousand dollars"}).json()
     assert r["invalid"] == [] and r["status"] == "pending_review", r
