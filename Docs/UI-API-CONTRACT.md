@@ -54,10 +54,19 @@ All client paths are under `/api`, send `x-session-secret`, and include the lang
 | `GET /api/staff/consults` | `[{ id, client_id, business_name, status: "pending_approval"\|"approved", submitted: {label: value}, next_steps: [str], created }]` |
 | `POST /api/staff/consults/{id}/approve` | the updated consult (`status: "approved"`, `approved_by`, `decided_at`) |
 | `GET /api/staff/clients/{id}/rejected-looks` | `[{ round, options: [{id, url, alt}] }]` (every look not picked, grouped by round) |
-| `GET /api/staff/clients/{id}` (optional add) | v1 detail + `traces: [{step, model, ok, ms, cost_sgd, at}]` if available; the UI hides the table when absent |
+| `GET /api/staff/clients/{id}` | v1 detail + optional `traces: [{step, model, ok, ms, cost_sgd, at}]`; the UI hides the table when absent |
+| `GET /api/staff/metrics` | `{outcomes: {sessions, completed, completion_rate, avg_minutes_to_finish, avg_fields_needing_fixes, avg_rounds_to_pick, consult_rate}, steps: [{step, model, calls, ok_rate, avg_latency_ms, cost_sgd}], total_cost_sgd, errors?: [trace], evals?: {doc_extraction_accuracy, image_fit, n, at} \| null}` (PRD 3.1/3.5). Section hidden if the call fails |
 
 ## Mapping to PRD section 6
 PRD names (`/api/looks {selected, skip}`, `/api/confirm {accept, edits}`, `DELETE /api/documents/{docId}`,
 `/api/staff/consults/{id}/decision`, `confirm.fields[{key,label,value}]`, `looks.options[{id,url,title}]`,
-`retake:true` + `retake_reason`) map one-to-one onto the names above. The adapter in `api.ts`
+`retake:true` + `retake_reason`) map one-to-one onto the names above. Staff paths live in one object (`real`) in `web/src/staff/api.ts`. The adapter in `api.ts`
 also accepts those PRD response names (`confirm.fields`, `title`, `retake_reason`) so either backend shape renders.
+
+## What the backend must provide (summary for Dev)
+1. Accept `lang` (body field, multipart field, `x-lang` header) on every client route; reply text in that language.
+2. ChatReply with `step` plus optional `looks`, `extracted`, `retake`, `consult` as above.
+3. New client routes: `POST /api/looks/pick`, `POST /api/looks/skip`, `POST /api/extracted/confirm`, `DELETE /api/upload`, `POST /api/trace`.
+4. Staff routes: `GET /api/staff/consults`, `POST /api/staff/consults/{id}/approve`, `GET /api/staff/clients/{id}/rejected-looks`,
+   `GET /api/staff/metrics`, and `traces` on the client detail.
+5. Staff data in English; never any NRIC/FIN in `extracted`, `consult.submitted` or traces.
