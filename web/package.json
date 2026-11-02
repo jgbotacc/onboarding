@@ -8,7 +8,7 @@
     "build": "tsc --noEmit -p . && vite build",
     "typecheck": "tsc --noEmit -p .",
     "preview": "vite preview",
-    "test": "node scripts/test-validation.mjs"
+    "test": "node scripts/test-validation.mjs && node scripts/test-api-contract.mjs"
   },
   "dependencies": {
     "react": "^19.3.1",

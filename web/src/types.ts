@@ -1,22 +1,70 @@
 import en from "./i18n/en";
 
+export type Lang = "en" | "zh" | "ms" | "ta";
+
 export type Status =
   | "registering"
   | "missing_info"
+  | "confirm_details"
+  | "choosing_look"
   | "generating"
   | "awaiting_review"
   | "accepted"
   | "handed_off";
 
-export interface ApiResponse {
+export interface LookOption {
+  id: string;
+  url: string;
+  /** Short description in the client's language (PRD name: `title`). */
+  alt: string;
+}
+
+export interface Looks {
+  round: number;
+  max_rounds: number;
+  options: LookOption[];
+  prompt?: string;
+}
+
+export interface ExtractedField {
+  field: string;
+  label: string;
+  value: string;
+}
+
+export interface RetakeInfo {
+  reason: string;
+}
+
+export interface ConsultInfo {
+  status: string;
+  submitted?: Record<string, string>;
+  next_steps?: string[];
+  id?: string;
+}
+
+export type TraceKind = "listen" | "mic";
+
+/** UI ↔ API contract (`Docs/UI-API-CONTRACT.md`): every client reply shape. */
+export interface ChatReply {
   reply: string;
-  images: string[];
+  lang?: Lang | string;
+  /** New step name; falls back to `status` when the backend sends only v1 `status`. */
+  step?: string;
   status: Status | string;
+  images: string[];
   missing: string[];
   round: number;
   /** [field-validation] Values the server rejected; the reply asks to re-enter them with an example. */
   invalid?: FieldIssue[];
+  looks?: Looks | null;
+  extracted?: ExtractedField[] | null;
+  retake?: RetakeInfo | null;
+  consult?: ConsultInfo | null;
 }
+
+/** v1 name for {@link ChatReply}; kept so existing UI keeps compiling. */
+export type ApiResponse = ChatReply;
 
 /** [field-validation] One rejected field: `field` is the form key (a label is tolerated). */
 export interface FieldIssue {
