@@ -297,6 +297,26 @@ button { font: inherit; }
   padding: 0 6px; border-radius: 4px; background: var(--accent); color: #fff;
 }
 .look-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+/* Confirm card: extracted fields with Listen buttons and inline editors,
+   plus a retake notice with a camera button (native inputs and buttons,
+   keyboard operable with visible focus). */
+.confirm-details { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.confirm-fields { display: flex; flex-direction: column; gap: 8px; margin: 0; }
+.confirm-field { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--r); background: var(--subtle); }
+.confirm-label { font-size: 12px; line-height: 16px; font-weight: 600; color: var(--text-2); }
+.confirm-value { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0; overflow-wrap: anywhere; }
+.confirm-value .listen-group { margin-top: 0; flex: none; }
+.confirm-edit { margin: 0; }
+.confirm-edit input {
+  width: 100%; height: 32px; padding: 5px 10px; font: inherit; color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--r); background: var(--surface); outline: none;
+  transition: border-color .12s ease-out;
+}
+.confirm-edit input:hover { border-color: #c9cdd4; }
+.confirm-edit input:focus { border-color: var(--accent); }
+.confirm-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.retake { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.retake-notice { margin: 0; font-size: 13px; line-height: 20px; color: var(--text); }
 .consult-note {
   margin: 8px 0 0; padding: 8px 12px; border-radius: var(--r);
   background: var(--accent-soft); color: var(--text); font-size: 13px; line-height: 20px;

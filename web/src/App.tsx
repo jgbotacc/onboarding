@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
 import { connect, HttpError, type Client } from "./api";
-import { EMPTY_FORM, type ApiResponse, type ConsultInfo, type FieldIssue, type FormFields, type Looks } from "./types";
+import { EMPTY_FORM, type ApiResponse, type ConsultInfo, type ExtractedField, type FieldIssue, type FormFields, type Looks, type RetakeInfo } from "./types";
+import ConfirmDetails from "./confirm/ConfirmDetails";
 import FormModal from "./FormModal";
 import LooksPicker from "./looks/LooksPicker";
 import { toFieldKeys } from "./staff/fields";
@@ -11,7 +12,7 @@ import { isMicSupported, startListening } from "./speech/mic";
 
 type Msg =
   | { id: number; role: "user"; text: string; files: string[] }
-  | { id: number; role: "assistant"; text: string; images: string[]; status: string; round: number; choices?: boolean; looks?: Looks | null; consult?: ConsultInfo | null }
+  | { id: number; role: "assistant"; text: string; images: string[]; status: string; round: number; choices?: boolean; looks?: Looks | null; extracted?: ExtractedField[] | null; retake?: RetakeInfo | null; consult?: ConsultInfo | null }
   | { id: number; role: "error"; text: string };
 
 type NewMsg = Msg extends infer T ? (T extends Msg ? Omit<T, "id"> : never) : never;
@@ -157,7 +158,7 @@ export default function App() {
 
   const render = useCallback(
     (r: ApiResponse) => {
-      push({ role: "assistant", text: r.reply || "", images: r.images || [], status: r.status || "", round: r.round || 0, looks: r.looks ?? null, consult: r.consult ?? null });
+      push({ role: "assistant", text: r.reply || "", images: r.images || [], status: r.status || "", round: r.round || 0, looks: r.looks ?? null, extracted: r.extracted ?? null, retake: r.retake ?? null, consult: r.consult ?? null });
       if (r.status) setStatus(r.status);
       setMissing(r.missing || []);
     },
@@ -364,6 +365,7 @@ export default function App() {
 
   const lastReviewId = [...messages].reverse().find((m) => m.role === "assistant" && m.status === "awaiting_review")?.id;
   const lastLooksId = [...messages].reverse().find((m) => m.role === "assistant" && (m.looks?.options?.length ?? 0) > 0)?.id;
+  const lastConfirmId = [...messages].reverse().find((m) => m.role === "assistant" && ((m.extracted?.length ?? 0) > 0 || !!m.retake))?.id;
   const reviewOpen = status === "awaiting_review";
   const micLabel = t(lang, micOn ? "mic.stop" : "mic.label");
   const micTitle = micSupported ? micLabel : t(lang, "mic.notSupported");
@@ -463,6 +465,19 @@ export default function App() {
                     </div>
                   )
                 )}
+                {(m.extracted?.length || m.retake) && client ? (
+                  <ConfirmDetails
+                    extracted={m.extracted}
+                    retake={m.retake}
+                    lang={lang}
+                    client={client}
+                    disabled={busy || m.id !== lastConfirmId}
+                    trace={traceListen}
+                    onReply={render}
+                    onError={replyError}
+                    idPrefix={"confirm-" + m.id}
+                  />
+                ) : null}
                 {m.consult && <p className="consult-note">{t(lang, "consult.note")}</p>}
                 {showReview && (
                   <>
