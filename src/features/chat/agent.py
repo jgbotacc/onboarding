@@ -36,6 +36,9 @@ def missing_keys(s):
     bad = list(s.get("invalid", {}))
     fields = s.get("fields", {})
     base = list(s["refill"]) if s.get("refill") else [key for key, _ in MANDATORY if not fields.get(key)]
+    if s.get("poster_first") and not s.get("refill"):
+        base = [k for k in POSTER_ORDER if not fields.get(k)
+                and (k in dict(MANDATORY) or not s.get("headline_skipped"))]
     return bad + [k for k in base if k not in bad]
 
 
@@ -90,7 +93,7 @@ def resp(s, reply, images=None):
                      "prompt": "Which look do you prefer?",
                      "options": [{"id": lk.get("id"), "url": lk.get("url"), "title": lk.get("title")}
                                  for lk in looks]}
-                    if s.get("status") == "awaiting_review" and looks else None)
+                    if s.get("status") in ("awaiting_review", "pick_poster") and looks else None)
     cc = s.get("consult")
     out["consult"] = ({"id": cc.get("id"), "status": cc.get("status")} if cc else None)
     return out
@@ -112,6 +115,8 @@ def _after_fields(s, prefix="", touched=None):
     waits in the session until every field is valid, so it also shows after fixes made in chat."""
     if missing_keys(s):
         s["status"] = "missing_info"
+        if s.get("poster_first") and not s.get("invalid") and not s.get("refill"):
+            return resp(s, prefix + poster_question(s))
         # A single re-entered field that is still wrong: just that one line.
         still = [k for k in (touched or []) if k in s.get("invalid", {})]
         lines = problem_lines(s, only=still) if touched and len(touched) == 1 and still else problem_lines(s)
@@ -135,7 +140,7 @@ def _after_fields(s, prefix="", touched=None):
                     s.get("images"))
     if s.get("fields", {}).get("design_preferences") and not s.get("round"):
         s["direction"] = s["fields"]["design_preferences"]
-        if s.get("via_pdf") and not s.get("refs"):
+        if s.get("via_pdf") and not s.get("refs") and not s.get("poster_first"):
             # PDF path has no reference-image field, so ask for refs before round 1.
             s["status"] = "need_direction"
             s["refs_pending"] = True
@@ -187,6 +192,9 @@ def on_refs(s, paths):
 
 def _fill_from_text(s, text):
     m = missing_keys(s)
+    if s.get("poster_first") and m and m[0] == "requirements_notes" and SKIP.match(text):
+        s["headline_skipped"] = True  # the poster keeps a general message
+        return []
     got = {k: v for k, v in extract_fields(text).items() if not s.get("refill") or k in m}
     if not got and m:
         if m[0] in s.get("invalid", {}) and m[0] not in dict(MANDATORY) and SKIP.match(text):
@@ -303,6 +311,8 @@ def _consult(s):
 
 def on_looks(s, selected_ids: list[str], skip: bool = False):
     """Pick one or more looks, or skip the round for 3 new ones."""
+    if s.get("status") == "pick_poster":
+        return on_starter(s, selected_ids, skip)
     if s.get("status") != "awaiting_review":
         return resp(s, "There's nothing to pick yet.")
     looks = s.get("looks") or []
@@ -423,6 +433,8 @@ def on_chat(s, text):
         return run_round(s)
     if st == "confirm_details":
         return _confirm_chat(s, text)
+    if st == "pick_poster":
+        return _starter_chat(s, text)
     if st == "awaiting_review":
         return _looks_chat(s, text)
     if st in ("approved", "rejected", "pending_review"):
@@ -465,3 +477,66 @@ def on_review(s, accepted: bool, feedback: str | None):
         return resp(s, "What would you like changed? (colours, style, text, layout...)")
     s.setdefault("rejected", []).extend(s.get("looks") or [])
     return run_round(s)
+
+
+# --- Pick-the-poster start (gallery flow) -------------------------------------------------
+# The client first picks from sample posters (pre-made files in web/public/samples, no model call),
+# then we ask only what that poster needs (business name, headline offer), then contact details.
+POSTER_ORDER = ["business_name", "requirements_notes", "contact_name", "email"]
+QUESTIONS = {
+    "business_name": "What's your business name?",
+    "requirements_notes": "What should your poster say?\nLike \"20% off all coffee this week\".\nOr type \"skip\".",
+    "contact_name": "Who should we contact?\nYour name, please.",
+    "email": "What's your email?",
+}
+GALLERY_HELLO = ("Hi! Which poster do you like?\nPick one or more, and we'll make it yours.\n"
+                 "Or type \"skip\" to start with your details.")
+CLASSIC_HELLO = ("Okay, let's start with your details.\nUpload your business document or registration form.\n"
+                 "Or type your business name, contact name and email.")
+
+
+def new_gallery_session(starters: list[dict]) -> tuple[dict, dict]:
+    """New session that opens on the sample-poster gallery. Returns (state, response)."""
+    s = new_session()
+    s.update(status="pick_poster", flow="gallery", looks=[dict(lk, round=0) for lk in starters])
+    return s, resp(s, GALLERY_HELLO)
+
+
+def poster_question(s) -> str:
+    """The next single question for the picked poster; the business-name one also offers the document shortcut."""
+    k = missing_keys(s)[0]
+    q = QUESTIONS.get(k) or f"What's your {label(k).lower()}?"
+    if k == "business_name":
+        q += "\nOr upload your business document, and I'll fill this in."
+    return q
+
+
+def on_starter(s, selected_ids, skip=False):
+    """Gallery pick: keep the chosen sample style(s) as the design brief and ask what the poster needs."""
+    by_id = {lk.get("id"): lk for lk in s.get("looks") or []}
+    chosen = [by_id[i] for i in selected_ids or [] if i in by_id]
+    if skip or not chosen:
+        s.update(status="need_document", looks=[], flow="classic")
+        return resp(s, CLASSIC_HELLO)
+    style = "; ".join(c.get("brief") or c.get("title") for c in chosen)
+    s["starter"] = [{k: c.get(k) for k in ("id", "title", "brief", "url")} for c in chosen]
+    s["fields"]["design_preferences"] = style
+    s["direction"] = style
+    s["refs"].extend(c["path"] for c in chosen if c.get("path"))  # the picked poster guides Muse Image
+    s.update(poster_first=True, looks=[], via_pdf=False)
+    return _after_fields(s, "Nice pick!\n")
+
+
+def _starter_chat(s, text):
+    """Chat while the gallery shows: '1', '2 and 3', 'all' pick; 'skip' goes to the details-first start;
+    anything else is taken as details (classic start)."""
+    looks, low = s.get("looks") or [], text.strip().lower()
+    if SKIP.match(text):
+        return on_starter(s, [], True)
+    if re.search(r"\b(all|both)\b", low):
+        return on_starter(s, [lk["id"] for lk in looks])
+    nums = sorted({int(n) for n in re.findall(r"\b([123])\b", text)})
+    if nums and len(low) <= 20 and all(n <= len(looks) for n in nums):
+        return on_starter(s, [looks[n - 1]["id"] for n in nums])
+    s.update(status="need_document", looks=[], flow="classic")
+    return _after_fields(s, touched=_fill_from_text(s, text))

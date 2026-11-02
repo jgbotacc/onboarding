@@ -22,7 +22,7 @@ from src.features.intake.extract import pdf_text
 from src.features.i18n.lang import LANGS
 from src.features.staff import routes as staff
 from src.shared import guard, security, trace
-from src.shared.config import DATA_DIR, FORM_KEYS, MEDIA_DIR
+from src.shared.config import SAMPLES_DIR, starter_looks, DATA_DIR, FORM_KEYS, MEDIA_DIR
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("onboarding")
@@ -88,6 +88,7 @@ class SessionIn(BaseModel):
     sessionSecret: str | None = None
     resumeToken: str | None = None
     lang: str | None = None
+    flow: str | None = None  # "gallery" opens on the sample-poster picker
 
 
 class LanguageIn(BaseModel):
@@ -273,12 +274,13 @@ def session(request: Request, body: SessionIn | None = None):
                 out = _finish(old, out)
                 out["sessionId"] = old["id"]
                 return out
-    s = agent.new_session()
+    gallery = bool(body and body.flow == "gallery")
+    s, first = agent.new_gallery_session(starter_looks()) if gallery else (agent.new_session(), None)
     secret = security.issue_secret(s)
     with _lock_for(s["id"]):
         _apply_lang(s, request, body.lang if body else None)
-        out = agent.resp(s, "Hi! Let's get you set up.\nUpload your business document or registration form.\n"
-                            "Or type your business name, contact name and email.")
+        out = first or agent.resp(s, "Hi! Let's get you set up.\nUpload your business document or registration form.\n"
+                                     "Or type your business name, contact name and email.")
         out = _finish(s, out, "session", {})
         out["sessionId"], out["sessionSecret"] = s["id"], secret  # the secret is only ever returned here
         return out
@@ -616,6 +618,8 @@ def trace_in(body: TraceIn, request: Request):
 
 
 app.mount("/media", StaticFiles(directory=MEDIA_DIR), name="media")
+SAMPLES_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/samples", StaticFiles(directory=SAMPLES_DIR), name="samples")  # gallery sample posters
 if not (WEB / "index.html").exists() and (WEB.parent / "index.html").exists() \
         and not (WEB.parent / "package.json").exists():
     WEB = WEB.parent  # plain HTML front end (pre-React)

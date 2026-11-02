@@ -43,3 +43,20 @@ def notify_email_to() -> str:
 
 EMAIL_FROM = os.getenv("EMAIL_FROM", "Onboarding <onboarding@resend.dev>")
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "")
+
+
+# Pick-the-poster gallery: pre-made sample posters shipped in the repo (no model call to show them).
+SAMPLES_DIR = Path(__file__).resolve().parents[2] / "web" / "public" / "samples"
+STARTER_LOOKS = [
+    {"id": "sample-1", "file": "sample-1.jpg", "title": "Warm and cosy",
+     "brief": "warm and cosy, cream and brown, soft natural light, friendly rounded type"},
+    {"id": "sample-2", "file": "sample-2.jpg", "title": "Bold and bright",
+     "brief": "bold and bright, big confident type, high-contrast colours, energetic"},
+    {"id": "sample-3", "file": "sample-3.jpg", "title": "Clean and premium",
+     "brief": "clean and premium, dark background, gold accents, elegant serif type"},
+]
+
+
+def starter_looks() -> list[dict]:
+    """Gallery options with public URLs and file paths (the path is used as a style reference)."""
+    return [dict(lk, url=f"/samples/{lk['file']}", path=str(SAMPLES_DIR / lk["file"])) for lk in STARTER_LOOKS]

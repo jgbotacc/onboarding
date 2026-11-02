@@ -1,5 +1,6 @@
 import { EMPTY_FORM, type ApiResponse, type FormFields, type Lang, type TraceKind } from "./types";
 import { createMock } from "./mock";
+import { t, type I18nKey } from "./i18n";
 
 export const API_BASE = "";
 const SESSION_KEY = "onboardingSessionId";
@@ -183,6 +184,8 @@ export interface Client {
   setLang(lang: Lang): void;
   /** Set when opened from a staff "more information" link (/?resume=<token>). */
   resume?: { missing: string[]; reply: string };
+  /** First reply of a new session; on this branch it holds the sample-poster gallery (looks.round 0). */
+  start?: ApiResponse;
   /** [resume-410] Set when a resume link is used up (410) or unknown (404): show this and close the chat. */
   linkClosed?: { status: "link_used" | "link_invalid"; message: string };
 }
@@ -231,7 +234,28 @@ function mockClient(): Client {
   }
   const resumed = !!resumeToken();
   const m = createMock({ resumed });
-  return { mock: true, sessionId: "mock-" + Math.random().toString(36).slice(2, 10), ...m, ...mockExtras(m), ...(resumed ? { resume: MOCK_RESUME } : {}) };
+  const base: Client = { mock: true, sessionId: "mock-" + Math.random().toString(36).slice(2, 10), ...m, ...mockExtras(m), ...(resumed ? { resume: MOCK_RESUME } : {}) };
+  return resumed ? base : withMockGallery(base);
+}
+
+/** Demo mode: open on the same sample posters; the first pick or skip hands over to the normal mock flow. */
+function withMockGallery(c: Client): Client {
+  let open = true;
+  const lang = getLang();
+  const start = normalizeChatReply({
+    reply: t(lang, "gallery.prompt"), step: "pick_poster", status: "pick_poster",
+    looks: { round: 0, max_rounds: 3, options: [1, 2, 3].map((n) => ({
+      id: "sample-" + n, url: import.meta.env.BASE_URL + "samples/sample-" + n + ".jpg", alt: t(lang, ("gallery.opt" + n) as I18nKey) })) },
+  });
+  const leave = (): ApiResponse => {
+    open = false;
+    return normalizeChatReply({ reply: t(getLang(), "gallery.picked"), step: "registering", status: "registering" });
+  };
+  return {
+    ...c, start,
+    pickLooks: async (ids) => (open ? leave() : c.pickLooks(ids)),
+    skipLooks: async () => (open ? leave() : c.skipLooks()),
+  };
 }
 
 export async function connect(): Promise<Client> {
@@ -264,7 +288,8 @@ export async function connect(): Promise<Client> {
   try {
     const r = await postJson<{ sessionId?: string; sessionSecret?: string }>(
       "/api/session",
-      saved && savedSecret ? { sessionId: saved, sessionSecret: savedSecret } : {},
+      // Pick-the-poster: a new session opens on the sample-poster gallery.
+      saved && savedSecret ? { sessionId: saved, sessionSecret: savedSecret, flow: "gallery" } : { flow: "gallery", lang: getLang() },
     );
     if (!r || !r.sessionId) throw new Error("no sessionId");
     const sessionId = r.sessionId;
@@ -273,7 +298,8 @@ export async function connect(): Promise<Client> {
     if (!secret) throw new Error("no session secret");
     store(SESSION_KEY, sessionId);
     store(SECRET_KEY, secret);
-    return realClient(sessionId, secret);
+    const first = normalizeChatReply(r);
+    return { ...realClient(sessionId, secret), ...(first.looks?.options?.length ? { start: first } : {}) };
   } catch {
     return mockClient();
   }

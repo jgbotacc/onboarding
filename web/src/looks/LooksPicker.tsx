@@ -30,7 +30,8 @@ export default function LooksPicker({ looks, lang, client, disabled, trace, onRe
 
   const { round, max } = roundInfo(looks);
   const locked = !!disabled || busy;
-  const prompt = t(lang, "looks.prompt");
+  const gallery = looks.round === 0; // round 0 = the sample-poster gallery that opens onboarding
+  const prompt = t(lang, gallery ? "gallery.prompt" : "looks.prompt");
   const labelId = `${idPrefix}-prompt`;
 
   const choose = async (ids: string[]) => {
@@ -58,12 +59,13 @@ export default function LooksPicker({ looks, lang, client, disabled, trace, onRe
   };
 
   return (
-    <section className={"looks" + (locked ? " is-disabled" : "")} aria-labelledby={labelId}>
-      <p className="looks-prompt" id={labelId}>
+    <section className={"looks" + (gallery ? " gallery" : "") + (locked ? " is-disabled" : "")} aria-labelledby={labelId}>
+      {/* In the gallery the chat bubble above already asks and has its own Listen button. */}
+      <p className={"looks-prompt" + (gallery ? " visually-hidden" : "")} id={labelId}>
         {prompt}
       </p>
-      <ListenButton id={`${idPrefix}-listen`} text={prompt} lang={lang} trace={trace} />
-      <p className="looks-round">{t(lang, "looks.round", { round, max })}</p>
+      {!gallery && <ListenButton id={`${idPrefix}-listen`} text={prompt} lang={lang} trace={trace} />}
+      <p className="looks-round">{gallery ? t(lang, "gallery.hint") : t(lang, "looks.round", { round, max })}</p>
       <div className="look-grid" role="group" aria-label={prompt}>
         {looks.options.map((o, i) => {
           const selected = isPicked(picked, o.id);
@@ -90,7 +92,7 @@ export default function LooksPicker({ looks, lang, client, disabled, trace, onRe
           {t(lang, "looks.useThese")}
         </button>
         <button type="button" className="btn" disabled={locked} onClick={() => void skip()}>
-          {t(lang, "looks.skipNew")}
+          {t(lang, gallery ? "gallery.skip" : "looks.skipNew")}
         </button>
       </div>
     </section>

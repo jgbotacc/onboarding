@@ -116,6 +116,14 @@ export default function App() {
         }
         return;
       }
+      if (c.start?.looks) {
+        // Pick-the-poster: open on the sample-poster gallery, before any form.
+        const r = c.start;
+        setMessages([{ id: nextId++, role: "assistant", text: r.reply || "", images: [], status: r.status || "pick_poster", round: 0, looks: r.looks }]);
+        setStatus(r.status || "pick_poster");
+        setChatReady(true);
+        return;
+      }
       setMessages([{ id: nextId++, role: "assistant", text: t(lang, "greeting"), images: [], status: "registering", round: 0, choices: true }]);
       inputRef.current?.focus();
     });
@@ -449,7 +457,7 @@ export default function App() {
                     looks={m.looks}
                     lang={lang}
                     client={client}
-                    disabled={busy || handedOff || m.id !== lastLooksId}
+                    disabled={busy || handedOff || m.id !== lastLooksId || (m.looks?.round === 0 && status !== "pick_poster")}
                     trace={traceListen}
                     onReply={render}
                     onError={replyError}

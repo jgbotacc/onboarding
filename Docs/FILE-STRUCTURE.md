@@ -68,6 +68,8 @@ Stack: `web (FastAPI + React/Vite, Neo4j Aura, Daytona, Vercel relay)`
 - `db/migrations/006_v2.sql`: looks, consults, audit, traces, evals tables
 - `scripts/make_acra_fixture.py`: builds the made-up ACRA-style fixture
 - `tests/fixtures/`: fake ACRA-style profile (PDF and text)
+- `web/public/samples/`: the 3 sample posters for the opening gallery (branch poc-gallery), served at `/samples/`
+- `tests/test_gallery.py`: flow-order tests for the gallery (branch poc-gallery)
 - `Docs/UI-API-CONTRACT.md`: front-end view of the API
 - `Docs/flows/flows.md`: user flow and data flow, step by step
 - `Docs/flows/client-flow.png`: client chat flow storyboard, with stand-out features

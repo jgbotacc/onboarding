@@ -13,7 +13,7 @@ All client paths are under `/api`, send `x-session-secret`, and include the lang
 
 | Method / path | Body | Returns |
 |---|---|---|
-| `POST /api/session` | as v1 (`{}` / `{sessionId, sessionSecret}` / `{resumeToken}`) + `lang` | as v1 |
+| `POST /api/session` | as v1 (`{}` / `{sessionId, sessionSecret}` / `{resumeToken}`) + `lang`; optional `flow: "gallery"` (branch poc-gallery) opens on the sample posters (`status: "pick_poster"`, `looks.round: 0`) | as v1 |
 | `POST /api/chat` | `{sessionId, text, lang}` | ChatReply |
 | `POST /api/form` | `{sessionId, fields, lang}` | ChatReply |
 | `POST /api/upload` | multipart `sessionId`, `files[]`, `lang` | ChatReply (may hold `extracted` or `retake`) |
