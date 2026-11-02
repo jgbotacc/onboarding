@@ -14,27 +14,40 @@ def scrub_nric(text: str) -> str:
 
 
 def others_identifiers(store, own_id) -> set[str]:
-    """Lower-cased emails, phone digits (len>=8) and UENs of every other session."""
+    """Lower-cased emails, phone digits (len>=8) and UENs of every other session.
+
+    Own email/phone/UEN are excluded so a duplicate value never masks your own
+    record; free-text matches (e.g. another client's email pasted in notes) still mask.
+    """
     out: set[str] = set()
+    own: set[str] = set()
     for st in store.list_states():
-        if st.get("id") == own_id:
-            continue
+        is_own = st.get("id") == own_id
         for k, v in (st.get("fields") or {}).items():
             if not isinstance(v, str) or not v.strip():
                 continue
             kl = str(k).lower()
             if kl == "email":
-                out.add(v.strip().lower())
+                (own if is_own else out).add(v.strip().lower())
             elif kl in _PHONE_KEYS:
                 d = re.sub(r"\D", "", v)
                 if len(d) >= 8:
-                    out.add(d)
+                    (own if is_own else out).add(d)
             elif kl == "uen":
-                out.add(v.strip().lower())
-            for m in _EMAIL.findall(v):
-                out.add(m.lower())
+                (own if is_own else out).add(v.strip().lower())
+            if not is_own:
+                for m in _EMAIL.findall(v):
+                    out.add(m.lower())
     out.discard("")
-    return out
+    own.discard("")
+    return out - own - _examples()
+
+
+def _examples() -> set[str]:
+    """Sample values shown in our own help text (e.g. "+65 6123 4567") are never treated as client data."""
+    from src.features.intake.validate import EXAMPLES
+    vals = {v for vs in EXAMPLES.values() for v in vs}
+    return {v.lower() for v in vals} | {re.sub(r"\D", "", v) for v in vals if len(re.sub(r"\D", "", v)) >= 8}
 
 
 def clean(obj, others: set[str] = frozenset()) -> tuple:

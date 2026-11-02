@@ -64,3 +64,11 @@ Calls the front end makes:
 
 Status labels handled: need_document, missing_info, need_direction, awaiting_review, accepted,
 handed_off, approved, rejected, needs_info, pending_review.
+
+## v2 additions
+Client: `POST /api/language`, `purpose=document` uploads, `POST /api/confirm`,
+`DELETE /api/documents/{docId}`, `POST /api/looks`, status `confirm_details`, plus `lines`,
+`lang`, `retake`, `confirm`, `looks`, `consult` on every reply. Staff detail adds `lang`,
+`transcript`, `looks`, `rejected_looks`, `consult`, `audit`, `documents` (pending drafts never
+shown). New staff routes: decision `preview`, `rejected-looks`, `consults` + consult decisions,
+`metrics`, `traces`, `audit`. Full contract: `Docs/PRD.md` section 6.

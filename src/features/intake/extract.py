@@ -1,7 +1,5 @@
-"""PDF parsing + field extraction. Regex/heuristics by default; LLM only if a key is set."""
+"""PDF parsing + field extraction. Regex only; Meta-only rule (no OpenAI)."""
 import io
-import json
-import os
 import re
 
 from pypdf import PdfReader
@@ -54,29 +52,6 @@ def regex_extract(text: str) -> dict:
     return out
 
 
-def llm_extract(text: str) -> dict | None:
-    """Optional: OpenAI-compatible extraction when OPENAI_API_KEY is set. Never raises."""
-    key = os.getenv("OPENAI_API_KEY")
-    if not key:
-        return None
-    try:
-        import httpx
-        prompt = ("Extract JSON with keys " + ",".join(ALIASES) + " "
-                  "(omit unknown) from this business document:\n" + text[:6000])
-        r = httpx.post("https://api.openai.com/v1/chat/completions", timeout=30,
-                       headers={"Authorization": f"Bearer {key}"},
-                       json={"model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
-                             "response_format": {"type": "json_object"},
-                             "messages": [{"role": "user", "content": prompt}]})
-        return {k: v for k, v in json.loads(r.json()["choices"][0]["message"]["content"]).items() if v}
-    except Exception as e:  # fall back to regex
-        print(f"[extract] LLM extraction failed, using regex: {e}")
-        return None
-
-
 def extract_fields(text: str) -> dict:
-    fields = regex_extract(text)
-    llm = llm_extract(text)
-    if llm:
-        fields.update(llm)
-    return fields
+    """Regex only (D1: Meta is the only model; OpenAI removed)."""
+    return regex_extract(text)
