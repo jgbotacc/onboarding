@@ -297,7 +297,7 @@ button { font: inherit; }
   padding: 0 6px; border-radius: 4px; background: var(--accent); color: #fff;
 }
 .look-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-.looks.is-disabled { opacity: .55; }
+.looks.is-disabled .look-grid, .looks.is-disabled .look-actions { opacity: .55; }
 .looks.is-disabled .look-card { cursor: not-allowed; }
 /* Confirm card: extracted fields with Listen buttons and inline editors,
    plus a retake notice with a camera button (native inputs and buttons,
