@@ -158,7 +158,7 @@ export default function App() {
 
   const render = useCallback(
     (r: ApiResponse) => {
-      push({ role: "assistant", text: r.reply || "", images: r.images || [], status: r.status || "", round: r.round || 0, looks: r.looks ?? null, extracted: r.extracted ?? null, retake: r.retake ?? null, consult: r.consult ?? null });
+      push({ role: "assistant", text: r.reply || "", images: r.consult ? [] : r.images || [], status: r.status || "", round: r.round || 0, looks: r.consult ? null : r.looks ?? null, extracted: r.extracted ?? null, retake: r.retake ?? null, consult: r.consult ?? null });
       if (r.status) setStatus(r.status);
       setMissing(r.missing || []);
     },
@@ -443,7 +443,7 @@ export default function App() {
               <div className="msg assistant" lang={lang}>
                 {m.text && <MsgText text={m.text} />}
                 <ListenButton id={"msg-" + m.id} text={m.text} lang={lang} trace={traceListen} />
-                {(m.looks?.options?.length ?? 0) > 0 && m.looks && client ? (
+                {!m.consult && (m.looks?.options?.length ?? 0) > 0 && m.looks && client ? (
                   <LooksPicker
                     looks={m.looks}
                     lang={lang}
@@ -455,7 +455,7 @@ export default function App() {
                     idPrefix={"looks-" + m.id}
                   />
                 ) : (
-                  m.images.length > 0 && (
+                  !m.consult && m.images.length > 0 && (
                     <div className="img-grid">
                       {m.images.map((src, i) => (
                         <button type="button" key={i} className="thumb" onClick={() => setLightbox(src)} aria-label={t(lang, "enlargeImage", { n: i + 1 })}>
