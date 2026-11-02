@@ -2,7 +2,7 @@
 
 <!-- Lives at /Docs/FILE-STRUCTURE.md. Whoever adds, moves or deletes a file or folder updates the tree in this file in the same commit. -->
 
-Repo URL: `https://github.com/jgbotacc/onboarding-agent`
+Repo URL: `https://github.com/jgbotacc/onboarding-agent-v2` (private; v1 stays at `jgbotacc/onboarding-agent`)
 Stack: `web (FastAPI + React/Vite, Neo4j Aura, Daytona, Vercel relay)`
 
 ## File tree
@@ -11,6 +11,8 @@ Stack: `web (FastAPI + React/Vite, Neo4j Aura, Daytona, Vercel relay)`
 ├── README.md                 how to run, build and test
 ├── requirements.txt          Python dependencies
 ├── Docs/
+│   ├── PRD.md                v2 requirements, principles, integrations, API contract
+│   ├── ASSUMPTIONS.md        decisions and assumptions log
 │   ├── b2b-registration-form.html   field source of truth
 │   ├── review-api.md         staff review API contract
 │   ├── FILE-STRUCTURE.md     this file
@@ -23,10 +25,12 @@ Stack: `web (FastAPI + React/Vite, Neo4j Aura, Daytona, Vercel relay)`
 │   ├── app.py                FastAPI entry point (API + serves web/dist)
 │   ├── features/
 │   │   ├── chat/             onboarding state machine
-│   │   ├── intake/           PDF parsing and field extraction
+│   │   ├── intake/           PDF/photo reading, ACRA parser, NRIC removal, validation
+│   │   ├── i18n/             language detection and translation (Muse Spark)
+│   │   ├── looks/            look briefs and 'Which look do you prefer?' rounds
 │   │   ├── imagegen/         image providers (Muse, placeholder), 1080x1080 posts
-│   │   └── staff/            staff review API and email providers
-│   ├── shared/               config and relay client
+│   │   └── staff/            staff review API, consult cards, metrics, email providers
+│   ├── shared/               config, relay, Meta client, tracing, outbound guard
 │   └── data/                 all database reads and writes (Neo4j, SQLite fallback)
 ├── db/migrations/            SQLite schema migrations
 ├── neo4j/                    graph schema, seed and queries (Cypher)
@@ -34,6 +38,7 @@ Stack: `web (FastAPI + React/Vite, Neo4j Aura, Daytona, Vercel relay)`
 ├── web/                      React + Vite front end (chat and /staff)
 ├── screens/                  UI screenshots
 ├── tests/                    API, staff, relay and image tests
+│   └── fixtures/             made-up ACRA-style fixture (no real data)
 └── scripts/                  deploy, Cypher loader and sample-data scripts
 ```
 
@@ -54,6 +59,15 @@ Stack: `web (FastAPI + React/Vite, Neo4j Aura, Daytona, Vercel relay)`
 | `/scripts` | Daytona deploy, sandbox exec, Cypher loader, sample PDF |
 
 ## Added files and folders
+- `Docs/PRD.md`, `Docs/ASSUMPTIONS.md`: v2 requirements and decisions
+- `src/shared/meta.py`, `src/shared/trace.py`, `src/shared/guard.py`: Meta client with retries, step tracing, outbound guard
+- `src/features/intake/document.py`, `src/features/intake/photo.py`: general document and photo reading
+- `src/features/i18n/`: language detection and translation
+- `src/features/looks/`: look briefs and rounds
+- `src/features/staff/consult.py`, `src/features/staff/metrics.py`: consult cards and metrics
+- `db/migrations/006_v2.sql`: looks, consults, audit, traces, evals tables
+- `scripts/eval_sample.py`: sampled Jev grading export/import
+- `tests/fixtures/`: fake ACRA-style profile
 - `Docs/flows/flows.md`: user flow and data flow, step by step
 - `Docs/flows/client-flow.png`: client chat flow storyboard, with stand-out features
 - `Docs/flows/staff-flow.png`: staff review flow storyboard, with stand-out features
