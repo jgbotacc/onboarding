@@ -5,6 +5,5 @@ pypdf
 pillow
 neo4j
 httpx
-google-genai
 reportlab
 pillow-heif

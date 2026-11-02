@@ -64,10 +64,11 @@ Stack: `web (FastAPI + React/Vite, Neo4j Aura, Daytona, Vercel relay)`
 - `src/features/intake/document.py`, `src/features/intake/photo.py`: general document and photo reading
 - `src/features/i18n/`: language detection and translation
 - `src/features/looks/`: look briefs and rounds
-- `src/features/staff/consult.py`, `src/features/staff/metrics.py`: consult cards and metrics
+- `src/features/chat/consult.py`: consult card builder; `src/features/staff/metrics.py`: outcome and step metrics
 - `db/migrations/006_v2.sql`: looks, consults, audit, traces, evals tables
-- `scripts/eval_sample.py`: sampled Jev grading export/import
-- `tests/fixtures/`: fake ACRA-style profile
+- `scripts/make_acra_fixture.py`: builds the made-up ACRA-style fixture
+- `tests/fixtures/`: fake ACRA-style profile (PDF and text)
+- `Docs/UI-API-CONTRACT.md`: front-end view of the API
 - `Docs/flows/flows.md`: user flow and data flow, step by step
 - `Docs/flows/client-flow.png`: client chat flow storyboard, with stand-out features
 - `Docs/flows/staff-flow.png`: staff review flow storyboard, with stand-out features

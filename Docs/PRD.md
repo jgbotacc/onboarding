@@ -212,13 +212,24 @@ New statuses: `confirm_details`.
 | Method / path | Result |
 |---|---|
 | `GET /api/staff/clients/{id}` | v1 detail plus `lang`, `transcript: [{role, text, original, lang, at}]`, `looks: [{round, id, url, title, brief, selected: bool}]`, `rejected_looks` (same items, not selected), `consult`, `audit` |
-| `GET /api/staff/clients/{id}/rejected-looks` | `[{round, id, url, title, brief, at}]` |
+| `GET /api/staff/clients/{id}/rejected-looks` | grouped by round: `[{round, options: [{id, url, alt, title, brief, at}]}]` |
 | `GET /api/staff/consults` | consult cards, newest first: `{id, client_id, business_name, status: "pending_approval"\|"approved"\|"declined", created, lang, submitted: {label: value}, next_steps: [str], rejected_rounds, rejected_looks: [...], approved_by, decided_at, note}` |
 | `POST /api/staff/consults/{id}/decision` | `{decision: "approve"\|"decline", note?}` -> updated card (audited; no email) |
 | `POST /api/staff/clients/{id}/decision/preview` | same body as decision -> `{subject, body}`; nothing sent |
 | `GET /api/staff/metrics` | `{outcomes: {sessions, completed, completion_rate, avg_minutes_to_finish, avg_fields_needing_fixes, avg_rounds_to_pick, consult_rate}, steps: [{step, model, calls, ok_rate, avg_latency_ms, cost_sgd}], total_cost_sgd, errors: [recent failed traces], evals: {doc_extraction_accuracy, image_fit, n, at} \| null}` |
 | `GET /api/staff/traces?client=<id>&limit=100` | traces newest first |
 | `GET /api/staff/audit?client=<id>` | audit entries `{at, actor, action, target, client_id, details}` |
+
+### Front-end route names (aliases, see `Docs/UI-API-CONTRACT.md`)
+`POST /api/looks/pick {picked_ids}`, `POST /api/looks/skip`, `POST /api/extracted/confirm {fields}`, `DELETE /api/upload`,
+`POST /api/trace {kind: "listen"|"mic", ok, ms}`, `POST /api/staff/consults/{id}/approve`. Every client route also takes
+`lang` (body or multipart field) or the `x-lang` header. Replies add `step` (= status), `extracted` (= `confirm.fields` as
+`{field, label, value}`) and `alt` on look options. Staff client detail adds `traces: [{step, model, ok, ms, cost_sgd, at}]`.
+
+### Quality numbers
+Jev sample on the smoke test (2026-11-03): document extraction from a phone photo of the made-up ACRA fixture 2.93/3,
+image fit to brief 2.68/3 (from short descriptions of the three looks). Not yet imported into the store; `scripts/eval_sample.py`
+is planned, so `evals` in the metrics API is `null` for now.
 
 ## 7. Out of scope for v2 backend
 Redeploying Daytona/Vercel, changing the v1 repo, server-side voice, consult emails or alerts.
