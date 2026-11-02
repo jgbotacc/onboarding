@@ -274,6 +274,36 @@ button { font: inherit; }
 .listen-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .listen-btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
 .listen-notice { font-size: 12px; line-height: 16px; color: var(--text-2); }
+/* Looks picker: one round of look options as selectable cards (WCAG 2.2: native
+   checkboxes and buttons, keyboard operable with visible focus). */
+.looks { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; width: min(480px, 70vw); }
+.looks-prompt { margin: 0; font-weight: 600; color: var(--text); }
+.looks-round { margin: 0; font-size: 12px; line-height: 16px; color: var(--text-2); }
+.look-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 4px; }
+.look-card {
+  position: relative; display: flex; flex-direction: column; gap: 4px; padding: 6px;
+  border: 1px solid var(--border); border-radius: var(--r); background: var(--subtle); cursor: pointer;
+  transition: border-color .12s ease-out, background-color .12s ease-out;
+}
+.look-card:hover { border-color: #c9cdd4; }
+.look-card.selected { border-color: var(--accent); background: var(--accent-soft); }
+.look-card:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.look-check { width: 16px; height: 16px; margin: 0; flex: none; cursor: pointer; accent-color: var(--accent); }
+.look-check:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.look-card img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 4px; background: var(--surface); }
+.look-caption { font-size: 12px; line-height: 16px; color: var(--text-2); overflow-wrap: anywhere; }
+.look-badge {
+  position: absolute; top: 8px; right: 8px; font-size: 11px; line-height: 16px; font-weight: 600;
+  padding: 0 6px; border-radius: 4px; background: var(--accent); color: #fff;
+}
+.look-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.consult-note {
+  margin: 8px 0 0; padding: 8px 12px; border-radius: var(--r);
+  background: var(--accent-soft); color: var(--text); font-size: 13px; line-height: 20px;
+}
+@media (max-width: 600px) {
+  .looks { width: calc(100vw - 112px); max-width: 480px; }
+}
 /* Mic button next to the composer: hidden where SpeechRecognition is missing
    (.btn-icon sets display, which would override the hidden attribute). */
 .mic-btn[hidden] { display: none; }

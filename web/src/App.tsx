@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
 import { connect, HttpError, type Client } from "./api";
-import { EMPTY_FORM, type ApiResponse, type FieldIssue, type FormFields } from "./types";
+import { EMPTY_FORM, type ApiResponse, type ConsultInfo, type FieldIssue, type FormFields, type Looks } from "./types";
 import FormModal from "./FormModal";
+import LooksPicker from "./looks/LooksPicker";
 import { toFieldKeys } from "./staff/fields";
 import { LANGS, fieldLabel, statusLabel, t, useLang, type Lang } from "./i18n";
 import { CheckboxIcon, CloseIcon, FileIcon, ImageIcon, MicIcon, PaperclipIcon, SendIcon } from "./icons";
@@ -10,7 +11,7 @@ import { isMicSupported, startListening } from "./speech/mic";
 
 type Msg =
   | { id: number; role: "user"; text: string; files: string[] }
-  | { id: number; role: "assistant"; text: string; images: string[]; status: string; round: number; choices?: boolean }
+  | { id: number; role: "assistant"; text: string; images: string[]; status: string; round: number; choices?: boolean; looks?: Looks | null; consult?: ConsultInfo | null }
   | { id: number; role: "error"; text: string };
 
 type NewMsg = Msg extends infer T ? (T extends Msg ? Omit<T, "id"> : never) : never;
@@ -156,11 +157,23 @@ export default function App() {
 
   const render = useCallback(
     (r: ApiResponse) => {
-      push({ role: "assistant", text: r.reply || "", images: r.images || [], status: r.status || "", round: r.round || 0 });
+      push({ role: "assistant", text: r.reply || "", images: r.images || [], status: r.status || "", round: r.round || 0, looks: r.looks ?? null, consult: r.consult ?? null });
       if (r.status) setStatus(r.status);
       setMissing(r.missing || []);
     },
     [push],
+  );
+
+  const replyError = useCallback(
+    (e: unknown) => {
+      if (e instanceof HttpError && e.status === 400 && e.detail) {
+        push({ role: "error", text: e.detail });
+        return;
+      }
+      console.error(e);
+      push({ role: "error", text: t(lang, "sendFailed") });
+    },
+    [push, lang],
   );
 
   const run = useCallback(
@@ -350,6 +363,7 @@ export default function App() {
   };
 
   const lastReviewId = [...messages].reverse().find((m) => m.role === "assistant" && m.status === "awaiting_review")?.id;
+  const lastLooksId = [...messages].reverse().find((m) => m.role === "assistant" && (m.looks?.options?.length ?? 0) > 0)?.id;
   const reviewOpen = status === "awaiting_review";
   const micLabel = t(lang, micOn ? "mic.stop" : "mic.label");
   const micTitle = micSupported ? micLabel : t(lang, "mic.notSupported");
@@ -427,15 +441,29 @@ export default function App() {
               <div className="msg assistant" lang={lang}>
                 {m.text && <MsgText text={m.text} />}
                 <ListenButton id={"msg-" + m.id} text={m.text} lang={lang} trace={traceListen} />
-                {m.images.length > 0 && (
-                  <div className="img-grid">
-                    {m.images.map((src, i) => (
-                      <button type="button" key={i} className="thumb" onClick={() => setLightbox(src)} aria-label={t(lang, "enlargeImage", { n: i + 1 })}>
-                        <img src={src} alt={t(lang, "generatedImage", { n: i + 1 })} loading="lazy" />
-                      </button>
-                    ))}
-                  </div>
+                {(m.looks?.options?.length ?? 0) > 0 && m.looks && client ? (
+                  <LooksPicker
+                    looks={m.looks}
+                    lang={lang}
+                    client={client}
+                    disabled={busy || m.id !== lastLooksId}
+                    trace={traceListen}
+                    onReply={render}
+                    onError={replyError}
+                    idPrefix={"looks-" + m.id}
+                  />
+                ) : (
+                  m.images.length > 0 && (
+                    <div className="img-grid">
+                      {m.images.map((src, i) => (
+                        <button type="button" key={i} className="thumb" onClick={() => setLightbox(src)} aria-label={t(lang, "enlargeImage", { n: i + 1 })}>
+                          <img src={src} alt={t(lang, "generatedImage", { n: i + 1 })} loading="lazy" />
+                        </button>
+                      ))}
+                    </div>
+                  )
                 )}
+                {m.consult && <p className="consult-note">{t(lang, "consult.note")}</p>}
                 {showReview && (
                   <>
                     <div className="review">
