@@ -36,6 +36,8 @@ Stack: `web (FastAPI + React/Vite, Neo4j Aura, Daytona, Vercel relay)`
 ├── neo4j/                    graph schema, seed and queries (Cypher)
 ├── relay/                    Vercel pass-through to Neo4j, Muse and Resend
 ├── web/                      React + Vite front end (chat and /staff)
+│   ├── src/voice/            talk-only onboarding (`VoiceApp.tsx`, `logic.ts`, `voice.css`)
+│   └── scripts/test-voice.mjs  front-end-only checks for the voice logic and voice i18n keys
 ├── screens/                  UI screenshots
 ├── tests/                    API, staff, relay and image tests
 │   └── fixtures/             made-up ACRA-style fixture (no real data)

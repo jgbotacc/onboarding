@@ -1,5 +1,13 @@
 # Onboarding Agent (v2)
 
+## Branch `poc-voice`: Talk-only onboarding
+- The owner finishes onboarding by talking: one question at a time out loud, each answer read back with yes or no.
+- Looks are read out by name; the owner says one, two, three or skip. The style question can be skipped.
+- Same v2 backend: answers go through the existing form and chat routes. Classic chat is still at `#/chat`.
+- Four languages: English, Chinese, Malay, Tamil.
+- Nothing plays before the Start tap. Pause/Resume, Stop and Repeat buttons stay on screen throughout.
+- Labelled buttons in native tab order, a polite live region for prompts, and a typed box as fallback on every listening step.
+
 ## What it does
 AI-assisted onboarding chat for small businesses. A client uploads a PDF or phone photo with business details, the agent pulls out the fields, asks only for what is still missing, and shows three square (1080x1080) marketing looks per round for up to 3 rounds. If nothing is picked, it hands off to staff for a consult.
 
@@ -59,3 +67,4 @@ Env vars, by name only:
 - [Docs/ASSUMPTIONS.md](Docs/ASSUMPTIONS.md)
 - [Docs/UI-API-CONTRACT.md](Docs/UI-API-CONTRACT.md)
 - [Docs/FILE-STRUCTURE.md](Docs/FILE-STRUCTURE.md)
+- [Docs/PITCH.md](Docs/PITCH.md)

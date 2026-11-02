@@ -1,0 +1,214 @@
+/* Talk-only onboarding screen. Plain layout, large touch targets,
+   visible focus, and a narrow column aimed at a 375px phone. */
+.voice {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--bg);
+  color: var(--text);
+  padding: 0 16px 48px;
+}
+
+.voice-top {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 0;
+}
+
+.voice-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.voice-chat-link {
+  font-size: 14px;
+  color: var(--accent);
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.voice-start {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12vh;
+}
+
+.voice-label {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.voice-select {
+  min-height: 48px;
+  font-size: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  color: var(--text);
+  padding: 0 12px;
+}
+
+.voice-start-btn {
+  min-height: 64px;
+  font-size: 22px;
+  font-weight: 700;
+  border: none;
+  border-radius: var(--r-lg);
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  margin-top: 8px;
+}
+
+.voice-start-btn:hover:not(:disabled) { background: var(--accent-hover); }
+.voice-start-btn:disabled { opacity: 0.6; cursor: wait; }
+
+.voice-main {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.voice-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.voice-btn {
+  flex: 1;
+  min-height: 48px;
+  font-size: 17px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  padding: 0 12px;
+}
+
+.voice-btn:hover { background: var(--subtle); }
+
+.voice-prompt {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 20px 16px;
+}
+
+.voice-prompt-text {
+  margin: 0;
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 600;
+}
+
+.voice-state {
+  margin: 12px 0 0;
+  font-size: 17px;
+  color: var(--text-2);
+}
+
+.voice-heard,
+.voice-nomic,
+.voice-finished {
+  margin: 12px 0 0;
+  font-size: 17px;
+  line-height: 24px;
+}
+
+.voice-looks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.voice-look {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+
+.voice-look-img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.voice-look-alt {
+  display: block;
+  padding: 12px 16px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.voice-type {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.voice-type-row {
+  display: flex;
+  gap: 8px;
+}
+
+.voice-input {
+  flex: 1;
+  min-height: 48px;
+  min-width: 0;
+  font-size: 17px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  color: var(--text);
+  padding: 0 12px;
+}
+
+.voice-send { flex: 0 0 auto; }
+
+.voice-log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.voice-bot,
+.voice-owner {
+  border-radius: var(--r);
+  padding: 8px 12px;
+  white-space: pre-line;
+}
+
+.voice-bot { background: var(--surface); border: 1px solid var(--border); }
+.voice-owner { background: var(--accent-soft); align-self: flex-end; }
+
+.voice :focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voice * { transition: none; }
+}

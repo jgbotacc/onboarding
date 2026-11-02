@@ -55,3 +55,14 @@ Decisions were made by Jin. Assumptions are ours; Jin can override any of them.
 - A28. The front end's route names (`/api/looks/pick`, `/api/looks/skip`, `/api/extracted/confirm`, `DELETE /api/upload`, `POST /api/trace`, `POST /api/staff/consults/{id}/approve`, `x-lang`) are served as aliases of the PRD routes, so both work.
 - A29. The confirm step's reply text does not repeat the extracted values; the front end shows them in the confirm card (they used to show twice).
 - A30. Code for this build was written with Muse Code. The first sessions (tasks 1 to 5) ran on `muse-spark-1.3-contributor` (Muse Code's default Contributor mode, which allows Meta to train on the prompts and code sent; no client data was sent, only repo code and the made-up fixture). From 04:16 SGT every session runs `--model muse-spark-1.3 --contributor-mode off` (Standard). The app's own Meta calls always use Standard `muse-spark-1.3` (A1).
+
+## Branch poc-voice (Talk-only)
+
+The voice code was written with Muse Code.
+
+- V1. Speech is browser-only: `speechSynthesis` for talking and browser speech recognition for listening. No paid voice. Quality depends on the voices on the device.
+- V2. Four questions are asked client-side in order (business name, name, email, style); only the style question can be skipped. The collected answers are sent with the existing form route, and the rest of the flow uses the existing chat and look routes.
+- V3. Spoken email parts are normalised ("at" to `@`, "dot" to `.`, plus dash, hyphen and underscore). A typed address with `@` is left unchanged. The normalised value is what gets read back.
+- V4. Yes/no words per language: English yes/yeah/yep/yup/sure/ok/okay/correct/right/agree and no/nope/nah/not/wrong (also heard in every language); Chinese 是/对/好/可以/没错 and 不/错; Malay ya/betul/boleh and tidak/bukan/salah; Tamil ஆம்/ஆமாம்/சரி and இல்லை/வேண்டாம்/தவறு. Look-choice words: one/first, two/second, three/third and digits, plus Chinese 一/二/两/三, Malay satu/dua/tiga, Tamil ஒன்று/இரண்டு/மூன்று; skip words skip/next/跳过/langkau/தவிர். Like A26, these need a native-speaker check.
+- V5. Looks are read out by their alt text, which is the look title, not an image description.
+- V6. Typed fallback: when the mic is unsupported the typed box is the only input, and at every listening step typing Send answers instead of speaking.
