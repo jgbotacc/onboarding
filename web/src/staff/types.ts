@@ -24,8 +24,71 @@ export interface StaffDetail {
   reference_images: string[];
   status: string;
   round: number;
+  /** Step traces, when available; the UI hides the table when absent. */
+  traces?: StepTrace[];
   /** Emails sent for this client so far (oldest first). */
   outbox?: EmailInfo[];
+}
+
+/** GET /api/staff/clients/:id/rejected-looks -> RejectedLookRound[] (every look not picked, grouped by round) */
+export interface RejectedLookOption {
+  id: string;
+  url: string;
+  alt: string;
+}
+
+export interface RejectedLookRound {
+  round: number;
+  options: RejectedLookOption[];
+}
+
+/** GET /api/staff/consults -> Consult[] */
+export interface Consult {
+  id: string;
+  client_id: string;
+  business_name: string;
+  status: "pending_approval" | "approved";
+  /** Everything already submitted, as { label: value }. */
+  submitted: Record<string, string>;
+  /** Unresolved next steps. */
+  next_steps: string[];
+  created: string;
+  approved_by?: string | null;
+  decided_at?: string | null;
+}
+
+/** Step trace recorded for a client; shown as (step, model, ok, ms, S$ cost). */
+export interface StepTrace {
+  step: string;
+  model: string;
+  ok: boolean;
+  ms: number;
+  cost_sgd: number;
+  at?: string;
+}
+
+/** GET /api/staff/metrics */
+export interface StaffMetrics {
+  outcomes: {
+    sessions: number;
+    completed: number;
+    completion_rate: number;
+    avg_minutes_to_finish: number;
+    avg_fields_needing_fixes: number;
+    avg_rounds_to_pick: number;
+    consult_rate: number;
+  };
+  steps: {
+    step: string;
+    model: string;
+    calls: number;
+    ok_rate: number;
+    avg_latency_ms: number;
+    cost_sgd: number;
+  }[];
+  total_cost_sgd: number;
+  errors?: StepTrace[];
+  evals?: { doc_extraction_accuracy: number; image_fit: number; n: number; at: string } | null;
 }
 
 export interface EmailInfo {

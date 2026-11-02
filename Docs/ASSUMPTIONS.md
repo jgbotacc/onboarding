@@ -38,3 +38,15 @@ Decisions were made by Jin. Assumptions are ours; Jin can override any of them.
 - A23. Neo4j writes stay one Cypher statement per write (one atomic transaction each), because the v1 relay passes single statements. Not run against the live Aura database during this build (v1 uses it).
 - A24. Tests never call Meta: `MODEL_API_KEY` and the relay env are unset in tests and Meta calls are mocked.
 - A25. Completion = status `accepted`, `approved`, `rejected` or `pending_review`; time to finish = first stored event to the pick or the last update.
+- [ui] U1. Client UI language is the picker value (`localStorage.onboardingLang`, default English). It is sent as `lang` on every request; the backend's own detection only applies if the client never picks.
+- [ui] U2. Status pills, buttons, form labels and validation pop-ups are translated in the browser (`web/src/i18n`). Bot reply text is translated by the backend. Field values the client typed are never translated.
+- [ui] U3. Translations of fixed UI text were drafted by the Meta model through Muse Code and not checked by a native speaker yet (zh simplified, ms, ta).
+- [ui] U4. Listen uses the browser's own voices (`speechSynthesis`). If the device has no voice for the language, the Listen button is disabled with a short note. No paid cloud voice.
+- [ui] U5. The mic uses browser speech recognition where available (Chrome, Edge, Safari). Text goes into the box for the client to check; nothing is sent automatically. Unsupported browsers get no mic button.
+- [ui] U6. Listen and mic use is logged with `POST /api/trace {kind, ok, ms}`; failures are ignored so they never block the client.
+- [ui] U7. "Use these" needs at least one look picked. Skipping is the only way to get a new round; after the 3rd skip the consult message shows and the picker locks.
+- [ui] U8. On the confirm step, values can be edited in place before Confirm. "Remove file" drops the pending document. Any field named nric/fin or value shaped like an NRIC/FIN is hidden in the UI as a second guard.
+- [ui] U9. Retake opens the camera on phones (`capture="environment"`); upload accepts PDF, JPG and PNG. HEIC from the picker is not offered in the UI (backend still accepts it).
+- [ui] U10. Staff views (consult cards, rejected looks, step traces, metrics) are English only and hide any section whose endpoint fails or is missing.
+- [ui] U11. Staff approve a consult hand-off with one click (no extra confirm dialog); this is the human-in-the-loop step and is audited by the backend.
+- [ui] U12. Mobile target is 375px wide for the client chat. The staff page is desktop-first.

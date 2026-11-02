@@ -18,3 +18,6 @@ export const CloseIcon = () => (
 export const CheckboxIcon = () => (
   <svg {...base} width={14} height={14}><rect x="2.5" y="2.5" width="11" height="11" rx="2" /></svg>
 );
+export const MicIcon = () => (
+  <svg {...base}><rect x="6" y="1.5" width="4" height="7" rx="2" /><path d="M4 7.5a4 4 0 0 0 8 0M8 11.5v2.5" /></svg>
+);

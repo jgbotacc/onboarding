@@ -1,20 +1,70 @@
+import en from "./i18n/en";
+
+export type Lang = "en" | "zh" | "ms" | "ta";
+
 export type Status =
   | "registering"
   | "missing_info"
+  | "confirm_details"
+  | "choosing_look"
   | "generating"
   | "awaiting_review"
   | "accepted"
   | "handed_off";
 
-export interface ApiResponse {
+export interface LookOption {
+  id: string;
+  url: string;
+  /** Short description in the client's language (PRD name: `title`). */
+  alt: string;
+}
+
+export interface Looks {
+  round: number;
+  max_rounds: number;
+  options: LookOption[];
+  prompt?: string;
+}
+
+export interface ExtractedField {
+  field: string;
+  label: string;
+  value: string;
+}
+
+export interface RetakeInfo {
+  reason: string;
+}
+
+export interface ConsultInfo {
+  status: string;
+  submitted?: Record<string, string>;
+  next_steps?: string[];
+  id?: string;
+}
+
+export type TraceKind = "listen" | "mic";
+
+/** UI ↔ API contract (`Docs/UI-API-CONTRACT.md`): every client reply shape. */
+export interface ChatReply {
   reply: string;
-  images: string[];
+  lang?: Lang | string;
+  /** New step name; falls back to `status` when the backend sends only v1 `status`. */
+  step?: string;
   status: Status | string;
+  images: string[];
   missing: string[];
   round: number;
   /** [field-validation] Values the server rejected; the reply asks to re-enter them with an example. */
   invalid?: FieldIssue[];
+  looks?: Looks | null;
+  extracted?: ExtractedField[] | null;
+  retake?: RetakeInfo | null;
+  consult?: ConsultInfo | null;
 }
+
+/** v1 name for {@link ChatReply}; kept so existing UI keeps compiling. */
+export type ApiResponse = ChatReply;
 
 /** [field-validation] One rejected field: `field` is the form key (a label is tolerated). */
 export interface FieldIssue {
@@ -26,24 +76,12 @@ export interface FieldIssue {
 
 export const MAX_ROUNDS = 3;
 
-export const STATUS_LABELS: Record<string, string> = {
-  registering: "Getting started",
-  need_document: "Getting started",
-  missing_info: "Needs details",
-  need_direction: "Choosing a style",
-  generating: "Making designs",
-  awaiting_review: "Ready to review",
-  accepted: "Approved",
-  handed_off: "With a designer",
-  // Staff review statuses
-  needs_info: "More info needed",
-  pending_review: "With our team",
-  approved: "Approved",
-  rejected: "Not approved",
-  // [resume-410] Resume link states
-  link_used: "Details sent",
-  link_invalid: "Link expired",
-};
+/** English status labels, derived from the i18n dict. The client UI uses statusLabel() for the active language. */
+export const STATUS_LABELS: Record<string, string> = Object.fromEntries(
+  Object.entries(en)
+    .filter(([k]) => k.startsWith("status."))
+    .map(([k, v]) => [k.slice("status.".length), v]),
+);
 
 export interface FormFields {
   business_name: string;

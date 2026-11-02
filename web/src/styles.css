@@ -54,6 +54,11 @@ button { font: inherit; }
   margin-left: auto; font-size: 12px; line-height: 16px; padding: 2px 8px;
   border: 1px solid var(--border); border-radius: 4px; color: var(--text-2); white-space: nowrap;
 }
+.lang-select {
+  margin-left: auto; height: 28px; padding: 0 6px; border: 1px solid var(--border);
+  border-radius: var(--r); background: var(--surface); color: var(--text-2); font-size: 13px; cursor: pointer;
+}
+.header .badge-demo { margin-left: 0; }
 
 .column { width: 100%; max-width: 760px; margin: 0 auto; }
 .chat { flex: 1; overflow-y: auto; padding: 16px; }
@@ -261,3 +266,102 @@ button { font: inherit; }
 .dock { animation: dock-in 0.2s ease-out; }
 @keyframes dock-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .dock { animation: none; } }
+
+/* Listen buttons: read a bot message or form question aloud (WCAG 2.2: native
+   buttons with visible focus, >=24px targets, text labels, no autoplay). */
+.listen-group { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.listen-btn { min-height: 28px; min-width: 24px; }
+.listen-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.listen-btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.listen-notice { font-size: 12px; line-height: 16px; color: var(--text-2); }
+/* Looks picker: one round of look options as selectable cards (WCAG 2.2: native
+   checkboxes and buttons, keyboard operable with visible focus). */
+.looks { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; width: min(480px, 70vw); }
+.looks-prompt { margin: 0; font-weight: 600; color: var(--text); }
+.looks-round { margin: 0; font-size: 12px; line-height: 16px; color: var(--text-2); }
+.look-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 4px; }
+.look-card {
+  position: relative; display: flex; flex-direction: column; gap: 4px; padding: 6px;
+  border: 1px solid var(--border); border-radius: var(--r); background: var(--subtle); cursor: pointer;
+  transition: border-color .12s ease-out, background-color .12s ease-out;
+}
+.look-card:hover { border-color: #c9cdd4; }
+.look-card.selected { border-color: var(--accent); background: var(--accent-soft); }
+.look-card:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.look-check { width: 16px; height: 16px; margin: 0; flex: none; cursor: pointer; accent-color: var(--accent); }
+.look-check:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.look-card img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 4px; background: var(--surface); }
+.look-caption { font-size: 12px; line-height: 16px; color: var(--text-2); overflow-wrap: anywhere; }
+.look-badge {
+  position: absolute; top: 8px; right: 8px; font-size: 11px; line-height: 16px; font-weight: 600;
+  padding: 0 6px; border-radius: 4px; background: var(--accent); color: #fff;
+}
+.look-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+/* Confirm card: extracted fields with Listen buttons and inline editors,
+   plus a retake notice with a camera button (native inputs and buttons,
+   keyboard operable with visible focus). */
+.confirm-details { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.confirm-fields { display: flex; flex-direction: column; gap: 8px; margin: 0; }
+.confirm-field { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--r); background: var(--subtle); }
+.confirm-label { font-size: 12px; line-height: 16px; font-weight: 600; color: var(--text-2); }
+.confirm-value { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0; overflow-wrap: anywhere; }
+.confirm-value .listen-group { margin-top: 0; flex: none; }
+.confirm-edit { margin: 0; }
+.confirm-edit input {
+  width: 100%; height: 32px; padding: 5px 10px; font: inherit; color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--r); background: var(--surface); outline: none;
+  transition: border-color .12s ease-out;
+}
+.confirm-edit input:hover { border-color: #c9cdd4; }
+.confirm-edit input:focus { border-color: var(--accent); }
+.confirm-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.retake { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.retake-notice { margin: 0; font-size: 13px; line-height: 20px; color: var(--text); }
+.consult-note {
+  margin: 8px 0 0; padding: 8px 12px; border-radius: var(--r);
+  background: var(--accent-soft); color: var(--text); font-size: 13px; line-height: 20px;
+}
+@media (max-width: 600px) {
+  .looks { width: calc(100vw - 112px); max-width: 480px; }
+}
+/* Mic button next to the composer: hidden where SpeechRecognition is missing
+   (.btn-icon sets display, which would override the hidden attribute). */
+.mic-btn[hidden] { display: none; }
+.mic-btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.field-label-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.field-label-row .listen-group { margin-top: 0; flex: none; }
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* 375px chat: no sideways scroll, >=44px tap targets. Desktop untouched. */
+@media (max-width: 600px) {
+  /* Header: wrap onto two rows, picker gets a full 44px row. */
+  .header { row-gap: 8px; }
+  .lang-select {
+    min-height: 44px; min-width: 44px; max-width: 100%;
+    font-size: 16px; padding: 0 12px;
+  }
+  /* All chat buttons hit 44px. */
+  .btn { min-height: 44px; height: auto; padding: 10px 16px; max-width: 100%; }
+  .modal-foot .btn { height: auto; min-height: 44px; }
+  .listen-btn { min-height: 44px; min-width: 44px; padding: 8px 12px; }
+  .chip { min-height: 44px; }
+  .chip button { min-width: 44px; min-height: 44px; justify-content: center; }
+  /* Looks: fill the bubble instead of vw math (no overflow), bigger check. */
+  .looks { width: 100%; max-width: 480px; min-width: 0; }
+  .img-grid { width: 100%; max-width: 480px; }
+  .look-card { min-height: 44px; min-width: 0; }
+  .look-check { width: 24px; height: 24px; }
+  /* Confirm: value wraps instead of pushing sideways, inputs hit 44px. */
+  .confirm-details { min-width: 0; }
+  .confirm-field { min-width: 0; }
+  .confirm-value { flex-wrap: wrap; }
+  .confirm-value > span:first-child { flex: 1 1 auto; min-width: 0; }
+  .confirm-edit input, .field input { min-height: 44px; height: 44px; font-size: 16px; }
+  /* Composer: textarea shrinks, mic/attach/send hit 44px. */
+  .composer textarea { min-width: 0; min-height: 44px; font-size: 16px; }
+  .btn-icon { width: 44px; height: 44px; min-width: 44px; min-height: 44px; }
+  .btn-send { min-height: 44px; height: 44px; }
+}

@@ -1,9 +1,10 @@
-import { ApiResponse, EMPTY_FORM, type FormFields } from "./types";
+import { EMPTY_FORM, type ApiResponse, type FormFields, type Lang, type TraceKind } from "./types";
 import { createMock } from "./mock";
 
 export const API_BASE = "";
 const SESSION_KEY = "onboardingSessionId";
 const SECRET_KEY = "onboardingSessionSecret"; // [session-secret] proves this tab owns the session
+const LANG_KEY = "onboardingLang";
 
 const store = (k: string, v: string) => {
   try {
@@ -21,6 +22,29 @@ const read = (k: string) => {
   }
 };
 
+const isLang = (v: unknown): v is Lang => v === "en" || v === "zh" || v === "ms" || v === "ta";
+
+/** Active language, shared with the i18n picker via localStorage (default `en`). */
+export function getLang(): Lang {
+  try {
+    const s = localStorage.getItem(LANG_KEY);
+    if (isLang(s)) return s;
+  } catch {
+    /* storage unavailable */
+  }
+  return "en";
+}
+
+export function storeLang(lang: Lang): void {
+  try {
+    if (!isLang(lang)) return;
+    localStorage.setItem(LANG_KEY, lang);
+    document.documentElement.lang = lang;
+  } catch {
+    /* storage unavailable */
+  }
+}
+
 /** [resume-410] The server answered with an error status (vs a network failure, which stays a plain Error). */
 export class HttpError extends Error {
   constructor(public status: number, public detail: string) {
@@ -28,17 +52,114 @@ export class HttpError extends Error {
   }
 }
 
+const errorDetail = (j: unknown): string => {
+  const o = (j && typeof j === "object" ? j : {}) as Record<string, unknown>;
+  if (typeof o.Detail === "string" && o.Detail) return o.Detail;
+  if (typeof o.detail === "string" && o.detail) return o.detail;
+  if (typeof o.message === "string" && o.message) return o.message;
+  return "";
+};
+
+/**
+ * Map a raw reply onto the contract shape (`Docs/UI-API-CONTRACT.md`), accepting the PRD
+ * response names too: `confirm.fields[{key,label,value}]` -> `extracted[{field,label,value}]`,
+ * `looks.options[{id,url,title}]` -> `[{id,url,alt}]`, `retake:true` + `retake_reason` -> `retake:{reason}`.
+ * `step` falls back to `status` (and vice versa).
+ */
+export function normalizeChatReply(raw: unknown): ApiResponse {
+  const src = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const out = { ...src } as Record<string, unknown>;
+  if (typeof out.step !== "string" || !out.step) {
+    if (typeof out.status === "string" && out.status) out.step = out.status;
+  }
+  if (typeof out.status !== "string" || !out.status) {
+    if (typeof out.step === "string" && out.step) out.status = out.step;
+    else if (out.status == null) out.status = "";
+  }
+  if (typeof out.reply !== "string") out.reply = "";
+  if (!Array.isArray(out.images)) out.images = [];
+  if (!Array.isArray(out.missing)) out.missing = [];
+  if (typeof out.round !== "number") out.round = 0;
+  const looks = out.looks as { options?: unknown } | null | undefined;
+  if (looks && typeof looks === "object" && Array.isArray(looks.options)) {
+    out.looks = {
+      ...looks,
+      options: looks.options.map((o) => {
+        const opt = (o && typeof o === "object" ? o : {}) as Record<string, unknown>;
+        return {
+          id: String(opt.id ?? ""),
+          url: String(opt.url ?? ""),
+          alt: typeof opt.alt === "string" ? opt.alt : typeof opt.title === "string" ? opt.title : "",
+        };
+      }),
+    };
+  }
+  const confirm = out.confirm as { fields?: unknown } | null | undefined;
+  if (!Array.isArray(out.extracted) && confirm && Array.isArray(confirm.fields)) {
+    out.extracted = confirm.fields.map((f) => {
+      const fld = (f && typeof f === "object" ? f : {}) as Record<string, unknown>;
+      return {
+        field: String(fld.field ?? fld.key ?? ""),
+        label: String(fld.label ?? fld.field ?? fld.key ?? ""),
+        value: String(fld.value ?? ""),
+      };
+    });
+  } else if (Array.isArray(out.extracted)) {
+    out.extracted = out.extracted.map((f) => {
+      const fld = (f && typeof f === "object" ? f : {}) as Record<string, unknown>;
+      return {
+        field: String(fld.field ?? fld.key ?? ""),
+        label: String(fld.label ?? fld.field ?? fld.key ?? ""),
+        value: String(fld.value ?? ""),
+      };
+    });
+  }
+  const retake = out.retake as { reason?: unknown } | boolean | null | undefined;
+  if (retake && typeof retake === "object" && typeof retake.reason === "string") {
+    /* already the contract shape */
+  } else if (out.retake === true) {
+    const reason = typeof out.retake_reason === "string" && out.retake_reason ? out.retake_reason : "blurry";
+    out.retake = { reason };
+  } else if (typeof out.retake_reason === "string" && out.retake_reason && !out.retake) {
+    out.retake = { reason: out.retake_reason };
+  } else if (out.retake === false) {
+    out.retake = undefined;
+  }
+  return out as unknown as ApiResponse;
+}
+
 async function postJson<T>(path: string, body: unknown, secret?: string): Promise<T> {
+  const lang = getLang();
+  const payload = { ...((body as Record<string, unknown>) ?? {}), lang };
   const r = await fetch(API_BASE + path, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...(secret ? { "x-session-secret": secret } : {}) },
-    body: JSON.stringify(body ?? {}),
+    headers: { "Content-Type": "application/json", "x-lang": lang, ...(secret ? { "x-session-secret": secret } : {}) },
+    body: JSON.stringify(payload),
   });
   if (!r.ok) {
     let detail = "";
     try {
-      const j = await r.json();
-      detail = typeof j?.detail === "string" ? j.detail : typeof j?.message === "string" ? j.message : "";
+      detail = errorDetail(await r.json());
+    } catch {
+      /* not JSON */
+    }
+    throw new HttpError(r.status, detail);
+  }
+  return r.json() as Promise<T>;
+}
+
+async function deleteJson<T>(path: string, body: unknown, secret?: string): Promise<T> {
+  const lang = getLang();
+  const payload = { ...((body as Record<string, unknown>) ?? {}), lang };
+  const r = await fetch(API_BASE + path, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json", "x-lang": lang, ...(secret ? { "x-session-secret": secret } : {}) },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) {
+    let detail = "";
+    try {
+      detail = errorDetail(await r.json());
     } catch {
       /* not JSON */
     }
@@ -54,6 +175,12 @@ export interface Client {
   form(fields: FormFields): Promise<ApiResponse>;
   chat(text: string): Promise<ApiResponse>;
   review(accepted: boolean, feedback: string): Promise<ApiResponse>;
+  pickLooks(ids: string[]): Promise<ApiResponse>;
+  skipLooks(): Promise<ApiResponse>;
+  confirmExtracted(fields: Record<string, string>): Promise<ApiResponse>;
+  removeUpload(): Promise<ApiResponse>;
+  trace(kind: TraceKind, ok: boolean, ms: number): Promise<void>;
+  setLang(lang: Lang): void;
   /** Set when opened from a staff "more information" link (/?resume=<token>). */
   resume?: { missing: string[]; reply: string };
   /** [resume-410] Set when a resume link is used up (410) or unknown (404): show this and close the chat. */
@@ -81,14 +208,30 @@ const MOCK_RESUME = {
   reply: "We need a few more things before we can approve your designs:\n\n\u2022 A working website link\n\u2022 A phone number\n\u2022 A bit more about the style you like\n\n(Sample note)",
 };
 
+type MockHandlers = ReturnType<typeof createMock>;
+
+function mockExtras(m: MockHandlers) {
+  return {
+    pickLooks: (ids: string[]) => m.pickLooks(ids),
+    skipLooks: () => m.skipLooks(),
+    confirmExtracted: (fields: Record<string, string>) => m.confirmExtracted(fields),
+    removeUpload: () => m.removeUpload(),
+    trace: (kind: TraceKind, ok: boolean, ms: number) => m.trace(kind, ok, ms),
+    setLang: (lang: Lang) => {
+      storeLang(lang);
+    },
+  };
+}
+
 function mockClient(): Client {
   if (resumeToken() === MOCK_USED) {
     dropResumeParam();
-    return { mock: true, sessionId: "", ...createMock(), linkClosed: { status: "link_used", message: LINK_USED_MSG } };
+    const m = createMock();
+    return { mock: true, sessionId: "", ...m, ...mockExtras(m), linkClosed: { status: "link_used", message: LINK_USED_MSG } };
   }
   const resumed = !!resumeToken();
   const m = createMock({ resumed });
-  return { mock: true, sessionId: "mock-" + Math.random().toString(36).slice(2, 10), ...m, ...(resumed ? { resume: MOCK_RESUME } : {}) };
+  return { mock: true, sessionId: "mock-" + Math.random().toString(36).slice(2, 10), ...m, ...mockExtras(m), ...(resumed ? { resume: MOCK_RESUME } : {}) };
 }
 
 export async function connect(): Promise<Client> {
@@ -100,7 +243,8 @@ export async function connect(): Promise<Client> {
       if (!r || !r.sessionId || !r.sessionSecret) throw new Error("no sessionId");
       store(SESSION_KEY, r.sessionId);
       store(SECRET_KEY, r.sessionSecret);
-      return { ...realClient(r.sessionId, r.sessionSecret), resume: { missing: r.missing || [], reply: r.reply || "" } };
+      const norm = normalizeChatReply(r);
+      return { ...realClient(r.sessionId, r.sessionSecret), resume: { missing: norm.missing || [], reply: norm.reply || "" } };
     } catch (e) {
       // [resume-410] The server answered: the link is used (410) or unknown (404). Say so; don't fall back to demo mode.
       // Only real network failures (no answer) fall through to mock.
@@ -135,29 +279,52 @@ export async function connect(): Promise<Client> {
   }
 }
 
-function realClient(sessionId: string, secret: string): Client {
+export function realClient(sessionId: string, secret: string): Client {
+  // All backend paths live here so they are easy to swap (Docs/UI-API-CONTRACT.md).
   return {
     mock: false,
     sessionId,
     async upload(files) {
+      const lang = getLang();
       const fd = new FormData();
       fd.append("sessionId", sessionId);
+      fd.append("lang", lang);
       files.forEach((f) => fd.append("files[]", f, f.name));
-      const res = await fetch(API_BASE + "/api/upload", { method: "POST", body: fd, headers: { "x-session-secret": secret } });
+      const res = await fetch(API_BASE + "/api/upload", { method: "POST", body: fd, headers: { "x-session-secret": secret, "x-lang": lang } });
       if (!res.ok) {
         let detail = "";
         try {
-          const j = await res.json();
-          detail = typeof j?.detail === "string" ? j.detail : "";
+          detail = errorDetail(await res.json());
         } catch {
           /* not JSON */
         }
         throw new HttpError(res.status, detail);
       }
-      return res.json();
+      return normalizeChatReply(await res.json());
     },
-    form: (fields) => postJson("/api/form", { sessionId, fields: { ...EMPTY_FORM, ...fields } }, secret),
-    chat: (text) => postJson("/api/chat", { sessionId, text }, secret),
-    review: (accepted, feedback) => postJson("/api/review", { sessionId, accepted, feedback: feedback || "" }, secret),
+    form: async (fields) => normalizeChatReply(await postJson("/api/form", { sessionId, fields: { ...EMPTY_FORM, ...fields } }, secret)),
+    chat: async (text) => normalizeChatReply(await postJson("/api/chat", { sessionId, text }, secret)),
+    review: async (accepted, feedback) =>
+      normalizeChatReply(await postJson("/api/review", { sessionId, accepted, feedback: feedback || "" }, secret)),
+    pickLooks: async (ids) => normalizeChatReply(await postJson("/api/looks/pick", { sessionId, picked_ids: ids }, secret)),
+    skipLooks: async () => normalizeChatReply(await postJson("/api/looks/skip", { sessionId }, secret)),
+    confirmExtracted: async (fields) =>
+      normalizeChatReply(await postJson("/api/extracted/confirm", { sessionId, fields }, secret)),
+    removeUpload: async () => normalizeChatReply(await deleteJson("/api/upload", { sessionId }, secret)),
+    trace: async (kind, ok, ms) => {
+      try {
+        const lang = getLang();
+        await fetch(API_BASE + "/api/trace", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-session-secret": secret, "x-lang": lang },
+          body: JSON.stringify({ sessionId, kind, ok, ms, lang }),
+        });
+      } catch {
+        /* trace never throws: the UI ignores errors and never retries */
+      }
+    },
+    setLang: (lang) => {
+      storeLang(lang);
+    },
   };
 }

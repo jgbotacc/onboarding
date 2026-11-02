@@ -1,5 +1,7 @@
 // [field-validation] Instant client-side sense checks for the registration form.
 // Mirrors the server rules for obvious cases only; the server's `invalid` list always wins.
+// Messages live in ./i18n; only the checks stay here.
+import { t, type I18nKey, type Lang } from "./i18n";
 import type { FieldIssue, FormFields } from "./types";
 
 export type { FieldIssue };
@@ -89,44 +91,34 @@ function wordy(v: string, lo: number, hi: number): boolean {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i;
 const WEBSITE_RE = /^(?:https?:\/\/)?(?:www\.)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?(?:[/?#]\S*)?$/i;
 
-interface Rule {
-  ok: (v: string) => boolean;
-  /** What the field is, for "\"123\" isn't a business type". */
-  what: string;
-  /** Short note shown under the field. */
-  message: string;
-  examples: string[];
-}
-
-const rule = (ok: Rule["ok"], what: string, message: string, examples: string[]): Rule => ({ ok, what, message, examples });
-
-export const RULES: Record<FieldKey, Rule> = {
-  business_name: rule(
-    (v) => v.length >= 2 && v.length <= 100 && letters(v) >= 1 && !/^[\d\W_]+$/u.test(v) && !junk(v),
-    "a business name", "That doesn't look like a business name.", ["Kopi Corner Pte Ltd", "Acme Studio"]),
-  business_type: rule((v) => wordy(v, 2, 60), "a business type", "That doesn't look like a business type.", ["Restaurant", "Café", "Retail shop"]),
-  industry: rule((v) => wordy(v, 2, 60), "an industry", "That doesn't look like an industry.", ["Food & Beverage", "Retail"]),
-  business_website: rule((v) => WEBSITE_RE.test(v), "a website", "That doesn't look like a website. Include the ending, like .com or .sg.", ["kopicorner.sg", "https://www.kopicorner.sg"]),
-  contact_name: rule(
-    (v) => v.length >= 2 && v.length <= 80 && letters(v) >= 2 && !/\d/.test(v) && !junk(v),
-    "a name", "That doesn't look like a name. Letters only, please.", ["Tan Mei Ling", "John Lee"]),
-  title_position: rule((v) => wordy(v, 2, 60), "a job title", "That doesn't look like a job title.", ["Owner", "Marketing Manager"]),
-  email: rule((v) => EMAIL_RE.test(v), "an email address", "That doesn't look like an email address.", ["jo@kopicorner.sg"]),
-  phone_number: rule(
-    (v) => !/[^\d+\s\-().]/.test(v) && /^\d{7,15}$/.test(v.replace(/[+\s\-().]/g, "")),
-    "a phone number", "That doesn't look like a phone number. Use 7 to 15 digits.", ["+65 9123 4567", "(02) 9876-5432"]),
-  design_preferences: rule((v) => letters(v) >= 3 && hasVowelWord(v) && !junk(v), "a design style", "Describe the look you like in a few words.", ["warm, minimal, brown and cream"]),
-  expected_annual_revenue: rule((v) => parseAmount(v) !== null, "an amount", "That doesn't look like an amount. Digits or words are fine.", ["S$250,000", "five thousand dollars"]),
-  requirements_notes: rule((v) => letters(v) >= 2, "a note", "Please write this in words.", ["Need a logo and 5 Instagram posts by December"]),
+const CHECKS: Record<FieldKey, (v: string) => boolean> = {
+  business_name: (v) => v.length >= 2 && v.length <= 100 && letters(v) >= 1 && !/^[\d\W_]+$/u.test(v) && !junk(v),
+  business_type: (v) => wordy(v, 2, 60),
+  industry: (v) => wordy(v, 2, 60),
+  business_website: (v) => WEBSITE_RE.test(v),
+  contact_name: (v) => v.length >= 2 && v.length <= 80 && letters(v) >= 2 && !/\d/.test(v) && !junk(v),
+  title_position: (v) => wordy(v, 2, 60),
+  email: (v) => EMAIL_RE.test(v),
+  phone_number: (v) => !/[^\d+\s\-().]/.test(v) && /^\d{7,15}$/.test(v.replace(/[+\s\-().]/g, "")),
+  design_preferences: (v) => letters(v) >= 3 && hasVowelWord(v) && !junk(v),
+  expected_annual_revenue: (v) => parseAmount(v) !== null,
+  requirements_notes: (v) => letters(v) >= 2,
 };
 
-export const exampleText = (key: FieldKey) => (RULES[key]?.examples || []).join(" or ");
+const msgKey = (key: FieldKey): I18nKey => `err.${key}` as I18nKey;
+const exKey = (key: FieldKey): I18nKey => `example.${key}` as I18nKey;
+
+export const exampleText = (key: FieldKey, lang: Lang = "en") => t(lang, exKey(key));
 
 /** Null when the value is fine (empty optional fields are fine). */
-export function validateField(key: FieldKey, raw: string, label = "", required = false): FieldIssue | null {
+export function validateField(key: FieldKey, raw: string, label = "", required = false, lang: Lang = "en"): FieldIssue | null {
   const v = (raw || "").trim();
-  if (!v) return required ? { field: key, label, message: `${label || "This field"} is required.`, example: exampleText(key) } : null;
-  const r = RULES[key];
-  if (!r || r.ok(v)) return null;
-  return { field: key, label, message: r.message, example: exampleText(key) };
+  if (!v) {
+    if (!required) return null;
+    const name = label || t(lang, "thisField");
+    return { field: key, label, message: t(lang, "requiredField", { label: name }), example: exampleText(key, lang) };
+  }
+  const ok = CHECKS[key];
+  if (!ok || ok(v)) return null;
+  return { field: key, label, message: t(lang, msgKey(key)), example: exampleText(key, lang) };
 }
