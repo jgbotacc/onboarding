@@ -1,5 +1,5 @@
 // Mock staff API (demo data only). Used on ?mock=1 or when /api/staff/* is unreachable.
-import type { DecisionBody, DecisionResult, StaffDetail, StaffRow } from "./types";
+import type { Consult, DecisionBody, DecisionResult, RejectedLookRound, StaffDetail, StaffMetrics, StaffRow, StepTrace } from "./types";
 
 function art(title: string, sub: string, bg: string, fg: string): string {
   const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
@@ -82,12 +82,116 @@ const DETAILS: StaffDetail[] = [
   },
 ];
 
+const TRACES: Record<string, StepTrace[]> = {
+  "c-kopi01": [
+    { step: "read_document", model: "muse-spark-1.3", ok: true, ms: 1840, cost_sgd: 0.0042, at: "2026-10-31T09:02:11Z" },
+    { step: "translate", model: "muse-spark-1.3", ok: true, ms: 620, cost_sgd: 0.0011, at: "2026-10-31T09:04:02Z" },
+    { step: "image_brief", model: "muse-spark-1.3", ok: true, ms: 2310, cost_sgd: 0.0056, at: "2026-10-31T09:07:44Z" },
+    { step: "generate_image", model: "muse-image-1.0", ok: true, ms: 9420, cost_sgd: 0.0135, at: "2026-10-31T09:09:31Z" },
+  ],
+  "c-bloom02": [
+    { step: "read_document", model: "muse-spark-1.3", ok: true, ms: 2010, cost_sgd: 0.0048, at: "2026-10-30T14:20:11Z" },
+    { step: "image_brief", model: "muse-spark-1.3", ok: false, ms: 30500, cost_sgd: 0.0021, at: "2026-10-30T14:31:55Z" },
+    { step: "image_brief", model: "muse-spark-1.3", ok: true, ms: 2480, cost_sgd: 0.0059, at: "2026-10-30T14:33:02Z" },
+    { step: "generate_image", model: "muse-image-1.0", ok: true, ms: 8810, cost_sgd: 0.0135, at: "2026-10-30T14:36:40Z" },
+  ],
+  "c-forge03": [
+    { step: "read_document", model: "muse-spark-1.3", ok: true, ms: 1760, cost_sgd: 0.0041, at: "2026-10-29T02:51:09Z" },
+    { step: "image_brief", model: "muse-spark-1.3", ok: true, ms: 2190, cost_sgd: 0.0054, at: "2026-10-29T02:55:37Z" },
+    { step: "generate_image", model: "muse-image-1.0", ok: true, ms: 9100, cost_sgd: 0.0135, at: "2026-10-29T02:58:12Z" },
+  ],
+};
+const REJECTED: Record<string, RejectedLookRound[]> = {
+  "c-kopi01": [],
+  "c-bloom02": [
+    {
+      round: 1,
+      options: [
+        { id: "r1-a", url: art("Bloom & Stem", "Round 1 · A", "#F6E8EE", "#8A3B5C"), alt: "Soft pink storefront banner" },
+        { id: "r1-b", url: art("Bloom & Stem", "Round 1 · B", "#EAF2EA", "#2F6B45"), alt: "Green botanical poster" },
+      ],
+    },
+    {
+      round: 2,
+      options: [
+        { id: "r2-a", url: art("Bloom & Stem", "Round 2 · A", "#FFF3E0", "#9C6B2F"), alt: "Warm cream Mother's Day card" },
+      ],
+    },
+  ],
+  "c-forge03": [
+    {
+      round: 1,
+      options: [
+        { id: "r1-a", url: art("Forge Fitness", "Round 1 · A", "#1D2129", "#E8F0FF"), alt: "Dark high-contrast gym poster" },
+        { id: "r1-b", url: art("Forge Fitness", "Round 1 · B", "#2B2F36", "#FFB800"), alt: "Black and yellow promo graphic" },
+      ],
+    },
+    {
+      round: 2,
+      options: [
+        { id: "r2-a", url: art("Forge Fitness", "Round 2 · A", "#23272F", "#7DD3FC"), alt: "Steel blue training banner" },
+      ],
+    },
+  ],
+};
+const CONSULTS: Consult[] = [
+  {
+    id: "consult-01",
+    client_id: "c-bloom02",
+    business_name: "Bloom & Stem (demo)",
+    status: "pending_approval",
+    submitted: {
+      "Business name": "Bloom & Stem",
+      "Contact name": "Aisha Rahman",
+      Email: "aisha@bloomstem.example",
+      "Design preferences": "Soft pastel, minimal, lots of white space",
+    },
+    next_steps: ["Agree a style direction", "Confirm the banner size for the Mother's Day promotion"],
+    created: "2026-10-30T15:02:00Z",
+  },
+  {
+    id: "consult-02",
+    client_id: "c-forge03",
+    business_name: "Forge Fitness (demo)",
+    status: "approved",
+    submitted: {
+      "Business name": "Forge Fitness",
+      "Contact name": "Daniel Lim",
+      Email: "daniel@forgefit.example",
+      "Design preferences": "Bold, dark, high contrast",
+    },
+    next_steps: ["Book the designer intro call"],
+    created: "2026-10-29T04:12:00Z",
+    approved_by: "staff:mei",
+    decided_at: "2026-10-29T06:40:00Z",
+  },
+];
+const METRICS: StaffMetrics = {
+  outcomes: {
+    sessions: 3,
+    completed: 2,
+    completion_rate: 0.67,
+    avg_minutes_to_finish: 18.5,
+    avg_fields_needing_fixes: 1.3,
+    avg_rounds_to_pick: 1.5,
+    consult_rate: 0.33,
+  },
+  steps: [
+    { step: "read_document", model: "muse-spark-1.3", calls: 3, ok_rate: 1, avg_latency_ms: 1870, cost_sgd: 0.0131 },
+    { step: "image_brief", model: "muse-spark-1.3", calls: 4, ok_rate: 0.75, avg_latency_ms: 9295, cost_sgd: 0.019 },
+    { step: "generate_image", model: "muse-image-1.0", calls: 3, ok_rate: 1, avg_latency_ms: 9110, cost_sgd: 0.0405 },
+  ],
+  total_cost_sgd: 0.0726,
+  errors: [{ step: "image_brief", model: "muse-spark-1.3", ok: false, ms: 30500, cost_sgd: 0.0021, at: "2026-10-30T14:31:55Z" }],
+  evals: { doc_extraction_accuracy: 0.92, image_fit: 0.85, n: 12, at: "2026-10-28T00:00:00Z" },
+};
 const SUBMITTED = ["2026-10-31T09:12:00Z", "2026-10-30T14:40:00Z", "2026-10-29T03:05:00Z"];
 
 const STATUS_AFTER: Record<string, string> = { approve: "approved", reject: "rejected", more_info: "needs_info" };
 
 export function createStaffMock() {
-  const db = DETAILS.map((d) => ({ ...d }));
+  const db = DETAILS.map((d) => ({ ...d, traces: TRACES[d.id] || [] }));
+  const consultDb = CONSULTS.map((c) => ({ ...c }));
   const wait = <T,>(v: T) => new Promise<T>((r) => setTimeout(() => r(structuredClone(v)), 300));
   return {
     list: (): Promise<StaffRow[]> =>
@@ -119,5 +223,19 @@ export function createStaffMock() {
         resume_url: body.decision === "more_info" ? "./?resume=demo-token&mock=1" : null,
       });
     },
+    rejectedLooks: (id: string): Promise<RejectedLookRound[]> => {
+      if (!db.some((x) => x.id === id)) return Promise.reject(new Error("HTTP 404"));
+      return wait(REJECTED[id] || []);
+    },
+    consults: (): Promise<Consult[]> => wait(consultDb),
+    approveConsult: (id: string): Promise<Consult> => {
+      const c = consultDb.find((x) => x.id === id);
+      if (!c) return Promise.reject(new Error("HTTP 404"));
+      c.status = "approved";
+      c.approved_by = "staff:demo";
+      c.decided_at = new Date().toISOString();
+      return wait(c);
+    },
+    metrics: (): Promise<StaffMetrics> => wait(METRICS),
   };
 }

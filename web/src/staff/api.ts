@@ -1,11 +1,15 @@
 import { createStaffMock } from "./mock";
-import type { DecisionBody, DecisionResult, StaffDetail, StaffRow } from "./types";
+import type { Consult, DecisionBody, DecisionResult, RejectedLookRound, StaffDetail, StaffMetrics, StaffRow } from "./types";
 
 export interface StaffClient {
   mock: boolean;
   list(): Promise<StaffRow[]>;
   detail(id: string): Promise<StaffDetail>;
   decide(id: string, body: DecisionBody): Promise<DecisionResult>;
+  rejectedLooks(id: string): Promise<RejectedLookRound[]>;
+  consults(): Promise<Consult[]>;
+  approveConsult(id: string): Promise<Consult>;
+  metrics(): Promise<StaffMetrics>;
 }
 
 // [staff-key] Staff passcode, kept for this browser tab only and sent as x-staff-key on every staff call.
@@ -61,6 +65,11 @@ const real: Omit<StaffClient, "mock"> = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }),
+  rejectedLooks: (id) => req("/api/staff/clients/" + encodeURIComponent(id) + "/rejected-looks"),
+  consults: () => req("/api/staff/consults"),
+  approveConsult: (id) =>
+    req("/api/staff/consults/" + encodeURIComponent(id) + "/approve", { method: "POST" }),
+  metrics: () => req("/api/staff/metrics"),
 };
 
 export type StaffConnect =
