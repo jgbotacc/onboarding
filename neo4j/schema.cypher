@@ -6,6 +6,8 @@ CREATE CONSTRAINT direction_id IF NOT EXISTS FOR (dd:DesignDirection) REQUIRE dd
 CREATE CONSTRAINT round_id IF NOT EXISTS FOR (g:GenerationRound) REQUIRE g.id IS UNIQUE;
 CREATE CONSTRAINT handoff_id IF NOT EXISTS FOR (h:HumanHandoff) REQUIRE h.id IS UNIQUE;
 CREATE CONSTRAINT fielddef_key IF NOT EXISTS FOR (fd:FieldDef) REQUIRE fd.key IS UNIQUE;
+CREATE CONSTRAINT look_id IF NOT EXISTS FOR (l:Look) REQUIRE l.id IS UNIQUE;
+CREATE CONSTRAINT consult_id IF NOT EXISTS FOR (k:Consult) REQUIRE k.id IS UNIQUE;
 CREATE INDEX client_status IF NOT EXISTS FOR (c:Client) ON (c.status);
 CREATE INDEX field_key IF NOT EXISTS FOR (f:Field) ON (f.key);
 
@@ -19,3 +21,9 @@ CREATE INDEX field_key IF NOT EXISTS FOR (f:Field) ON (f.key);
 //   (:GenerationRound)-[:NEXT]->(:GenerationRound)
 //   (:GenerationRound)-[:USED]->(:DesignDirection) / (:ReferenceImage)
 // (:Client)-[:ESCALATED_TO]->(:HumanHandoff {id, reason, createdAt})   // after round 3 not accepted
+// (:Client)-[:SHOWN]->(:Look {id, round, url, title, brief, selected, createdAt})
+// (:Client)-[:NEEDS_CONSULT]->(:Consult {id, status, card, approvedBy, decidedAt, createdAt})
+// (:Client)-[:AUDITED]->(:Audit {id, sessionId, actor, action, target, details, at})
+// (:Client)-[:TRACED]->(:Trace {id, sessionId, step, model, ok, latencyMs, costSgd, error, at})
+//   sessionless traces link (:System {id:'system'})-[:TRACED]->(:Trace) instead
+// (:Eval {kind, score, n, details, at})
