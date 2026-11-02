@@ -20,8 +20,12 @@ OPTIONAL = [
     ("design_preferences", "Design preferences"), ("expected_annual_revenue", "Expected annual revenue"),
     ("requirements_notes", "Requirements / notes"),
 ]
+DOC_ONLY = [
+    ("uen", "UEN"),
+    ("registered_address", "Registered address"),
+]
 FORM_KEYS = [k for k, _ in MANDATORY + OPTIONAL]
-LABELS = dict(MANDATORY + OPTIONAL)  # sentence case, as shown to clients (replies, missing, invalid)
+LABELS = dict(MANDATORY + OPTIONAL + DOC_ONLY)  # sentence case, as shown to clients (replies, missing, invalid)
 
 
 def neo4j_env():

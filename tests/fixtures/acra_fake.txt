@@ -1,0 +1,20 @@
+ACCOUNTING AND CORPORATE REGULATORY AUTHORITY
+Business Profile (Company) of LUMEN KOPI PTE. LTD. (202498765K)
+
+Entity Information
+UEN                        : 202498765K
+Name                       : LUMEN KOPI PTE. LTD.
+Former Name if any         :
+Type                       : EXEMPT PRIVATE COMPANY LIMITED BY SHARES
+Status                     : LIVE COMPANY
+
+Business Activity
+Activity                   : CAFES AND COFFEE HOUSES (56122)
+Description                :
+
+Registered Office Address  : 8 EXAMPLE ROAD, #02-15, SINGAPORE (098765)
+
+Officers
+Name            Identification No.   Position Held   Nationality/Citizenship   Date of Appointment
+TAN MEI LING    S1234567D            Director        SINGAPORE CITIZEN         01/02/2024
+ONG WEI JIE     S7654321A            Secretary       SINGAPORE CITIZEN         01/02/2024
