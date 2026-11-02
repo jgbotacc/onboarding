@@ -1,5 +1,5 @@
-import { ApiResponse, MAX_ROUNDS, type FieldIssue, type FormFields } from "./types";
-import { parseAmount, validateField, type FieldKey } from "./validation"; // [field-validation]
+import { MAX_ROUNDS, type ApiResponse, type ConsultInfo, type ExtractedField, type FormFields, type Lang, type Looks, type TraceKind } from "./types";
+import { fieldLabel, t } from "./i18n";
 
 const FILLS = ["#DCE6FF", "#E3F1EA", "#FBEBDD", "#E8EAEE", "#F6E2E2"];
 
@@ -14,129 +14,19 @@ function placeholder(round: number, i: number): string {
   return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
 }
 
-// ---- Port of the live backend wording (src/features/chat/agent.py, src/features/intake/validate.py,
-// src/shared/config.py). Keep these strings identical to the server's. ----
-
-type Key = FieldKey;
-
-/** config.py LABELS: used for the `missing` list (Still needed card). */
-const LABELS: Record<Key, string> = {
-  business_name: "Business name", contact_name: "Contact name", email: "Email", business_type: "Business type",
-  industry: "Industry", business_website: "Business website", title_position: "Title / position", phone_number: "Phone number",
-  design_preferences: "Design preferences", expected_annual_revenue: "Expected annual revenue", requirements_notes: "Requirements / notes",
-};
-const MANDATORY: Key[] = ["business_name", "contact_name", "email"];
-
-/** agent.py SUMMARY: client-facing labels, in form order. */
-const SUMMARY: [Key, string][] = [
-  ["business_name", "Business name"], ["business_type", "Business type"], ["industry", "Industry"],
-  ["business_website", "Business website"], ["contact_name", "Contact name"], ["title_position", "Title / position"],
-  ["email", "Email"], ["phone_number", "Phone number"], ["design_preferences", "Design preferences"],
-  ["expected_annual_revenue", "Expected annual revenue"], ["requirements_notes", "Requirements / notes"],
-];
-const ORDER: Record<string, number> = Object.fromEntries(SUMMARY.map(([k], i) => [k, i]));
-const label = (k: Key) => SUMMARY.find(([x]) => x === k)?.[1] || LABELS[k] || k;
-const SUMMARY_CLOSE = "Using your design preferences and business information. Here is a mockup.";
-const SUMMARY_CLOSE_NO_PREFS = "Using your business information. Here is a mockup.";
-const UPDATED = "Here is the updated mockup. Happy with this direction? Accept it, or tell me what to change.";
-
-/** validate.py EXAMPLES (first only), WHAT and LIMITS. */
-const EXAMPLE: Record<Key, string> = {
-  business_name: "Slice & Stone Pizzeria Pte Ltd", business_type: "Restaurant", industry: "Food and Beverage",
-  business_website: "slicestone.sg", contact_name: "Tan Mei Ling", title_position: "Owner", email: "name@business.com",
-  phone_number: "+65 6123 4567", design_preferences: "warm and rustic, tomato red and cream",
-  expected_annual_revenue: "S$250,000", requirements_notes: "A post for our new truffle pizza",
-};
-const WHAT: Record<Key, string> = {
-  business_name: "a business name", business_type: "a business type", industry: "an industry",
-  business_website: "a website address", contact_name: "a person's name", title_position: "a job title",
-  email: "an email address", phone_number: "a phone number", design_preferences: "a design preference",
-  expected_annual_revenue: "an amount", requirements_notes: "a description of what you need",
-};
-const LIMITS: Record<Key, number> = {
-  business_name: 120, contact_name: 80, business_type: 80, industry: 80, title_position: 80, business_website: 200,
-  email: 254, phone_number: 30, expected_annual_revenue: 80, design_preferences: 2000, requirements_notes: 4000,
-};
-const works = (k: Key) => (EXAMPLE[k] ? `Something like "${EXAMPLE[k]}" works.` : "");
-const tooLong = (k: Key) => `that's a bit long. Please keep it under ${LIMITS[k] || 2000} characters.`;
-const COUNT: Record<number, string> = { 1: "one fix", 2: "two fixes", 3: "three fixes", 4: "four fixes", 5: "five fixes" };
-const clip = (v: string, n = 40) => {
-  const t = String(v).split(/\s+/).filter(Boolean).join(" ");
-  return t.length <= n ? t : t.slice(0, n - 1).trimEnd() + "\u2026";
-};
-
-/** validate.py _issue wording. Detection uses the shared web rules, so odd edge cases may differ from live. */
-function issueText(k: Key, v: string): string | null {
-  if (v.length > (LIMITS[k] || 2000)) return "T" + tooLong(k).slice(1);
-  if (!validateField(k, v)) return null;
-  const nope = `That isn't ${WHAT[k]}. ${works(k)}`;
-  if (["business_name", "contact_name", "business_type", "industry", "title_position"].includes(k) && /\p{L}/u.test(v) && v.length < 2)
-    return `That's a bit short for ${WHAT[k]}. ${works(k)}`;
-  if (k === "phone_number" && /^\+?[\d\s\-().]+$/.test(v)) return `A phone number needs 7 to 15 digits. ${works(k)}`;
-  if (k === "design_preferences" || k === "requirements_notes") return `That doesn't read like ${WHAT[k]}. ${works(k)}`;
-  return nope;
-}
-const check = (k: Key, v: string) => {
-  const t = String(v).trim();
-  const msg = t ? issueText(k, t) : null;
-  return msg ? { message: msg, example: EXAMPLE[k] } : null;
-};
-const fixLine = (k: Key, value: string) =>
-  String(value).trim().length > (LIMITS[k] || 2000)
-    ? `\u2022 ${label(k)}: ${tooLong(k)}`
-    : `\u2022 ${label(k)}: "${clip(value)}" isn't ${WHAT[k] || "a valid value"}. ${works(k)}`.trimEnd();
-const missingLine = (k: Key) => `\u2022 ${label(k)}: I couldn't find one. ${works(k)}`.trimEnd();
-const fixMessage = (lines: string[]) =>
-  `I just need ${COUNT[lines.length] || "a few fixes"}:\n\n${lines.join("\n")}\n\n` +
-  (lines.length === 1 ? "Just type the correction here." : "Just type the corrections here.");
-
-/** agent.py _money: '480000' or '480k' -> 'S$480,000'; ranges and unparsed text stay as typed. */
-const money = (v: string) => {
-  if (/\d\s*[a-z]{0,3}\s*(?:-|–|—|\bto\b)\s*\S/i.test(v)) return v;
-  const n = parseAmount(v);
-  return n !== null ? "S$" + Math.round(n).toLocaleString("en-US") : v;
-};
-
-// extract.py regex_extract, for typed replies ("Label: value" lines, an email, a phone, a "... Pte Ltd" name).
-const ALIASES: Record<Key, string[]> = {
-  business_name: ["business name", "company name", "company", "business"],
-  business_type: ["business type", "type of business"],
-  industry: ["industry", "sector"],
-  business_website: ["business website", "website", "url"],
-  contact_name: ["contact name", "contact person", "name of contact"],
-  title_position: ["title/position", "title / position", "title", "position", "designation"],
-  email: ["email", "e-mail", "email address"],
-  phone_number: ["phone number", "phone", "mobile", "tel"],
-  design_preferences: ["design preferences", "design preference", "design direction", "style"],
-  expected_annual_revenue: ["expected annual revenue", "annual revenue", "revenue"],
-  requirements_notes: ["requirements / notes", "requirements/notes", "requirements", "notes"],
-};
-const EMAIL = /[\w.+-]+@[\w-]+\.[\w.-]+/;
-const PHONE = /(?:\+?\d[\d\s-]{6,}\d)/;
-const esc = (t: string) => t.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
-function regexExtract(text: string): Partial<Record<Key, string>> {
-  const out: Partial<Record<Key, string>> = {};
-  const lines = text.split(/\r?\n/).map((l) => l.trim());
-  (Object.keys(ALIASES) as Key[]).forEach((k) => {
-    const names = [...new Set([...ALIASES[k], LABELS[k].toLowerCase()])].sort((a, b) => b.length - a.length);
-    const pat = new RegExp("^\\s*(?:" + names.map(esc).join("|") + ")\\s*\\*?\\s*[:\\-]\\s*(.+)$", "i");
-    for (const ln of lines) {
-      const m = ln.match(pat);
-      if (m && m[1].trim() && !(k in out)) out[k] = m[1].trim();
-    }
-  });
-  if (!out.email && EMAIL.test(text)) out.email = text.match(EMAIL)![0];
-  if (!out.phone_number && PHONE.test(text)) out.phone_number = text.match(PHONE)![0].trim();
-  if (!out.business_name) {
-    const m = text.match(/\b([A-Z][\w&' ]+ (?:Pte\.? Ltd\.?|LLC|Ltd\.?|Inc\.?|Co\.))/);
-    if (m) out.business_name = m[1].trim();
+/** Active language, shared with the picker via localStorage (default `en`). Mirrors api.getLang without the import cycle. */
+function langNow(): Lang {
+  try {
+    const g = globalThis as unknown as { localStorage?: { getItem(k: string): string | null } };
+    const s = g.localStorage?.getItem("onboardingLang");
+    if (s === "en" || s === "zh" || s === "ms" || s === "ta") return s;
+  } catch {
+    /* storage unavailable */
   }
-  return out;
+  return "en";
 }
-const SKIP = /^\s*(skip|no|none|nope|n\/a|go ahead|proceed)\b/i;
 
-// Sample values the mock "reads" from an uploaded PDF (demo data). A file name with
-// "invalid" in it gives "123" as the business type and "cat" as the revenue.
+// Sample values the mock "reads" from an uploaded PDF (demo data, no NRIC).
 const SAMPLE_PDF: FormFields = {
   business_name: "Slice & Stone Pizzeria Pte Ltd",
   business_type: "Restaurant",
@@ -151,248 +41,286 @@ const SAMPLE_PDF: FormFields = {
   requirements_notes: "Post for our new truffle pizza, 1-for-1 Tuesdays.",
 };
 
+const ORDER: (keyof FormFields)[] = [
+  "business_name", "business_type", "industry", "business_website", "contact_name", "title_position",
+  "email", "phone_number", "design_preferences", "expected_annual_revenue", "requirements_notes",
+];
+
+const NRIC_RE = /[STFGM]\d{7}[A-Z]/;
+const SKIP = /^\s*(skip|no|none|nope|n\/a|go ahead|proceed)\b/i;
+const ALT_KEYS = ["mock.alt1", "mock.alt2", "mock.alt3"] as const;
+
 interface MockState {
-  status: string;
-  fields: Partial<Record<Key, string>>;
-  invalid: Partial<Record<Key, { message: string; example: string }>>;
-  refs: number;
-  direction: string | null;
+  step: string;
+  fields: Record<string, string>;
+  pendingValues: Record<string, string> | null;
+  designAsked: boolean;
   round: number;
-  viaPdf: boolean;
-  pdfName: string | null;
-  /** "Got your registration form. " waits here until every field is valid (form path). */
-  opener: string;
-  refsPending: boolean;
-  refill: Key[];
+  skips: number;
+  refs: number;
   resumed: boolean;
-  designChanged: boolean;
 }
 
 export function createMock(opts: { resumed?: boolean } = {}) {
   const s: MockState = {
-    status: "need_document", fields: {}, invalid: {}, refs: 0, direction: null, round: 0, viaPdf: false,
-    pdfName: null, opener: "", refsPending: false, refill: [], resumed: false, designChanged: false,
+    step: "registering", fields: {}, pendingValues: null, designAsked: false,
+    round: 0, skips: 0, refs: 0, resumed: !!opts.resumed,
   };
   if (opts.resumed) {
-    // Resume link (staff "I need more information"): an earlier round exists; these fields come back.
-    Object.assign(s, { resumed: true, status: "missing_info", round: 1, fields: { ...SAMPLE_PDF },
-      refill: ["business_website", "phone_number", "design_preferences"] as Key[] });
+    s.fields = { ...SAMPLE_PDF };
+    s.step = "missing_info";
+    s.round = 1;
   }
 
-  const missingKeys = (): Key[] => {
-    const bad = Object.keys(s.invalid) as Key[];
-    const base = s.refill.length ? s.refill.slice() : MANDATORY.filter((k) => !s.fields[k]);
-    return [...bad, ...base.filter((k) => !bad.includes(k))];
-  };
-  const invalidList = (): FieldIssue[] =>
-    (Object.keys(s.invalid) as Key[]).map((k) => ({ field: k, label: LABELS[k], ...s.invalid[k]! }));
+  const toExtracted = (values: Record<string, string>, lang: Lang): ExtractedField[] =>
+    ORDER.filter((k) => (values[k] || "").trim())
+      .filter((k) => !/^(nric|fin)$/i.test(k) && !NRIC_RE.test(String(values[k]).trim()))
+      .map((k) => ({ field: k, label: fieldLabel(lang, k), value: String(values[k]).trim() }));
 
-  const resp = (reply: string, images: string[] = []): ApiResponse => ({
-    reply,
-    images,
-    status: s.status,
-    missing: missingKeys().map((k) => LABELS[k]),
-    round: s.round,
-    invalid: invalidList(),
+  const looksForRound = (round: number, lang: Lang): Looks => ({
+    round,
+    max_rounds: MAX_ROUNDS,
+    prompt: t(lang, "mock.lookPrompt"),
+    options: [0, 1, 2].map((i) => ({
+      id: `r${round}-${"abc"[i]}`,
+      url: placeholder(round, i),
+      alt: t(lang, ALT_KEYS[i]),
+    })),
   });
-  const images = () => (s.round ? [0, 1, 2].map((i) => placeholder(s.round, i)) : []);
 
-  const setFields = (fields: Partial<Record<Key, string>>) => {
-    (Object.keys(fields) as Key[]).forEach((k) => {
-      const v = fields[k];
-      if (v == null || !String(v).trim()) {
-        if (s.invalid[k] && !MANDATORY.includes(k)) {
-          delete s.invalid[k];
-          delete s.fields[k];
-        }
-        return;
-      }
-      const t = String(v).trim();
-      const problem = check(k, t);
-      s.fields[k] = t;
-      if (problem) {
-        s.invalid[k] = problem;
-        return;
-      }
-      delete s.invalid[k];
-      if ((k === "design_preferences" || k === "requirements_notes") && s.resumed) s.designChanged = true;
-      s.refill = s.refill.filter((x) => x !== k);
-    });
-  };
+  const imagesForRound = (round: number): string[] => (round > 0 ? [0, 1, 2].map((i) => placeholder(round, i)) : []);
 
-  const problemLines = (only?: Key[]) => {
-    let keys = missingKeys();
-    if (only?.length) keys = keys.filter((k) => only.includes(k));
-    keys.sort((a, b) => (ORDER[a] ?? 99) - (ORDER[b] ?? 99));
-    return keys.map((k) => (s.invalid[k] ? fixLine(k, s.fields[k] || "") : missingLine(k)));
-  };
-
-  const summary = () => {
-    const f = { ...s.fields };
-    if (!f.design_preferences && s.direction) f.design_preferences = s.direction;
-    const lines = SUMMARY.filter(([k]) => (f[k] || "").trim() && !s.invalid[k]).map(
-      ([k, l]) => `${l}: ${k === "expected_annual_revenue" ? money(f[k]!.trim()) : f[k]!.trim()}`,
-    );
-    const close = (f.design_preferences || "").trim() && !s.invalid.design_preferences ? SUMMARY_CLOSE : SUMMARY_CLOSE_NO_PREFS;
-    return lines.join("\n") + "\n\n" + close;
-  };
-
-  const runRound = (): ApiResponse => {
-    s.round += 1;
-    s.status = "awaiting_review";
-    return resp(s.round === 1 ? summary() : UPDATED, images());
-  };
-
-  const afterFields = (prefix = "", touched?: Key[]): ApiResponse => {
-    if (missingKeys().length) {
-      s.status = "missing_info";
-      const still = (touched || []).filter((k) => s.invalid[k]);
-      const lines = touched && touched.length === 1 && still.length ? problemLines(still) : problemLines();
-      return resp(prefix + fixMessage(lines));
+  /** Consult card data uses English labels (staff UI is English-only). Never empty. */
+  const submittedEn = (): Record<string, string> => {
+    const src = Object.keys(s.fields).length ? s.fields : s.pendingValues || { business_name: SAMPLE_PDF.business_name };
+    const out: Record<string, string> = {};
+    for (const k of ORDER) {
+      const v = (src[k] || "").trim();
+      if (v && !/^(nric|fin)$/i.test(k) && !NRIC_RE.test(v)) out[fieldLabel("en", k)] = v;
     }
-    prefix += s.opener;
-    s.opener = "";
-    const name = s.fields.business_name;
-    const pdf = s.pdfName;
-    s.pdfName = null;
-    const thanks = pdf ? `Thanks, I've read ${pdf} and registered ${name}.` : `Thanks, ${name} is registered.`;
-    if (s.resumed) {
-      s.resumed = false;
-      if (s.designChanged && s.round < MAX_ROUNDS) {
-        s.designChanged = false;
-        s.direction = s.fields.design_preferences || s.direction;
-        const out = runRound();
-        return { ...out, reply: prefix + "Thanks, your details are updated. Your design brief changed. " + out.reply };
-      }
-      s.designChanged = false;
-      s.status = "pending_review";
-      return resp(prefix + "Thanks, your details are updated. Our team will contact you shortly.", images());
-    }
-    if (s.fields.design_preferences && !s.round) {
-      s.direction = s.fields.design_preferences;
-      if (s.viaPdf && !s.refs) {
-        // PDF path has no reference-image field, so ask for refs before round 1.
-        s.status = "need_direction";
-        s.refsPending = true;
-        return resp(prefix + `${thanks}\n\nI'll go with your design preferences: ${s.direction}\n\n` +
-          'Want to add reference images (JPG or PNG)? Upload them now, or type "skip" to start.');
-      }
-      const out = runRound();
-      return { ...out, reply: prefix + `${thanks}\n\n` + out.reply };
-    }
-    s.status = "need_direction";
-    const refs = s.refs ? `Got ${s.refs} reference image(s). Now tell me` : "You can upload reference images (JPG or PNG) if you have any. Then tell me";
-    return resp(prefix + `${thanks}\n\n${refs} your design direction, something like "minimal, warm, brown and cream", or type "skip".`);
+    if (!Object.keys(out).length) out[fieldLabel("en", "business_name")] = SAMPLE_PDF.business_name;
+    return out;
   };
 
-  const onDocument = (fields: Partial<Record<Key, string>>, filename: string) => {
-    s.viaPdf = true;
-    setFields(fields);
-    s.pdfName = filename;
-    s.opener = "";
-    return afterFields();
+  /** Trim incoming fields; NRIC/FIN is dropped, never stored. */
+  const clean = (fields: Record<string, string>): Record<string, string> => {
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(fields || {})) {
+      if (/^(nric|fin)$/i.test(k)) continue;
+      const val = String(v ?? "").trim();
+      if (!val || NRIC_RE.test(val)) continue;
+      out[k] = val;
+    }
+    return out;
   };
 
-  const onRefs = (n: number): ApiResponse => {
-    s.refs += n;
-    if (s.status === "need_direction" && s.refsPending) {
-      s.refsPending = false;
-      const out = runRound(); // PDF design preferences + these refs
-      return { ...out, reply: `Got ${n} reference image(s).\n\n` + out.reply };
-    }
-    if (s.status === "need_direction") return resp(`Got ${n} reference image(s). Now tell me your design direction, or type "skip".`);
-    return s.status !== "missing_info" ? resp(`Saved ${n} reference image(s).`) : afterFields(`Saved ${n} reference image(s).\n\n`);
+  const out = (p: {
+    reply: string; step?: string; looks?: Looks | null; extracted?: ExtractedField[] | null;
+    retake?: { reason: string } | null; consult?: ConsultInfo | null; missing?: string[];
+  }): ApiResponse => {
+    const lang = langNow();
+    const step = p.step ?? s.step;
+    s.step = step;
+    return {
+      reply: p.reply,
+      lang,
+      step,
+      status: step,
+      images: p.looks ? p.looks.options.map((o) => o.url) : imagesForRound(s.round),
+      missing: p.missing ?? [],
+      round: s.round,
+      looks: p.looks ?? null,
+      extracted: p.extracted ?? null,
+      retake: p.retake ?? null,
+      consult: p.consult ?? null,
+    };
   };
 
-  const fillFromText = (text: string): Key[] => {
-    const m = missingKeys();
-    const ext = regexExtract(text);
-    const got: Partial<Record<Key, string>> = {};
-    (Object.keys(ext) as Key[]).forEach((k) => {
-      if (!s.refill.length || m.includes(k)) got[k] = ext[k];
-    });
-    if (!Object.keys(got).length && m.length) {
-      if (s.invalid[m[0]] && !MANDATORY.includes(m[0]) && SKIP.test(text)) got[m[0]] = "";
-      else {
-        const e = m[0] === "email" ? text.match(EMAIL) : null;
-        got[m[0]] = (e ? e[0] : text).trim();
-      }
-    }
-    setFields(got);
-    return Object.keys(got) as Key[];
-  };
-
-  const onReview = (accepted: boolean, feedback: string): ApiResponse => {
-    if (s.status !== "awaiting_review") return resp("There's nothing to review yet.");
-    if (accepted) {
-      s.status = "accepted";
-      return resp("Great, design direction accepted! Our team will contact you shortly.", images());
-    }
-    const fb = (feedback || "").trim();
-    if (s.round >= MAX_ROUNDS) {
-      s.status = "handed_off";
-      return resp("Thanks for the feedback. I'm handing you to a human designer with your notes. Our team will contact you shortly.");
-    }
-    if (!fb) return resp("What would you like changed? (colours, style, text, layout...)");
-    return runRound();
+  const startLooks = (round: number): ApiResponse => {
+    const lang = langNow();
+    s.round = round;
+    const looks = looksForRound(round, lang);
+    return out({ reply: t(lang, "mock.looksRound", { round, max: MAX_ROUNDS }), step: "choosing_look", looks });
   };
 
   const handlers = {
     upload(files: File[]): ApiResponse {
-      const pdfFiles = files.filter((f) => /\.pdf$/i.test(f.name) || f.type === "application/pdf");
-      const refs = files.length - pdfFiles.length;
-      if (pdfFiles.length && refs) s.refs += refs; // refs sent with the PDF count before it is read
-      let out: ApiResponse | null = null;
-      pdfFiles.forEach((f) => {
-        const fields = { ...SAMPLE_PDF };
-        if (/invalid/i.test(f.name)) {
-          fields.business_type = "123";
-          fields.expected_annual_revenue = "cat";
+      const lang = langNow();
+      const list = files || [];
+      if (!list.length) return out({ reply: t(lang, "mock.needPdf"), step: "registering" });
+      if (list.some((f) => /blurry/i.test(f?.name || ""))) {
+        return out({ reply: t(lang, "mock.retakeBlurry"), retake: { reason: "blurry" } });
+      }
+      if (list.some((f) => /cropped/i.test(f?.name || ""))) {
+        return out({ reply: t(lang, "mock.retakeCropped"), retake: { reason: "cropped" } });
+      }
+      const pdfs = list.filter((f) => /\.pdf$/i.test(f?.name || "") || (f as File)?.type === "application/pdf");
+      const refs = list.length - pdfs.length;
+      if (refs > 0) s.refs += refs;
+      if (pdfs.length) {
+        const values: Record<string, string> = { ...SAMPLE_PDF };
+        if (/invalid/i.test(pdfs[0]?.name || "")) {
+          values.business_type = "123";
+          values.expected_annual_revenue = "cat";
         }
-        out = onDocument(fields, f.name);
-      });
-      if (pdfFiles.length && refs && out!.status === "missing_info") out = { ...out!, reply: out!.reply + `\n\nSaved ${refs} reference image(s).` };
-      if (refs && !pdfFiles.length) out = onRefs(refs);
-      return out || resp("Please upload a PDF, JPG or PNG.");
+        s.pendingValues = values;
+        s.designAsked = false;
+        return out({ reply: t(lang, "mock.confirmAsk"), step: "confirm_details", extracted: toExtracted(values, lang) });
+      }
+      if (refs > 0) {
+        if (s.pendingValues) {
+          return out({ reply: t(lang, "mock.gotRefs", { n: refs }), extracted: toExtracted(s.pendingValues, lang) });
+        }
+        return out({ reply: t(lang, "mock.gotRefs", { n: refs }) });
+      }
+      return out({ reply: t(lang, "mock.needPdf") });
     },
+
     form(fields: FormFields): ApiResponse {
-      s.viaPdf = false;
-      setFields(fields);
-      s.opener = "Got your registration form. ";
-      s.pdfName = null;
-      return afterFields();
+      const lang = langNow();
+      const updates = clean(fields as unknown as Record<string, string>);
+      if (s.resumed) {
+        s.resumed = false;
+        s.fields = { ...s.fields, ...updates };
+        s.pendingValues = null;
+        return out({ reply: t(lang, "mock.updated"), step: "pending_review" });
+      }
+      s.fields = { ...s.fields, ...updates };
+      s.pendingValues = null;
+      if ((s.fields.design_preferences || "").trim()) {
+        s.designAsked = false;
+        s.skips = 0;
+        return startLooks(1);
+      }
+      s.designAsked = true;
+      return out({ reply: t(lang, "mock.designAsk"), step: "missing_info", missing: ["Design preferences"] });
     },
+
+    confirmExtracted(fields: Record<string, string>): ApiResponse {
+      const lang = langNow();
+      if (s.resumed) {
+        s.resumed = false;
+        s.fields = { ...s.fields, ...clean(fields) };
+        s.pendingValues = null;
+        return out({ reply: t(lang, "mock.updated"), step: "pending_review" });
+      }
+      const base = s.pendingValues ? { ...s.pendingValues } : { ...s.fields };
+      s.fields = { ...base, ...clean(fields) };
+      s.pendingValues = null;
+      s.designAsked = true;
+      return out({ reply: t(lang, "mock.designAsk"), step: "missing_info", missing: ["Design preferences"] });
+    },
+
     chat(text: string): ApiResponse {
-      const st = s.status;
-      if (st === "need_document" || st === "missing_info") return afterFields("", fillFromText(text));
-      if (st === "need_direction") {
-        const pending = s.refsPending;
-        s.refsPending = false; // 'skip' keeps the PDF's design preferences
-        s.direction = SKIP.test(text) ? (pending ? s.direction : null) : text.trim();
-        return runRound();
+      const lang = langNow();
+      if (s.resumed) {
+        s.resumed = false;
+        return out({ reply: t(lang, "mock.updated"), step: "pending_review" });
       }
-      if (st === "awaiting_review") return onReview(false, text);
-      if (st === "approved" || st === "rejected" || st === "pending_review") {
-        const msg = {
-          approved: "You're approved! Our team will contact you shortly.",
-          rejected: "Thanks for your interest. Our team will contact you shortly.",
-          pending_review: "Thanks! We're reviewing your details. Our team will contact you shortly.",
-        }[st];
-        return resp(msg, images());
+      if (s.step === "accepted") return out({ reply: t(lang, "mock.accepted"), step: "accepted" });
+      if (s.step === "handed_off") {
+        return out({
+          reply: t(lang, "mock.consult"), step: "handed_off",
+          consult: { status: "pending_approval", submitted: submittedEn(), next_steps: [t(lang, "mock.nextStep")] },
+        });
       }
-      if (st === "accepted") return resp("Your design direction is locked in. Our team will contact you shortly.", images());
-      return resp("A designer has your details. Our team will contact you shortly.");
+      if (s.pendingValues) {
+        if (/^\s*(yes|y|ok|confirm|looks good|agree)\b/i.test(text || "")) return handlers.confirmExtracted({});
+        if (/^\s*(no|n|discard|cancel)\b/i.test(text || "")) {
+          s.pendingValues = null;
+          return out({ reply: t(lang, "mock.removed"), step: "registering" });
+        }
+        return out({ reply: t(lang, "mock.pendingConfirm"), step: "confirm_details", extracted: toExtracted(s.pendingValues, lang) });
+      }
+      if (s.designAsked) {
+        const ans = (text || "").trim();
+        if (ans && !SKIP.test(ans)) s.fields.design_preferences = ans;
+        s.designAsked = false;
+        s.skips = 0;
+        return startLooks(1);
+      }
+      if (s.step === "choosing_look") {
+        if (SKIP.test(text || "") || /skip/i.test(text || "")) return handlers.skipLooks();
+        const nums = (text || "").match(/[123]/g);
+        if (nums?.length) {
+          const ids = [...new Set(nums)].map((d) => `r${s.round}-${"abc"[Number(d) - 1]}`);
+          return handlers.pickLooks(ids);
+        }
+        return handlers.skipLooks();
+      }
+      if (s.step === "missing_info" && !s.round) {
+        if ((text || "").trim() && !SKIP.test((text || "").trim())) s.fields.design_preferences = (text || "").trim();
+        s.skips = 0;
+        return startLooks(1);
+      }
+      if (!Object.keys(s.fields).length && !s.round) return out({ reply: t(lang, "mock.needPdf"), step: "registering" });
+      return out({ reply: t(lang, "mock.needPdf") });
     },
+
+    pickLooks(ids: string[]): ApiResponse {
+      const lang = langNow();
+      s.resumed = false;
+      s.designAsked = false;
+      s.pendingValues = null;
+      if (!s.round) s.round = 1;
+      void ids;
+      return out({ reply: t(lang, "mock.accepted"), step: "accepted" });
+    },
+
+    skipLooks(): ApiResponse {
+      const lang = langNow();
+      if (s.designAsked) {
+        s.designAsked = false;
+        s.skips = 0;
+        return startLooks(1);
+      }
+      if (s.pendingValues) {
+        return out({ reply: t(lang, "mock.pendingConfirm"), step: "confirm_details", extracted: toExtracted(s.pendingValues, lang) });
+      }
+      s.skips += 1;
+      if (s.skips >= MAX_ROUNDS) {
+        s.round = MAX_ROUNDS;
+        const consult: ConsultInfo = {
+          status: "pending_approval", submitted: submittedEn(), next_steps: [t(lang, "mock.nextStep")],
+        };
+        return out({ reply: t(lang, "mock.consult"), step: "handed_off", consult });
+      }
+      return startLooks(Math.min((s.round || 0) + 1, MAX_ROUNDS) || 1);
+    },
+
+    removeUpload(): ApiResponse {
+      const lang = langNow();
+      s.pendingValues = null;
+      s.designAsked = false;
+      const step = s.step === "confirm_details" ? "registering" : s.step;
+      return out({ reply: t(lang, "mock.removed"), step });
+    },
+
     review(accepted: boolean, feedback: string): ApiResponse {
-      return onReview(accepted, feedback);
+      if (accepted) return handlers.pickLooks([]);
+      const fb = (feedback || "").trim();
+      if (!fb) {
+        if (s.step === "choosing_look" || s.round || s.designAsked) return handlers.skipLooks();
+        return out({ reply: t(langNow(), "mock.nothingToReview") });
+      }
+      if (/skip/i.test(fb)) return handlers.skipLooks();
+      if (s.designAsked) return handlers.chat(fb);
+      if (s.step === "choosing_look" || s.round) return handlers.skipLooks();
+      if (s.pendingValues) return handlers.chat(fb);
+      return out({ reply: t(langNow(), "mock.nothingToReview") });
     },
   };
 
-  const delay = <T,>(v: T) => new Promise<T>((res) => setTimeout(() => res(v), 600));
+  const delay = <T,>(v: T) => new Promise<T>((res) => setTimeout(() => res(v), 100));
   return {
     upload: (f: File[]) => delay(handlers.upload(f)),
     form: (f: FormFields) => delay(handlers.form(f)),
-    chat: (t: string) => delay(handlers.chat(t)),
+    chat: (x: string) => delay(handlers.chat(x)),
     review: (a: boolean, fb: string) => delay(handlers.review(a, fb)),
+    pickLooks: (ids: string[]) => delay(handlers.pickLooks(ids)),
+    skipLooks: () => delay(handlers.skipLooks()),
+    confirmExtracted: (fields: Record<string, string>) => delay(handlers.confirmExtracted(fields)),
+    removeUpload: () => delay(handlers.removeUpload()),
+    trace: async (_kind: TraceKind, _ok: boolean, _ms: number): Promise<void> => {},
   };
 }

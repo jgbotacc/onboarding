@@ -212,20 +212,11 @@ type MockHandlers = ReturnType<typeof createMock>;
 
 function mockExtras(m: MockHandlers) {
   return {
-    pickLooks: (_ids: string[]) => m.review(true, ""),
-    skipLooks: () => m.review(false, "skip"),
-    confirmExtracted: (fields: Record<string, string>) => {
-      const known = Object.fromEntries(Object.entries(fields).filter(([k]) => k in EMPTY_FORM));
-      return m.form({ ...EMPTY_FORM, ...known });
-    },
-    removeUpload: async (): Promise<ApiResponse> => ({
-      reply: "Removed your upload. You can upload again or fill in the form.",
-      images: [],
-      status: "registering",
-      missing: [],
-      round: 0,
-    }),
-    trace: async (_kind: TraceKind, _ok: boolean, _ms: number): Promise<void> => {},
+    pickLooks: (ids: string[]) => m.pickLooks(ids),
+    skipLooks: () => m.skipLooks(),
+    confirmExtracted: (fields: Record<string, string>) => m.confirmExtracted(fields),
+    removeUpload: () => m.removeUpload(),
+    trace: (kind: TraceKind, ok: boolean, ms: number) => m.trace(kind, ok, ms),
     setLang: (lang: Lang) => {
       storeLang(lang);
     },
