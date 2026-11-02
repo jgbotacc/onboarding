@@ -91,7 +91,7 @@ const ms: typeof en = {
   "mock.looksRound": "Ini 3 rekaan (pusingan {round} daripada {max}).\nPilih satu yang anda suka, atau skip untuk lihat lagi.",
   "mock.accepted": "Bagus, rekaan anda diterima!\nPasukan kami akan hubungi anda tidak lama lagi.",
   "mock.consult": "Pasukan kami akan mengaturkan sesi consult untuk lebih memahami citarasa anda.",
-  "mock.consultHandoff": "Diserahkan — pasukan kami akan ambil alih.",
+  "mock.consultHandoff": "Thanks. Our team will contact you to set up a consult.",
   "mock.removed": "Muat naik anda dibuang.\nAnda boleh muat naik semula atau isi borang.",
   "mock.needPdf": "Sila muat naik PDF, JPG atau PNG.",
   "mock.gotRefs": "Dapat {n} gambar rujukan.\nBeritahu saya arah rekaan anda, atau taip \"skip\".",

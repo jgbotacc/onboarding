@@ -58,7 +58,7 @@ export default function LooksPicker({ looks, lang, client, disabled, trace, onRe
   };
 
   return (
-    <section className={"looks" + (locked ? " is-disabled" : "")} aria-labelledby={labelId} aria-disabled={locked}>
+    <section className={"looks" + (locked ? " is-disabled" : "")} aria-labelledby={labelId}>
       <p className="looks-prompt" id={labelId}>
         {prompt}
       </p>
