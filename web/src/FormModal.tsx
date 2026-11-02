@@ -2,63 +2,63 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEven
 import { CloseIcon, ImageIcon } from "./icons";
 import { EMPTY_FORM, type FieldIssue, type FormFields } from "./types";
 import { validateField } from "./validation"; // [field-validation]
+import { fieldLabel, t, type I18nKey, type Lang } from "./i18n";
 
 type Key = keyof FormFields;
 interface FieldDef {
   key: Key;
-  label: string;
   type?: "text" | "email" | "url" | "tel" | "textarea";
   required?: boolean;
   autoComplete?: string;
   full?: boolean;
 }
 interface SectionDef {
-  title: string;
+  title: I18nKey;
   fields: FieldDef[];
 }
 
 const SECTIONS: SectionDef[] = [
   {
-    title: "Your business",
+    title: "section.business",
     fields: [
-      { key: "business_name", label: "Business name", required: true, autoComplete: "organization" },
-      { key: "business_type", label: "Business type" },
-      { key: "industry", label: "Industry" },
-      { key: "business_website", label: "Website", type: "url", autoComplete: "url" },
+      { key: "business_name", required: true, autoComplete: "organization" },
+      { key: "business_type" },
+      { key: "industry" },
+      { key: "business_website", type: "url", autoComplete: "url" },
     ],
   },
   {
-    title: "Contact",
+    title: "section.contact",
     fields: [
-      { key: "contact_name", label: "Contact name", required: true, autoComplete: "name" },
-      { key: "title_position", label: "Job title", autoComplete: "organization-title" },
-      { key: "email", label: "Email", type: "email", required: true, autoComplete: "email" },
-      { key: "phone_number", label: "Phone number", type: "tel", autoComplete: "tel" },
+      { key: "contact_name", required: true, autoComplete: "name" },
+      { key: "title_position", autoComplete: "organization-title" },
+      { key: "email", type: "email", required: true, autoComplete: "email" },
+      { key: "phone_number", type: "tel", autoComplete: "tel" },
     ],
   },
   {
-    title: "Style and size",
+    title: "section.style",
     fields: [
-      { key: "design_preferences", label: "Design preferences" },
-      { key: "expected_annual_revenue", label: "Expected annual revenue" },
+      { key: "design_preferences" },
+      { key: "expected_annual_revenue" },
     ],
   },
   {
-    title: "Anything else",
-    fields: [{ key: "requirements_notes", label: "Notes", type: "textarea", full: true }],
+    title: "section.else",
+    fields: [{ key: "requirements_notes", type: "textarea", full: true }],
   },
 ];
 
 // [field-validation] Instant checks (message + example) from ./validation; server `invalid` always wins.
 type Issue = { message: string; example?: string; server?: boolean };
-const validate = (f: FieldDef, raw: string): Issue | undefined => validateField(f.key, raw, f.label, f.required) || undefined;
 const ALL_FIELDS = SECTIONS.flatMap((s) => s.fields);
-const norm = (t: string) => t.toLowerCase().replace(/[^a-z]/g, "");
-/** Server may name a field by key or label. */
+const norm = (s: string) => s.toLowerCase().replace(/[^a-z]/g, "");
+/** Server may name a field by key or English label, whatever the UI language. */
 const issueKey = (field: string): Key | undefined =>
-  ALL_FIELDS.find((f) => f.key === field || norm(f.label) === norm(field) || norm(f.key) === norm(field))?.key;
+  ALL_FIELDS.find((f) => f.key === field || norm(fieldLabel("en", f.key)) === norm(field) || norm(f.key) === norm(field))?.key;
 
 interface Props {
+  lang: Lang;
   onCancel: () => void;
   /** [field-validation] Resolve with the server's `invalid` list to keep the form open with those errors. */
   onSubmit: (fields: FormFields, images: File[]) => void | FieldIssue[] | Promise<void | FieldIssue[] | undefined>;
@@ -72,7 +72,7 @@ const MAX_IMAGES = 6;
 const isImage = (f: File) => /\.(jpe?g|png)$/i.test(f.name) || f.type === "image/jpeg" || f.type === "image/png";
 
 /** Optional reference images: thumbnails with remove buttons. Sent to /api/upload before the form. */
-function RefImages({ files, onChange }: { files: File[]; onChange: (f: File[]) => void }) {
+function RefImages({ files, onChange, lang }: { files: File[]; onChange: (f: File[]) => void; lang: Lang }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [note, setNote] = useState("");
   const urls = useMemo(() => files.map((f) => URL.createObjectURL(f)), [files]);
@@ -84,17 +84,17 @@ function RefImages({ files, onChange }: { files: File[]; onChange: (f: File[]) =
     const ok = all.filter(isImage);
     const room = MAX_IMAGES - files.length;
     const msgs: string[] = [];
-    if (ok.length < all.length) msgs.push("Only JPG or PNG images, please.");
-    if (ok.length > room) msgs.push(`You can add up to ${MAX_IMAGES}.`);
+    if (ok.length < all.length) msgs.push(t(lang, "refOnly"));
+    if (ok.length > room) msgs.push(t(lang, "refMax", { max: MAX_IMAGES }));
     setNote(msgs.join(" "));
     if (room > 0 && ok.length) onChange([...files, ...ok.slice(0, room)]);
   };
 
   return (
     <div className="field full">
-      <label htmlFor="f_ref_images">Images you like (optional)</label>
+      <label htmlFor="f_ref_images">{t(lang, "refLabel")}</label>
       <p className="field-hint" id="f_ref_images_hint">
-        JPG or PNG. We'll use them as style inspiration for your first designs.
+        {t(lang, "refHint")}
       </p>
       <input
         ref={inputRef}
@@ -115,7 +115,7 @@ function RefImages({ files, onChange }: { files: File[]; onChange: (f: File[]) =
             <button
               type="button"
               className="ref-remove"
-              aria-label={"Remove " + f.name}
+              aria-label={t(lang, "removeFile", { name: f.name })}
               onClick={() => onChange(files.filter((_, j) => j !== i))}
             >
               <CloseIcon />
@@ -131,7 +131,7 @@ function RefImages({ files, onChange }: { files: File[]; onChange: (f: File[]) =
             onClick={() => inputRef.current?.click()}
           >
             <ImageIcon />
-            <span>{files.length ? "Add more" : "Add images"}</span>
+            <span>{files.length ? t(lang, "refAddMore") : t(lang, "refAdd")}</span>
           </button>
         )}
       </div>
@@ -140,7 +140,7 @@ function RefImages({ files, onChange }: { files: File[]; onChange: (f: File[]) =
   );
 }
 
-export default function FormModal({ onCancel, onSubmit, only, intro }: Props) {
+export default function FormModal({ lang, onCancel, onSubmit, only, intro }: Props) {
   const resume = !!only?.length;
   const [values, setValues] = useState<FormFields>({ ...EMPTY_FORM });
   const [errors, setErrors] = useState<Partial<Record<Key, Issue>>>({});
@@ -155,6 +155,9 @@ export default function FormModal({ onCancel, onSubmit, only, intro }: Props) {
   const [images, setImages] = useState<File[]>([]);
   const dialogRef = useRef<HTMLDivElement>(null);
   const restoreRef = useRef<Element | null>(null);
+
+  const labelOf = (key: Key) => fieldLabel(lang, key);
+  const validate = (f: FieldDef, raw: string): Issue | undefined => validateField(f.key, raw, labelOf(f.key), f.required, lang) || undefined;
 
   useEffect(() => {
     restoreRef.current = document.activeElement;
@@ -264,12 +267,12 @@ export default function FormModal({ onCancel, onSubmit, only, intro }: Props) {
         <form className="modal-form" onSubmit={submit} noValidate>
           <div className="modal-head">
             <div>
-              <h2 id="formModalTitle">{resume ? "Update your details" : "Registration form"}</h2>
+              <h2 id="formModalTitle">{t(lang, resume ? "updatedDetails" : "formTitle")}</h2>
               <p id="formModalDesc">
-                {resume ? "Our team needs these again. Everything else is saved." : "Fields marked * are required."}
+                {t(lang, resume ? "formDescUpdate" : "formDesc")}
               </p>
             </div>
-            <button type="button" className="icon-btn" aria-label="Close form" onClick={onCancel}>
+            <button type="button" className="icon-btn" aria-label={t(lang, "closeForm")} onClick={onCancel}>
               <CloseIcon />
             </button>
           </div>
@@ -280,14 +283,14 @@ export default function FormModal({ onCancel, onSubmit, only, intro }: Props) {
                 {otherIssues.map((i) => (
                   <div key={i.field}>
                     <strong>{i.label || i.field}:</strong> {i.message}
-                    {i.example && !i.message.includes(i.example) && <span className="field-example"> For example: {i.example}</span>}
+                    {i.example && !i.message.includes(i.example) && <span className="field-example"> {t(lang, "forExample", { example: i.example })}</span>}
                   </div>
                 ))}
               </div>
             )}
             {sections.map((s) => (
               <fieldset key={s.title} className="form-section">
-                <legend>{s.title}</legend>
+                <legend>{t(lang, s.title)}</legend>
                 <div className="form-grid">
                   {s.fields.map((f) => {
                     const id = "f_" + f.key;
@@ -307,7 +310,7 @@ export default function FormModal({ onCancel, onSubmit, only, intro }: Props) {
                     return (
                       <div key={f.key} className={"field" + (f.full ? " full" : "") + (err ? " invalid" : "")}>
                         <label htmlFor={id}>
-                          {f.label}
+                          {labelOf(f.key)}
                           {f.required && <span className="req" aria-hidden="true"> *</span>}
                         </label>
                         {f.type === "textarea" ? (
@@ -318,7 +321,7 @@ export default function FormModal({ onCancel, onSubmit, only, intro }: Props) {
                         {err && (
                           <div className="field-error" id={id + "_err"} role="alert">
                             <span>{err.message}</span>
-                            {ex && <span className="field-example">For example: {ex}</span>}
+                            {ex && <span className="field-example">{t(lang, "forExample", { example: ex })}</span>}
                           </div>
                         )}
                       </div>
@@ -329,19 +332,19 @@ export default function FormModal({ onCancel, onSubmit, only, intro }: Props) {
             ))}
             {!resume && (
             <fieldset className="form-section">
-              <legend>Reference images</legend>
+              <legend>{t(lang, "section.refs")}</legend>
               <div className="form-grid">
-                <RefImages files={images} onChange={setImages} />
+                <RefImages files={images} onChange={setImages} lang={lang} />
               </div>
             </fieldset>
             )}
           </div>
           <div className="modal-foot">
             <button type="button" className="btn" onClick={onCancel}>
-              Cancel
+              {t(lang, "cancel")}
             </button>
             <button type="submit" className="btn primary" id="formSubmit" disabled={submitting} aria-busy={submitting || undefined}>
-              {submitting ? "Checking\u2026" : "Submit"}
+              {submitting ? t(lang, "checking") : t(lang, "submit")}
             </button>
           </div>
         </form>

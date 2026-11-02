@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
 import { connect, HttpError, type Client } from "./api";
-import { EMPTY_FORM, STATUS_LABELS, type ApiResponse, type FieldIssue, type FormFields } from "./types";
+import { EMPTY_FORM, type ApiResponse, type FieldIssue, type FormFields } from "./types";
 import FormModal from "./FormModal";
-import { FIELDS, toFieldKeys } from "./staff/fields";
+import { toFieldKeys } from "./staff/fields";
+import { LANGS, fieldLabel, statusLabel, t, useLang, type Lang } from "./i18n";
 import { CheckboxIcon, CloseIcon, FileIcon, ImageIcon, PaperclipIcon, SendIcon } from "./icons";
 
 type Msg =
@@ -12,24 +13,21 @@ type Msg =
 
 type NewMsg = Msg extends infer T ? (T extends Msg ? Omit<T, "id"> : never) : never;
 
-const GREETING = "Hi! Let's get you set up.\nUpload a PDF with your business details, or fill in a quick form.";
 const isAcceptable = (f: File) => /\.(pdf|jpe?g|png)$/i.test(f.name) || f.type === "application/pdf" || f.type === "image/jpeg" || f.type === "image/png";
 
 let nextId = 1;
 
 // Resume link: `missing` may hold form keys or labels.
-const FIELD_LABEL: Record<keyof FormFields, string> = Object.fromEntries(FIELDS.map((f) => [f.key, f.label])) as Record<keyof FormFields, string>;
 const toFormKeys = (missing: string[]) => toFieldKeys(missing).filter((k) => k in EMPTY_FORM);
 
 const ASSET = import.meta.env.BASE_URL;
-const AGENT_NAME = "Onboarding assistant";
 
 /** One line per "\n"; "• " lines get a hanging indent; blank lines become a small gap. */
 function MsgText({ text }: { text: string }) {
   return (
     <div className="msg-text">
       {text.split("\n").map((line, i) =>
-        !line.trim() ? <div key={i} className="gap" /> : <div key={i} className={line.startsWith("\u2022 ") ? "li" : undefined}>{line}</div>,
+        !line.trim() ? <div key={i} className="gap" /> : <div key={i} className={line.startsWith("• ") ? "li" : undefined}>{line}</div>,
       )}
     </div>
   );
@@ -40,6 +38,7 @@ function Avatar() {
 }
 
 export default function App() {
+  const [lang, setLang] = useLang();
   const [client, setClient] = useState<Client | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [status, setStatus] = useState("registering");
@@ -81,7 +80,7 @@ export default function App() {
       }
       if (c.resume) {
         const keys = toFormKeys(c.resume.missing);
-        setMessages([{ id: nextId++, role: "assistant", text: c.resume.reply || "Welcome back! Just update the fields below.", images: [], status: "missing_info", round: 0 }]);
+        setMessages([{ id: nextId++, role: "assistant", text: c.resume.reply || t(lang, "welcomeBack"), images: [], status: "missing_info", round: 0 }]);
         setStatus("missing_info");
         if (keys.length) {
           setRefill({ keys, note: c.resume.reply });
@@ -96,7 +95,7 @@ export default function App() {
         }
         return;
       }
-      setMessages([{ id: nextId++, role: "assistant", text: GREETING, images: [], status: "registering", round: 0, choices: true }]);
+      setMessages([{ id: nextId++, role: "assistant", text: t(lang, "greeting"), images: [], status: "registering", round: 0, choices: true }]);
       inputRef.current?.focus();
     });
     return () => {
@@ -141,14 +140,14 @@ export default function App() {
         // [upload-check] Show the server's reason for a rejected file (e.g. "must be JPG or PNG").
         const text = e instanceof HttpError && e.status === 400 && e.detail
           ? e.detail
-          : (console.error(e), "Sorry, that didn't go through. Please try again.");
+          : (console.error(e), t(lang, "sendFailed"));
         push({ role: "error", text });
         return false;
       } finally {
         setBusy(false);
       }
     },
-    [push, render],
+    [push, render, lang],
   );
 
   const hasPdf = (fs: File[]) => fs.some((f) => /\.pdf$/i.test(f.name) || f.type === "application/pdf");
@@ -157,7 +156,7 @@ export default function App() {
     const ok: File[] = [];
     const bad: string[] = [];
     Array.from(list).forEach((f) => (isAcceptable(f) ? ok.push(f) : bad.push(f.name)));
-    if (bad.length) push({ role: "error", text: "I can only take PDF, JPG or PNG files. Skipped: " + bad.join(", ") });
+    if (bad.length) push({ role: "error", text: t(lang, "badFiles", { names: bad.join(", ") }) });
     if (!ok.length) return;
     if (!chatReady) {
       // [chat-gate] No chat box yet: "Upload PDF" (or a drop) sends the files straight away.
@@ -180,8 +179,8 @@ export default function App() {
   const submitForm = async (fields: FormFields, images: File[] = []): Promise<FieldIssue[] | undefined> => {
     if (!client || busy) return;
     const user: NewMsg = refill
-      ? { role: "user", text: "Updated my details", files: refill.keys.map((k) => FIELD_LABEL[k]) }
-      : { role: "user", text: "Sent my registration form", files: [...(fields.business_name ? [fields.business_name] : []), ...images.map((f) => f.name)] };
+      ? { role: "user", text: t(lang, "updatedDetails"), files: refill.keys.map((k) => fieldLabel(lang, k)) }
+      : { role: "user", text: t(lang, "sentForm"), files: [...(fields.business_name ? [fields.business_name] : []), ...images.map((f) => f.name)] };
     setBusy(true);
     let r: ApiResponse;
     try {
@@ -196,7 +195,7 @@ export default function App() {
       setRefill(null);
       push(user);
       console.error(e);
-      push({ role: "error", text: "Sorry, that didn't go through. Please try again." });
+      push({ role: "error", text: t(lang, "sendFailed") });
       return;
     } finally {
       setBusy(false);
@@ -234,7 +233,7 @@ export default function App() {
   const accept = () => {
     if (!client || busy) return;
     setFeedbackMode(false);
-    push({ role: "user", text: "Looks good", files: [] });
+    push({ role: "user", text: t(lang, "looksGood"), files: [] });
     run(() => client.review(true, ""));
   };
 
@@ -283,6 +282,12 @@ export default function App() {
     if (e.dataTransfer?.files?.length) addFiles(e.dataTransfer.files);
   };
 
+  // The server names missing fields in English; show them in the UI language when known.
+  const missingLabel = (m: string) => {
+    const k = toFieldKeys([m])[0];
+    return k ? fieldLabel(lang, k) : m;
+  };
+
   const lastReviewId = [...messages].reverse().find((m) => m.role === "assistant" && m.status === "awaiting_review")?.id;
   const reviewOpen = status === "awaiting_review";
 
@@ -290,13 +295,26 @@ export default function App() {
     <div className="app" onDragEnter={onDragEnter} onDragOver={(e) => e.preventDefault()} onDragLeave={onDragLeave} onDrop={onDrop}>
       <header className="header">
         <img className="header-avatar" src={ASSET + "agent-64.png"} alt="" aria-hidden="true" width={24} height={24} />
-        <h1>Client onboarding</h1>
+        <h1>{t(lang, "appTitle")}</h1>
         <span className="pill" id="statusPill" data-status={status}>
-          {STATUS_LABELS[status] || status.replace(/_/g, " ")}
+          {statusLabel(lang, status)}
         </span>
+        <select
+          className="lang-select"
+          id="langSelect"
+          value={lang}
+          onChange={(e) => setLang(e.target.value as Lang)}
+          aria-label={t(lang, "language")}
+        >
+          {LANGS.map((l) => (
+            <option key={l.code} value={l.code}>
+              {l.name}
+            </option>
+          ))}
+        </select>
         {client?.mock && (
           <span className="badge-demo" id="demoBadge">
-            Demo (sample data)
+            {t(lang, "demoBadge")}
           </span>
         )}
       </header>
@@ -320,17 +338,17 @@ export default function App() {
             if (m.choices && !started)
               return (
                 <div key={m.id} className="welcome">
-                  <img className="welcome-figure" src={ASSET + "agent-clean.png"} alt={AGENT_NAME} width={140} />
+                  <img className="welcome-figure" src={ASSET + "agent-clean.png"} alt={t(lang, "agentName")} width={140} />
                   <div className="welcome-body">
-                    <div className="agent-label">{AGENT_NAME}</div>
+                    <div className="agent-label">{t(lang, "agentName")}</div>
                     <div className="msg assistant speech">
                       <MsgText text={m.text} />
                       <div className="choices">
                         <button type="button" className="btn primary" id="choiceUpload" disabled={busy} onClick={() => fileRef.current?.click()}>
-                          Upload PDF
+                          {t(lang, "uploadPdf")}
                         </button>
                         <button type="button" className="btn" id="choiceForm" disabled={busy} onClick={() => setFormOpen(true)}>
-                          Fill in a form
+                          {t(lang, "fillForm")}
                         </button>
                       </div>
                     </div>
@@ -347,8 +365,8 @@ export default function App() {
                 {m.images.length > 0 && (
                   <div className="img-grid">
                     {m.images.map((src, i) => (
-                      <button type="button" key={i} className="thumb" onClick={() => setLightbox(src)} aria-label={`Enlarge image ${i + 1}`}>
-                        <img src={src} alt={`Generated image ${i + 1}`} loading="lazy" />
+                      <button type="button" key={i} className="thumb" onClick={() => setLightbox(src)} aria-label={t(lang, "enlargeImage", { n: i + 1 })}>
+                        <img src={src} alt={t(lang, "generatedImage", { n: i + 1 })} loading="lazy" />
                       </button>
                     ))}
                   </div>
@@ -357,10 +375,10 @@ export default function App() {
                   <>
                     <div className="review">
                       <button type="button" className="btn primary" disabled={!active || busy} onClick={accept}>
-                        Looks good
+                        {t(lang, "looksGood")}
                       </button>
                       <button type="button" className={"btn" + (active && feedbackMode ? " on" : "")} disabled={!active || busy} onClick={startFeedback}>
-                        Ask for changes
+                        {t(lang, "askChanges")}
                       </button>
                     </div>
                   </>
@@ -372,7 +390,7 @@ export default function App() {
           {busy && (
             <div className="row assistant">
               <Avatar />
-              <div className="typing" aria-label="Waiting for reply">
+              <div className="typing" aria-label={t(lang, "waitingReply")}>
                 <span />
                 <span />
                 <span />
@@ -400,12 +418,12 @@ export default function App() {
         <div className="column">
           {missing.length > 0 && (
             <section className="missing-card" id="missingCard">
-              <div className="missing-title">Still needed</div>
+              <div className="missing-title">{t(lang, "stillNeeded")}</div>
               <ul id="missingList">
                 {missing.map((m) => (
                   <li key={m}>
                     <CheckboxIcon />
-                    {m}
+                    {missingLabel(m)}
                   </li>
                 ))}
               </ul>
@@ -417,7 +435,7 @@ export default function App() {
                 <span className="chip" key={f.name + i}>
                   {/\.pdf$/i.test(f.name) ? <FileIcon /> : <ImageIcon />}
                   <span className="name">{f.name}</span>
-                  <button type="button" aria-label={"Remove " + f.name} onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))}>
+                  <button type="button" aria-label={t(lang, "removeFile", { name: f.name })} onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))}>
                     <CloseIcon />
                   </button>
                 </span>
@@ -425,7 +443,7 @@ export default function App() {
             </div>
           )}
           <form className={"composer" + (feedbackMode ? " feedback" : "")} id="composer" onSubmit={onSubmit} autoComplete="off">
-            <button type="button" className="btn-icon" id="attachBtn" title="Attach a PDF or image" aria-label="Attach files" disabled={closed} onClick={() => fileRef.current?.click()}>
+            <button type="button" className="btn-icon" id="attachBtn" title={t(lang, "attachTitle")} aria-label={t(lang, "attachLabel")} disabled={closed} onClick={() => fileRef.current?.click()}>
               <PaperclipIcon />
             </button>
             <textarea
@@ -433,35 +451,35 @@ export default function App() {
               id="textInput"
               rows={1}
               value={text}
-              placeholder={closed ? "This link is closed" : feedbackMode ? "What would you like changed?" : "Type a message"}
+              placeholder={closed ? t(lang, "linkClosed") : feedbackMode ? t(lang, "feedbackPrompt") : t(lang, "typeMessage")}
               disabled={closed}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={onKeyDown}
             />
             <button type="submit" className="btn-send" id="sendBtn" disabled={busy || !client || closed}>
-              <span>Send</span>
+              <span>{t(lang, "send")}</span>
               <SendIcon />
             </button>
           </form>
-          {feedbackMode && <div className="hint">I'll use your next message as feedback.</div>}
+          {feedbackMode && <div className="hint">{t(lang, "feedbackHint")}</div>}
         </div>
       </footer>
       )}
 
-      {dragging && <div className="drop-overlay">Drop your PDF or images here</div>}
+      {dragging && <div className="drop-overlay">{t(lang, "dropHere")}</div>}
       {formOpen && (
-        <FormModal onCancel={cancelForm} onSubmit={submitForm} only={refill?.keys} intro={refill?.note} />
+        <FormModal lang={lang} onCancel={cancelForm} onSubmit={submitForm} only={refill?.keys} intro={refill?.note} />
       )}
       {!formOpen && refill && (
         <div className="refill-bar">
           <button type="button" className="btn primary" onClick={() => setFormOpen(true)}>
-            Update my details
+            {t(lang, "updatedDetails")}
           </button>
         </div>
       )}
       {lightbox && (
-        <div className="lightbox" id="lightbox" onClick={() => setLightbox(null)} role="dialog" aria-label="Image preview">
-          <img src={lightbox} alt="Enlarged image" />
+        <div className="lightbox" id="lightbox" onClick={() => setLightbox(null)} role="dialog" aria-label={t(lang, "imagePreview")}>
+          <img src={lightbox} alt={t(lang, "enlargedImage")} />
         </div>
       )}
     </div>
