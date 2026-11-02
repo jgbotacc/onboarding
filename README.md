@@ -1,5 +1,13 @@
 # Onboarding Agent (v2)
 
+## Branch `poc-gallery`: Pick-the-poster
+This branch is a variant of v2. Onboarding opens on three sample posters instead of a form. See [Docs/PITCH.md](Docs/PITCH.md).
+- The first screen is a gallery of 3 sample posters (`web/public/samples/`, served at `/samples/`). Pick one or more, or skip to the classic upload-or-type flow.
+- After a pick it asks for the business name, then what the poster should say (optional, "skip" works), then the contact name and email. The first question offers a document upload as a shortcut, and the upload button stays available throughout.
+- The pick sets the design direction, and the sample is passed as a style reference to the first round of looks. After that, the v2 flow (3 looks per round, up to 3 rounds, consult handoff) is unchanged.
+- Opt-in on the API: `POST /api/session {"flow": "gallery"}`. The web client on this branch always sends it. Other callers get the classic flow.
+- Tests: `tests/test_gallery.py` covers the flow order.
+
 ## What it does
 AI-assisted onboarding chat for small businesses. A client uploads a PDF or phone photo with business details, the agent pulls out the fields, asks only for what is still missing, and shows three square (1080x1080) marketing looks per round for up to 3 rounds. If nothing is picked, it hands off to staff for a consult.
 
@@ -55,6 +63,7 @@ Env vars, by name only:
 - `ONBOARDING_NOTIFY_EMAIL`, `RESEND_API_KEY` optional
 
 ## Docs
+- [Docs/PITCH.md](Docs/PITCH.md) (this branch)
 - [Docs/PRD.md](Docs/PRD.md)
 - [Docs/ASSUMPTIONS.md](Docs/ASSUMPTIONS.md)
 - [Docs/UI-API-CONTRACT.md](Docs/UI-API-CONTRACT.md)

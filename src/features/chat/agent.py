@@ -28,6 +28,76 @@ def new_session() -> dict:
             "rejected": [], "selected_looks": [], "consult": None, "fixes": [],
             "started": datetime.now(timezone.utc).isoformat(timespec="seconds")}
 
+
+GALLERY_KEYS = ["business_name", "requirements_notes", "contact_name", "email"]
+GALLERY_QUESTIONS = {
+    "business_name": "What's your business name?\nOr upload your business document, and I'll fill this in.",
+    "requirements_notes": "What should your poster say?\nLike \"20% off all coffee this week\".\nOr type \"skip\".",
+    "contact_name": "Who should we contact?\nYour name, please.",
+    "email": "What's your email?",
+}
+QUESTIONS = GALLERY_QUESTIONS
+
+
+def new_gallery_session(looks: list[dict]) -> dict:
+    s = new_session()
+    s["flow"] = "gallery"
+    s["status"] = "pick_poster"
+    s["looks"] = list(looks or [])
+    s["round"] = 0
+    return s
+
+
+def _gallery_opening(s):
+    return resp(s, "Hi! Which poster do you like?\nPick one or more, and we'll make it yours.\n"
+                   "Or type \"skip\" to start with your details.")
+
+
+def _gallery_missing(s):
+    fields = s.get("fields", {})
+    bad = s.get("invalid", {})
+    out = []
+    for k in GALLERY_KEYS:
+        if k == "requirements_notes" and s.get("headline_skipped"):
+            continue
+        if k in bad:
+            out.append(k)
+            continue
+        if not str(fields.get(k) or "").strip():
+            out.append(k)
+    return out
+
+
+def _gallery_ask(s, prefix="", only=None):
+    gm = _gallery_missing(s)
+    if not gm:
+        return None
+    key = gm[0]
+    question = GALLERY_QUESTIONS[key]
+    head = (prefix.rstrip() + "\n" if prefix and prefix.rstrip() else "")
+    if key in (s.get("invalid") or {}) and (only is None or key in (only or [])):
+        lines = problem_lines(s, only=[key])
+        return resp(s, head + fix_message(lines) + "\n\n" + question)
+    return resp(s, head + question)
+
+
+def _gallery_pick(s, ids: list[str]):
+    looks = s.get("looks") or []
+    by_id = {lk.get("id"): lk for lk in looks}
+    chosen = [by_id[i] for i in ids if i in by_id]
+    briefs = [str(lk.get("brief") or "").strip() for lk in chosen if str(lk.get("brief") or "").strip()]
+    joined = "; ".join(briefs)
+    if joined:
+        s.setdefault("fields", {})["design_preferences"] = joined
+        s["direction"] = joined
+    for lk in chosen:
+        p = lk.get("path")
+        if p and p not in s.setdefault("refs", []):
+            s["refs"].append(p)
+    s["poster_first"] = True
+    s["flow"] = "gallery"
+    return _after_fields(s, prefix="Nice pick!\n")
+
 DESIGN_KEYS = {"design_preferences", "requirements_notes"}
 
 
@@ -43,7 +113,15 @@ def invalid(s):
     return [{"field": k, "label": LABELS.get(k, k), **p} for k, p in s.get("invalid", {}).items()]
 
 
+def _gallery_label(k, s=None):
+    if k == "requirements_notes" and s is not None and s.get("poster_first"):
+        return "Poster headline"
+    return LABELS.get(k, k)
+
+
 def missing(s):
+    if s.get("poster_first"):
+        return [_gallery_label(k, s) for k in _gallery_missing(s)]
     return [LABELS.get(k, k) for k in missing_keys(s)]
 
 
@@ -90,7 +168,9 @@ def resp(s, reply, images=None):
                      "prompt": "Which look do you prefer?",
                      "options": [{"id": lk.get("id"), "url": lk.get("url"), "title": lk.get("title")}
                                  for lk in looks]}
-                    if s.get("status") == "awaiting_review" and looks else None)
+                    if s.get("status") in ("awaiting_review", "pick_poster") and looks else None)
+    if s.get("flow") == "gallery" or s.get("poster_first"):
+        out["flow"] = "gallery"
     cc = s.get("consult")
     out["consult"] = ({"id": cc.get("id"), "status": cc.get("status")} if cc else None)
     return out
@@ -103,13 +183,26 @@ def problem_lines(s, only=None):
         keys = [k for k in keys if k in only]
     keys = sorted(keys, key=lambda k: ORDER.get(k, len(ORDER)))
     fields = s.get("fields", {})
-    return [fix_line(k, label(k), fields.get(k, ""), bad[k]) if k in bad else missing_line(k, label(k))
+    def _lbl(k):
+        return _gallery_label(k, s)
+    return [fix_line(k, _lbl(k), fields.get(k, ""), bad[k]) if k in bad else missing_line(k, _lbl(k))
             for k in keys]
 
 
 def _after_fields(s, prefix="", touched=None):
     """Problems get just the short fix lines. The opener ('Got your registration form.' or the PDF name)
     waits in the session until every field is valid, so it also shows after fixes made in chat."""
+    if s.get("poster_first"):
+        cur = str(s.get("fields", {}).get("requirements_notes") or "").strip().lower()
+        if cur in ("skip", "none", "n/a", "nope", "no"):
+            s.get("fields", {}).pop("requirements_notes", None)
+            s.get("invalid", {}).pop("requirements_notes", None)
+            s["headline_skipped"] = True
+        gm = _gallery_missing(s)
+        if gm:
+            s["status"] = "missing_info"
+            return _gallery_ask(s, prefix=prefix, only=touched)
+        s["status"] = "missing_info"
     if missing_keys(s):
         s["status"] = "missing_info"
         # A single re-entered field that is still wrong: just that one line.
@@ -186,7 +279,7 @@ def on_refs(s, paths):
 
 
 def _fill_from_text(s, text):
-    m = missing_keys(s)
+    m = _gallery_missing(s) if s.get("poster_first") else missing_keys(s)
     got = {k: v for k, v in extract_fields(text).items() if not s.get("refill") or k in m}
     if not got and m:
         if m[0] in s.get("invalid", {}) and m[0] not in dict(MANDATORY) and SKIP.match(text):
@@ -301,8 +394,37 @@ def _consult(s):
                    "Our team will contact you shortly.")
 
 
+def _gallery_skip(s):
+    s["status"] = "need_document"
+    return resp(s, "Okay, let's start with your details.\nUpload your business document or registration form.\n"
+                   "Or type your business name, contact name and email.")
+
+
+def _parse_gallery_pick(s, text: str):
+    looks = s.get("looks") or []
+    if not looks:
+        return None
+    low = text.strip().lower()
+    if len(text.strip()) > 40:
+        return None
+    if re.search(r"\b(all|both)\b", low):
+        return [lk["id"] for lk in looks]
+    nums = sorted({int(n) for n in re.findall(r"\b([123])\b", text)} - {0})
+    if nums and all(1 <= n <= len(looks) for n in nums):
+        return [looks[n - 1]["id"] for n in nums]
+    return None
+
+
 def on_looks(s, selected_ids: list[str], skip: bool = False):
     """Pick one or more looks, or skip the round for 3 new ones."""
+    if s.get("status") == "pick_poster":
+        if skip or not selected_ids:
+            return _gallery_skip(s)
+        by_id = {lk.get("id"): lk for lk in (s.get("looks") or [])}
+        ids = [i for i in (selected_ids or []) if i in by_id]
+        if not ids:
+            return _gallery_skip(s)
+        return _gallery_pick(s, ids)
     if s.get("status") != "awaiting_review":
         return resp(s, "There's nothing to pick yet.")
     looks = s.get("looks") or []
@@ -413,9 +535,30 @@ def _confirm_chat(s, text):
     return resp(s, "Reply \"yes\" if it's right.\nOr type a fix, like: Email: jo@shop.sg")
 
 
+def _gallery_chat_pick(s, text):
+    low = text.strip().lower()
+    if SKIP.match(text) or low in ("skip",):
+        return _gallery_skip(s)
+    ids = _parse_gallery_pick(s, text)
+    if ids:
+        return _gallery_pick(s, ids)
+    return None
+
+
 def on_chat(s, text):
     st = s.get("status")
+    if st == "pick_poster":
+        picked = _gallery_chat_pick(s, text)
+        if picked is not None:
+            return picked
+        s["status"] = "need_document"
+        return _after_fields(s, touched=_fill_from_text(s, text))
     if st in ("need_document", "missing_info"):
+        if s.get("poster_first"):
+            gm = _gallery_missing(s)
+            if gm and gm[0] == "requirements_notes" and SKIP.match(text):
+                s["headline_skipped"] = True
+                return _after_fields(s, prefix="")
         return _after_fields(s, touched=_fill_from_text(s, text))
     if st == "need_direction":
         pending = s.pop("refs_pending", False)  # 'skip' keeps the PDF's design preferences

@@ -36,6 +36,7 @@ Stack: `web (FastAPI + React/Vite, Neo4j Aura, Daytona, Vercel relay)`
 ├── neo4j/                    graph schema, seed and queries (Cypher)
 ├── relay/                    Vercel pass-through to Neo4j, Muse and Resend
 ├── web/                      React + Vite front end (chat and /staff)
+│   └── public/samples/       3 pre-made gallery posters, served at `/samples/`
 ├── screens/                  UI screenshots
 ├── tests/                    API, staff, relay and image tests
 │   └── fixtures/             made-up ACRA-style fixture (no real data)
@@ -73,3 +74,6 @@ Stack: `web (FastAPI + React/Vite, Neo4j Aura, Daytona, Vercel relay)`
 - `Docs/flows/client-flow.png`: client chat flow storyboard, with stand-out features
 - `Docs/flows/staff-flow.png`: staff review flow storyboard, with stand-out features
 - `Docs/flows/data-flow.png`: data flow between browser, back end, relay, Neo4j, Muse and Resend
+- `Docs/PITCH.md`: one-page pitch for the gallery-first branch
+- `web/public/samples/`: 3 pre-made gallery posters, served at `/samples/`
+- `tests/test_gallery.py`: gallery flow order tests

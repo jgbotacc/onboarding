@@ -30,7 +30,9 @@ export default function LooksPicker({ looks, lang, client, disabled, trace, onRe
 
   const { round, max } = roundInfo(looks);
   const locked = !!disabled || busy;
-  const prompt = t(lang, "looks.prompt");
+  // Round 0 is the gallery: the bubble above already asks, so keep the picker quiet.
+  const gallery = looks.round === 0;
+  const prompt = gallery ? t(lang, "gallery.prompt") : t(lang, "looks.prompt");
   const labelId = `${idPrefix}-prompt`;
 
   const choose = async (ids: string[]) => {
@@ -58,12 +60,12 @@ export default function LooksPicker({ looks, lang, client, disabled, trace, onRe
   };
 
   return (
-    <section className={"looks" + (locked ? " is-disabled" : "")} aria-labelledby={labelId}>
-      <p className="looks-prompt" id={labelId}>
+    <section className={"looks" + (gallery ? " gallery" : "") + (locked ? " is-disabled" : "")} aria-labelledby={labelId}>
+      <p className={"looks-prompt" + (gallery ? " visually-hidden" : "")} id={labelId}>
         {prompt}
       </p>
-      <ListenButton id={`${idPrefix}-listen`} text={prompt} lang={lang} trace={trace} />
-      <p className="looks-round">{t(lang, "looks.round", { round, max })}</p>
+      {!gallery && <ListenButton id={`${idPrefix}-listen`} text={prompt} lang={lang} trace={trace} />}
+      <p className="looks-round">{gallery ? t(lang, "gallery.hint") : t(lang, "looks.round", { round, max })}</p>
       <div className="look-grid" role="group" aria-label={prompt}>
         {looks.options.map((o, i) => {
           const selected = isPicked(picked, o.id);
@@ -90,7 +92,7 @@ export default function LooksPicker({ looks, lang, client, disabled, trace, onRe
           {t(lang, "looks.useThese")}
         </button>
         <button type="button" className="btn" disabled={locked} onClick={() => void skip()}>
-          {t(lang, "looks.skipNew")}
+          {gallery ? t(lang, "gallery.skip") : t(lang, "looks.skipNew")}
         </button>
       </div>
     </section>

@@ -5,6 +5,25 @@ from pathlib import Path
 DATA_DIR = Path(os.getenv("APP_DATA_DIR", Path(__file__).resolve().parents[2] / "var"))
 MEDIA_DIR = DATA_DIR / "media"
 MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SAMPLES_DIR = REPO_ROOT / "web" / "public" / "samples"
+STARTER_LOOKS = [
+    {"file": "sample-1.jpg", "title": "Warm and cosy",
+     "brief": "warm and cosy, cream and brown, soft natural light, friendly rounded type"},
+    {"file": "sample-2.jpg", "title": "Bold and bright",
+     "brief": "bold and bright, big confident type, high-contrast colours, energetic"},
+    {"file": "sample-3.jpg", "title": "Clean and premium",
+     "brief": "clean and premium, dark background, gold accents, elegant serif type"},
+]
+
+
+def starter_looks():
+    out = []
+    for i, item in enumerate(STARTER_LOOKS, 1):
+        out.append({"id": f"sample-{i}", "title": item["title"], "alt": item["title"],
+                    "brief": item["brief"], "url": f"/samples/{item['file']}",
+                    "path": str(SAMPLES_DIR / item["file"])})
+    return out
 SQLITE_PATH = DATA_DIR / "onboarding.sqlite3"
 MAX_ROUNDS = 3
 

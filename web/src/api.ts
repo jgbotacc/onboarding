@@ -171,6 +171,8 @@ async function deleteJson<T>(path: string, body: unknown, secret?: string): Prom
 export interface Client {
   mock: boolean;
   sessionId: string;
+  /** Gallery opener: normalised /api/session reply, when it carries looks options. */
+  start?: ApiResponse;
   upload(files: File[]): Promise<ApiResponse>;
   form(fields: FormFields): Promise<ApiResponse>;
   chat(text: string): Promise<ApiResponse>;
@@ -231,7 +233,10 @@ function mockClient(): Client {
   }
   const resumed = !!resumeToken();
   const m = createMock({ resumed });
-  return { mock: true, sessionId: "mock-" + Math.random().toString(36).slice(2, 10), ...m, ...mockExtras(m), ...(resumed ? { resume: MOCK_RESUME } : {}) };
+  const base = { mock: true, sessionId: "mock-" + Math.random().toString(36).slice(2, 10), ...m, ...mockExtras(m) };
+  // A fresh demo session opens on the sample gallery; a resumed one keeps its own reply.
+  if (resumed) return { ...base, start: undefined, resume: MOCK_RESUME };
+  return { ...base, start: m.start as ApiResponse };
 }
 
 export async function connect(): Promise<Client> {
@@ -262,9 +267,12 @@ export async function connect(): Promise<Client> {
   const saved = read(SESSION_KEY);
   const savedSecret = read(SECRET_KEY);
   try {
-    const r = await postJson<{ sessionId?: string; sessionSecret?: string }>(
+    // A new session opens on the gallery; a saved one rejoins it too.
+    const r = await postJson<ApiResponse & { sessionId?: string; sessionSecret?: string }>(
       "/api/session",
-      saved && savedSecret ? { sessionId: saved, sessionSecret: savedSecret } : {},
+      saved && savedSecret
+        ? { sessionId: saved, sessionSecret: savedSecret, flow: "gallery" }
+        : { flow: "gallery", lang: getLang() },
     );
     if (!r || !r.sessionId) throw new Error("no sessionId");
     const sessionId = r.sessionId;
@@ -273,7 +281,9 @@ export async function connect(): Promise<Client> {
     if (!secret) throw new Error("no session secret");
     store(SESSION_KEY, sessionId);
     store(SECRET_KEY, secret);
-    return realClient(sessionId, secret);
+    const norm = normalizeChatReply(r);
+    const start = (norm.looks?.options?.length ?? 0) > 0 ? norm : undefined;
+    return start ? { ...realClient(sessionId, secret), start } : realClient(sessionId, secret);
   } catch {
     return mockClient();
   }

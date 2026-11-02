@@ -116,6 +116,16 @@ export default function App() {
         }
         return;
       }
+      // Gallery opener: the session already picked the first reply.
+      const start = c.start;
+      if (start && (start.looks?.options?.length ?? 0) > 0) {
+        setMessages([{ id: nextId++, role: "assistant", text: start.reply || "", images: start.images || [], status: start.status || "pick_poster", round: start.round || 0, looks: start.looks ?? null }]);
+        setStatus(start.status || "pick_poster");
+        setMissing(start.missing || []);
+        setChatReady(true);
+        inputRef.current?.focus();
+        return;
+      }
       setMessages([{ id: nextId++, role: "assistant", text: t(lang, "greeting"), images: [], status: "registering", round: 0, choices: true }]);
       inputRef.current?.focus();
     });
@@ -359,6 +369,8 @@ export default function App() {
 
   // The server names missing fields in English; show them in the UI language when known.
   const missingLabel = (m: string) => {
+    // Gallery follow-up asks for the headline, which is not a form field.
+    if (m.toLowerCase() === "poster headline") return t(lang, "field.headline");
     const k = toFieldKeys([m])[0];
     return k ? fieldLabel(lang, k) : m;
   };
@@ -449,7 +461,8 @@ export default function App() {
                     looks={m.looks}
                     lang={lang}
                     client={client}
-                    disabled={busy || handedOff || m.id !== lastLooksId}
+                    // Gallery locks once the pick is done and the status moves on.
+                    disabled={busy || handedOff || m.id !== lastLooksId || (m.looks.round === 0 && status !== "pick_poster")}
                     trace={traceListen}
                     onReply={render}
                     onError={replyError}

@@ -50,6 +50,10 @@ const NRIC_RE = /[STFGM]\d{7}[A-Z]/;
 const SKIP = /^\s*(skip|no|none|nope|n\/a|go ahead|proceed)\b/i;
 const ALT_KEYS = ["mock.alt1", "mock.alt2", "mock.alt3"] as const;
 
+// Gallery-first demo flow: a fresh session opens on the sample poster gallery,
+// then asks four questions (business, headline, contact, email) before the looks rounds.
+type GalleryPhase = "off" | "pick" | "ask" | "done" | "skipped";
+
 interface MockState {
   step: string;
   fields: Record<string, string>;
@@ -59,12 +63,15 @@ interface MockState {
   skips: number;
   refs: number;
   resumed: boolean;
+  gallery: GalleryPhase;
+  headlineSkipped: boolean;
 }
 
 export function createMock(opts: { resumed?: boolean } = {}) {
   const s: MockState = {
-    step: "registering", fields: {}, pendingValues: null, designAsked: false,
+    step: opts.resumed ? "missing_info" : "pick_poster", fields: {}, pendingValues: null, designAsked: false,
     round: 0, skips: 0, refs: 0, resumed: !!opts.resumed,
+    gallery: opts.resumed ? "off" : "pick", headlineSkipped: false,
   };
   if (opts.resumed) {
     s.fields = { ...SAMPLE_PDF };
@@ -89,6 +96,90 @@ export function createMock(opts: { resumed?: boolean } = {}) {
   });
 
   const imagesForRound = (round: number): string[] => (round > 0 ? [0, 1, 2].map((i) => placeholder(round, i)) : []);
+
+  // Sample posters shown on the opening gallery (static files, personalised later).
+  const GALLERY_ALTS = ["mock.galleryAlt1", "mock.galleryAlt2", "mock.galleryAlt3"] as const;
+  const sampleBase = (): string => {
+    try {
+      const b = import.meta.env.BASE_URL as string | undefined;
+      if (b) return b.endsWith("/") ? b : b + "/";
+    } catch {
+      /* no base configured */
+    }
+    return "/";
+  };
+  const galleryLooks = (lang: Lang): Looks => ({
+    round: 0,
+    max_rounds: MAX_ROUNDS,
+    prompt: t(lang, "mock.galleryStart"),
+    options: [1, 2, 3].map((n) => ({
+      id: `sample-${n}`,
+      url: sampleBase() + `samples/sample-${n}.jpg`,
+      alt: t(lang, GALLERY_ALTS[n - 1]),
+    })),
+  });
+
+  // The four gallery questions, in order, with the field each one fills.
+  const GSLOTS = ["business_name", "headline", "contact_name", "email"] as const;
+  const GSLOT_LABEL = {
+    business_name: "field.business_name",
+    headline: "field.headline",
+    contact_name: "field.contact_name",
+    email: "field.email",
+  } as const;
+  const GSLOT_Q = ["mock.qBusiness", "mock.qHeadline", "mock.qContact", "mock.qEmail"] as const;
+  const answered = (slot: (typeof GSLOTS)[number]): boolean => {
+    if (slot === "headline") return !!((s.fields.headline || "").trim()) || s.headlineSkipped;
+    return !!((s.fields[slot] || "").trim());
+  };
+  const galleryMissing = (lang: Lang): string[] =>
+    GSLOTS.filter((k) => !answered(k)).map((k) => t(lang, GSLOT_LABEL[k]));
+  const firstOpen = (): number => {
+    const i = GSLOTS.findIndex((k) => !answered(k));
+    return i < 0 ? GSLOTS.length : i;
+  };
+  // Tag gallery replies so the UI can keep the gallery behaviour (flow is gallery).
+  const withFlow = (r: ApiResponse): ApiResponse => ({ ...r, flow: "gallery" }) as ApiResponse;
+
+  const askSlot = (i: number): ApiResponse => {
+    const lang = langNow();
+    return withFlow(out({ reply: t(lang, GSLOT_Q[i]), step: "missing_info", missing: galleryMissing(lang) }));
+  };
+  const nextGallery = (): ApiResponse => {
+    const i = firstOpen();
+    if (i >= GSLOTS.length) {
+      // All four answers in: hand over to the normal looks flow at round 1.
+      const lang = langNow();
+      s.round = 1;
+      s.gallery = "done";
+      const looks = looksForRound(1, lang);
+      return withFlow(out({
+        reply: t(lang, "mock.looksRound", { round: 1, max: MAX_ROUNDS }),
+        step: "awaiting_review", looks,
+      }));
+    }
+    return askSlot(i);
+  };
+  const galleryPick = (ids: string[]): ApiResponse => {
+    const lang = langNow();
+    s.gallery = "ask";
+    void ids;
+    const reply = t(lang, "mock.galleryPicked") + "\n" + t(lang, "mock.qBusiness");
+    return withFlow(out({ reply, step: "missing_info", missing: galleryMissing(lang) }));
+  };
+  const galleryStart = (): ApiResponse => {
+    const lang = langNow();
+    s.round = 0;
+    const looks = galleryLooks(lang);
+    return out({ reply: t(lang, "mock.galleryStart"), step: "pick_poster", looks });
+  };
+  // Chat ids ("1", "2 and 3") or "all" map onto the sample posters.
+  const chatPickIds = (text: string): string[] | null => {
+    if (/\ball\b/i.test(text || "")) return [1, 2, 3].map((n) => `sample-${n}`);
+    const nums = (text || "").match(/[123]/g);
+    if (nums?.length) return [...new Set(nums)].map((d) => `sample-${d}`);
+    return null;
+  };
 
   /** Consult card data uses English labels (staff UI is English-only). Never empty. */
   const submittedEn = (): Record<string, string> => {
@@ -146,6 +237,9 @@ export function createMock(opts: { resumed?: boolean } = {}) {
   const handlers = {
     upload(files: File[]): ApiResponse {
       const lang = langNow();
+      // Uploading before any pick leaves the gallery for the classic document flow.
+      // Uploads during the questions keep the existing path below; confirming resumes the questions.
+      if (s.gallery === "pick") s.gallery = "off";
       const list = files || [];
       if (!list.length) return out({ reply: t(lang, "mock.needPdf"), step: "registering" });
       if (list.some((f) => /blurry/i.test(f?.name || ""))) {
@@ -187,6 +281,7 @@ export function createMock(opts: { resumed?: boolean } = {}) {
       }
       s.fields = { ...s.fields, ...updates };
       s.pendingValues = null;
+      if (s.gallery === "ask") return nextGallery();
       if ((s.fields.design_preferences || "").trim()) {
         s.designAsked = false;
         s.skips = 0;
@@ -207,6 +302,8 @@ export function createMock(opts: { resumed?: boolean } = {}) {
       const base = s.pendingValues ? { ...s.pendingValues } : { ...s.fields };
       s.fields = { ...base, ...clean(fields) };
       s.pendingValues = null;
+      // An upload confirmed mid-questions fills answers and resumes where it left off.
+      if (s.gallery === "ask") return nextGallery();
       s.designAsked = true;
       return out({ reply: t(lang, "mock.designAsk"), step: "missing_info", missing: ["Design preferences"] });
     },
@@ -228,9 +325,48 @@ export function createMock(opts: { resumed?: boolean } = {}) {
         if (/^\s*(yes|y|ok|confirm|looks good|agree)\b/i.test(text || "")) return handlers.confirmExtracted({});
         if (/^\s*(no|n|discard|cancel)\b/i.test(text || "")) {
           s.pendingValues = null;
+          // Back to the open gallery question after discarding the upload.
+          if (s.gallery === "ask") return nextGallery();
           return out({ reply: t(lang, "mock.removed"), step: "registering" });
         }
         return out({ reply: t(lang, "mock.pendingConfirm"), step: "confirm_details", extracted: toExtracted(s.pendingValues, lang) });
+      }
+      if (s.gallery === "pick") {
+        if (SKIP.test(text || "")) return handlers.skipLooks();
+        const ids = chatPickIds(text || "");
+        if (ids) return handlers.pickLooks(ids);
+        return galleryStart();
+      }
+      if (s.gallery === "ask") {
+        const i = firstOpen();
+        const ans = (text || "").trim();
+        const storeKey = GSLOTS[i];
+        if (i === 1 && SKIP.test(ans)) {
+          // The headline alone may be skipped.
+          s.headlineSkipped = true;
+          return nextGallery();
+        }
+        if (!ans || (i !== 1 && SKIP.test(ans))) return askSlot(i);
+        if (storeKey) s.fields[storeKey] = ans;
+        return nextGallery();
+      }
+      if (s.step === "need_document") {
+        const parts = (text || "").split(/[,，\n;；]+/).map((p) => p.trim()).filter(Boolean);
+        if (parts.length && !SKIP.test((text || "").trim())) {
+          const at = parts.findIndex((p) => p.includes("@"));
+          if (at > 0) {
+            const [mail] = parts.splice(at, 1);
+            parts.push(mail);
+          }
+          if (parts[0]) s.fields.business_name = parts[0];
+          if (parts[1]) s.fields.contact_name = parts[1];
+          if (parts[2]) s.fields.email = parts[2];
+          if ((s.fields.business_name || "").trim() && (s.fields.contact_name || "").trim() && (s.fields.email || "").trim()) {
+            s.gallery = "off";
+            return startLooks(1);
+          }
+        }
+        return out({ reply: t(lang, "mock.gallerySkip"), step: "need_document" });
       }
       if (s.designAsked) {
         const ans = (text || "").trim();
@@ -259,6 +395,9 @@ export function createMock(opts: { resumed?: boolean } = {}) {
 
     pickLooks(ids: string[]): ApiResponse {
       const lang = langNow();
+      // Picks on the gallery open the four questions instead of accepting.
+      if (s.gallery === "pick") return galleryPick(ids.length ? ids : ["sample-1"]);
+      if (s.gallery === "ask") return nextGallery();
       s.resumed = false;
       s.designAsked = false;
       s.pendingValues = null;
@@ -269,6 +408,11 @@ export function createMock(opts: { resumed?: boolean } = {}) {
 
     skipLooks(): ApiResponse {
       const lang = langNow();
+      // Skipping the gallery asks for the business details first (flow leaves the gallery).
+      if (s.gallery === "pick" || s.gallery === "ask") {
+        s.gallery = "skipped";
+        return out({ reply: t(lang, "mock.gallerySkip"), step: "need_document" });
+      }
       if (s.designAsked) {
         s.designAsked = false;
         s.skips = 0;
@@ -311,8 +455,11 @@ export function createMock(opts: { resumed?: boolean } = {}) {
     },
   };
 
+  // A fresh session opens on the gallery; a resumed one rejoins its own step.
+  const start = opts.resumed ? undefined : galleryStart();
   const delay = <T,>(v: T) => new Promise<T>((res) => setTimeout(() => res(v), 100));
   return {
+    start,
     upload: (f: File[]) => delay(handlers.upload(f)),
     form: (f: FormFields) => delay(handlers.form(f)),
     chat: (x: string) => delay(handlers.chat(x)),
