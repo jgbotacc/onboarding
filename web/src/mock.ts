@@ -220,7 +220,7 @@ export function createMock(opts: { resumed?: boolean } = {}) {
       if (s.step === "accepted") return out({ reply: t(lang, "mock.accepted"), step: "accepted" });
       if (s.step === "handed_off") {
         return out({
-          reply: t(lang, "mock.consult"), step: "handed_off",
+          reply: t(lang, "mock.consultHandoff"), step: "handed_off",
           consult: { status: "pending_approval", submitted: submittedEn(), next_steps: [t(lang, "mock.nextStep")] },
         });
       }
@@ -283,7 +283,7 @@ export function createMock(opts: { resumed?: boolean } = {}) {
         const consult: ConsultInfo = {
           status: "pending_approval", submitted: submittedEn(), next_steps: [t(lang, "mock.nextStep")],
         };
-        return out({ reply: t(lang, "mock.consult"), step: "handed_off", consult });
+        return out({ reply: t(lang, "mock.consultHandoff"), step: "handed_off", consult });
       }
       return startLooks(Math.min((s.round || 0) + 1, MAX_ROUNDS) || 1);
     },

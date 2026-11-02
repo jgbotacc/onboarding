@@ -90,6 +90,7 @@ const en = {
   "mock.looksRound": "Here are 3 looks (round {round} of {max}).\nPick one you like, or skip to see more.",
   "mock.accepted": "Great, your look is accepted!\nOur team will contact you shortly.",
   "mock.consult": "Our team will arrange a consult with you to better understand what you like.",
+  "mock.consultHandoff": "Handed off — our team will take it from here.",
   "mock.removed": "Removed your upload.\nYou can upload again or fill in the form.",
   "mock.needPdf": "Please upload a PDF, JPG or PNG.",
   "mock.gotRefs": "Got {n} reference image(s).\nNow tell me your design direction, or type \"skip\".",

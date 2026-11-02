@@ -84,12 +84,23 @@ export default function ConfirmDetails({
                 <div className="confirm-field" key={f.field}>
                   <label className="confirm-label" htmlFor={inputId}>{label}</label>
                   <div className="confirm-edit">
-                    <input
+                    <textarea
                       id={inputId}
-                      type="text"
                       value={values[f.field] ?? ""}
+                      rows={1}
                       disabled={locked}
                       aria-label={t(lang, "confirm.edit", { label })}
+                      ref={(el) => {
+                        if (el) {
+                          el.style.height = "auto";
+                          el.style.height = el.scrollHeight + "px";
+                        }
+                      }}
+                      onInput={(e) => {
+                        const el = e.currentTarget;
+                        el.style.height = "auto";
+                        el.style.height = el.scrollHeight + "px";
+                      }}
                       onChange={(e) => setValues((prev) => ({ ...prev, [f.field]: e.target.value }))}
                     />
                     <ListenButton id={`${idPrefix}-listen-${f.field}`} text={`${label}: ${value}`} lang={lang} trace={trace} />

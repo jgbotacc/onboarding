@@ -297,6 +297,8 @@ button { font: inherit; }
   padding: 0 6px; border-radius: 4px; background: var(--accent); color: #fff;
 }
 .look-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.looks.is-disabled { opacity: .55; }
+.looks.is-disabled .look-card { cursor: not-allowed; }
 /* Confirm card: extracted fields with Listen buttons and inline editors,
    plus a retake notice with a camera button (native inputs and buttons,
    keyboard operable with visible focus). */
@@ -308,13 +310,13 @@ button { font: inherit; }
 .confirm-value .listen-group { margin-top: 0; flex: none; }
 .confirm-edit { display: flex; align-items: center; gap: 8px; margin: 0; }
 .confirm-edit .listen-group { margin-top: 0; flex: none; }
-.confirm-edit input {
-  flex: 1 1 auto; min-width: 0; height: 32px; padding: 5px 10px; font: inherit; color: var(--text);
+.confirm-edit textarea {
+  flex: 1 1 auto; min-width: 0; min-height: 32px; padding: 5px 10px; font: inherit; color: var(--text);
   border: 1px solid var(--border); border-radius: var(--r); background: var(--surface); outline: none;
-  transition: border-color .12s ease-out;
+  transition: border-color .12s ease-out; resize: none; overflow: hidden; overflow-wrap: anywhere;
 }
-.confirm-edit input:hover { border-color: #c9cdd4; }
-.confirm-edit input:focus { border-color: var(--accent); }
+.confirm-edit textarea:hover { border-color: #c9cdd4; }
+.confirm-edit textarea:focus { border-color: var(--accent); }
 .confirm-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .retake { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .retake-notice { margin: 0; font-size: 13px; line-height: 20px; color: var(--text); }
@@ -360,7 +362,8 @@ button { font: inherit; }
   .confirm-field { min-width: 0; }
   .confirm-value { flex-wrap: wrap; }
   .confirm-value > span:first-child { flex: 1 1 auto; min-width: 0; }
-  .confirm-edit input, .field input { min-height: 44px; height: 44px; font-size: 16px; }
+  .confirm-edit textarea, .field input { min-height: 44px; font-size: 16px; }
+  .field input { height: 44px; }
   /* Composer: textarea shrinks, mic/attach/send hit 44px. */
   .composer textarea { min-width: 0; min-height: 44px; font-size: 16px; }
   .btn-icon { width: 44px; height: 44px; min-width: 44px; min-height: 44px; }

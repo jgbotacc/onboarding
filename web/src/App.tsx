@@ -367,6 +367,7 @@ export default function App() {
   const lastLooksId = [...messages].reverse().find((m) => m.role === "assistant" && (m.looks?.options?.length ?? 0) > 0)?.id;
   const lastConfirmId = [...messages].reverse().find((m) => m.role === "assistant" && ((m.extracted?.length ?? 0) > 0 || !!m.retake))?.id;
   const reviewOpen = status === "awaiting_review";
+  const handedOff = status === "handed_off" || messages.some((m) => m.role === "assistant" && !!m.consult);
   const micLabel = t(lang, micOn ? "mic.stop" : "mic.label");
   const micTitle = micSupported ? micLabel : t(lang, "mic.notSupported");
 
@@ -448,7 +449,7 @@ export default function App() {
                     looks={m.looks}
                     lang={lang}
                     client={client}
-                    disabled={busy || m.id !== lastLooksId}
+                    disabled={busy || handedOff || m.id !== lastLooksId}
                     trace={traceListen}
                     onReply={render}
                     onError={replyError}

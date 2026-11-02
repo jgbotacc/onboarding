@@ -91,6 +91,7 @@ const zh: typeof en = {
   "mock.looksRound": "这里有 3 个设计(第 {round} 轮,共 {max} 轮)。\n选一个你喜欢的,或跳过看更多。",
   "mock.accepted": "太好了,你的设计通过了!\n我们的团队很快会联系你。",
   "mock.consult": "我们的团队会安排一次咨询,更了解你喜欢的风格。",
+  "mock.consultHandoff": "已转交——我们的团队会继续跟进。",
   "mock.removed": "已删除你上传的文件。\n你可以重新上传或填写表格。",
   "mock.needPdf": "请上传 PDF、JPG 或 PNG 文件。",
   "mock.gotRefs": "收到 {n} 张参考图片。\n现在告诉我你喜欢的设计方向,或输入“跳过”。",
