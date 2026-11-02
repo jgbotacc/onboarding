@@ -343,13 +343,12 @@ def _looks_chat(s, text):
 
 
 def _confirm_text(s):
-    """The 'please check these details' list for the pending draft."""
+    """The 'please check these details' card for the pending draft."""
     p = s.get("pending") or {}
-    lines = [f"I read {p.get('filename')}.", "Please check these details:"]
-    lines += [f"• {label(k)}: {v}" for k, v in _ordered_fields(p.get("fields", {}))]
+    lines = [f"I read {p.get('filename')}.", "Please check the details below."]
     if "nric" in (p.get("removed") or []):
         lines.append("I left out the ID number.")
-    lines.append("Is this right? Reply \"yes\", or type what to change.")
+    lines.append("Is this right? Tap Confirm, or type what to change.")
     return "\n".join(lines)
 
 

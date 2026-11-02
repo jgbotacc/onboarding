@@ -120,7 +120,7 @@ def test_looks_skip_to_consult_and_approve():
     card = next(x for x in cards if x.get("session_id") == sid or x.get("client_id") == sid)
     assert card["status"] == "pending_approval" and card["next_steps"]
     rej = c.get(f"/api/staff/clients/{sid}/rejected-looks").json()
-    assert len(rej) == 9 and sorted({x["round"] for x in rej}) == [1, 2, 3]
+    assert [x["round"] for x in rej] == [1, 2, 3] and sum(len(x["options"]) for x in rej) == 9
     d = c.post(f"/api/staff/consults/{card['id']}/decision", json={"decision": "approve"},
                headers={"x-staff-name": "Ana"}).json()
     assert d["status"] == "approved" and d["approved_by"] == "staff:Ana"

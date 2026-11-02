@@ -50,3 +50,8 @@ Decisions were made by Jin. Assumptions are ours; Jin can override any of them.
 - [ui] U10. Staff views (consult cards, rejected looks, step traces, metrics) are English only and hide any section whose endpoint fails or is missing.
 - [ui] U11. Staff approve a consult hand-off with one click (no extra confirm dialog); this is the human-in-the-loop step and is audited by the backend.
 - [ui] U12. Mobile target is 375px wide for the client chat. The staff page is desktop-first.
+- A26. The Chinese, Malay and Tamil text (bot replies translated by Muse Spark, and the fixed UI strings) needs a native-speaker check before the demo.
+- A27. `?mock=1` wording no longer matches the live replies word for word (the live replies were shortened into lines and the look/confirm/consult steps were added). The mock follows the same steps and contract; matching it word for word again is left for later.
+- A28. The front end's route names (`/api/looks/pick`, `/api/looks/skip`, `/api/extracted/confirm`, `DELETE /api/upload`, `POST /api/trace`, `POST /api/staff/consults/{id}/approve`, `x-lang`) are served as aliases of the PRD routes, so both work.
+- A29. The confirm step's reply text does not repeat the extracted values; the front end shows them in the confirm card (they used to show twice).
+- A30. Code for this build was written with Muse Code. The first sessions (tasks 1 to 5) ran on `muse-spark-1.3-contributor` (Muse Code's default Contributor mode, which allows Meta to train on the prompts and code sent; no client data was sent, only repo code and the made-up fixture). From 04:16 SGT every session runs `--model muse-spark-1.3 --contributor-mode off` (Standard). The app's own Meta calls always use Standard `muse-spark-1.3` (A1).

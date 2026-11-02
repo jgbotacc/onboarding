@@ -91,8 +91,9 @@ def test_confirm_flow_lists_uen_edits_then_saves():
                            ["nric"])
     assert r["status"] == "confirm_details" and s["status"] == "confirm_details"
     assert s["fields"] == {} and s["pending"]["fields"]["uen"] == "T20VC1234Z"
-    assert "• UEN: T20VC1234Z" in r["reply"] and "ID number" in r["reply"]
+    assert "T20VC1234Z" not in r["reply"] and "ID number" in r["reply"]
     assert r["confirm"] and r["confirm"]["docId"] == "doc1"
+    assert any(f["key"] == "uen" and f["value"] == "T20VC1234Z" for f in r["confirm"]["fields"])
     r = agent.on_chat(s, "Email: jo@x.example")
     assert s["status"] == "confirm_details" and s["pending"]["fields"]["email"] == "jo@x.example"
     assert r["reply"].startswith("Updated.\n")

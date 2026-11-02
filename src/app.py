@@ -21,7 +21,7 @@ from src.features.intake import document, photo
 from src.features.intake.extract import pdf_text
 from src.features.i18n.lang import LANGS
 from src.features.staff import routes as staff
-from src.shared import guard, security
+from src.shared import guard, security, trace
 from src.shared.config import DATA_DIR, FORM_KEYS, MEDIA_DIR
 
 logging.basicConfig(level=logging.INFO)
@@ -65,12 +65,14 @@ class ChatIn(BaseModel):
     sessionId: str
     sessionSecret: str | None = None
     text: str
+    lang: str | None = None
 
 
 class FormIn(BaseModel):
     sessionId: str
     sessionSecret: str | None = None
     fields: dict[str, str | None]
+    lang: str | None = None
 
 
 class ReviewIn(BaseModel):
@@ -78,12 +80,14 @@ class ReviewIn(BaseModel):
     sessionSecret: str | None = None
     accepted: bool
     feedback: str | None = None
+    lang: str | None = None
 
 
 class SessionIn(BaseModel):
     sessionId: str | None = None
     sessionSecret: str | None = None
     resumeToken: str | None = None
+    lang: str | None = None
 
 
 class LanguageIn(BaseModel):
@@ -98,6 +102,7 @@ class ConfirmIn(BaseModel):
     accept: bool
     edits: dict | None = None
     remove: list | None = None
+    lang: str | None = None
 
 
 class LooksIn(BaseModel):
@@ -105,6 +110,36 @@ class LooksIn(BaseModel):
     sessionSecret: str | None = None
     selected: list[str] = []
     skip: bool = False
+    lang: str | None = None
+
+
+class LooksPickIn(BaseModel):
+    sessionId: str
+    sessionSecret: str | None = None
+    picked_ids: list[str]
+    lang: str | None = None
+
+
+class LooksSkipIn(BaseModel):
+    sessionId: str
+    sessionSecret: str | None = None
+    lang: str | None = None
+
+
+class ExtractedConfirmIn(BaseModel):
+    sessionId: str
+    sessionSecret: str | None = None
+    fields: dict[str, str]
+    lang: str | None = None
+
+
+class TraceIn(BaseModel):
+    sessionId: str
+    sessionSecret: str | None = None
+    kind: str
+    ok: bool
+    ms: float
+    lang: str | None = None
 
 
 def _load(sid, secret=None):
@@ -117,6 +152,13 @@ def _load(sid, secret=None):
 
 def _secret(request: Request, body_secret=None):
     return request.headers.get("x-session-secret") or body_secret
+
+
+def _apply_lang(s, request: Request, body_lang=None):
+    v = body_lang or request.headers.get("x-lang")
+    if v in LANGS:
+        s["lang"] = v
+        s["lang_set"] = True
 
 
 def _save(s):
@@ -154,6 +196,16 @@ def _finish(s, out, kind=None, payload=None):
     out["reply"] = lang.to_client(out["reply"], lng, sid)
     out["lines"] = lang.lines(out["reply"])
     out["lang"] = lng
+    out["step"] = out.get("status")
+    conf = out.get("confirm")
+    if conf and isinstance(conf.get("fields"), list):
+        out["extracted"] = [{"field": f.get("key"), "label": f.get("label"), "value": f.get("value")}
+                            for f in conf["fields"]]
+    looks = out.get("looks")
+    if looks and isinstance(looks.get("options"), list):
+        for o in looks["options"]:
+            if isinstance(o, dict) and o.get("title") is not None:
+                o["alt"] = o.get("title")
     out, n = guard.clean(out, guard.others_identifiers(store, sid))
     if n:
         store.audit(sid, "system", "outbound_masked", None, {"count": n})
@@ -207,6 +259,7 @@ def session(request: Request, body: SessionIn | None = None):
             if not got:
                 raise HTTPException(404, "This link is no longer valid. Please contact our team.")
             s, out = got
+            _apply_lang(s, request, body.lang)
             secret = security.issue_secret(s)
             out = _finish(s, out, "resume", {})
             out["sessionId"], out["sessionSecret"] = s["id"], secret
@@ -215,6 +268,7 @@ def session(request: Request, body: SessionIn | None = None):
         with _lock_for(body.sessionId):
             old = store.load(body.sessionId)
             if old and security.secret_ok(old, _secret(request, body.sessionSecret)):
+                _apply_lang(old, request, body.lang)
                 out = agent.resp(old, "Welcome back! Let's continue where you left off.", old.get("images"))
                 out = _finish(old, out)
                 out["sessionId"] = old["id"]
@@ -222,6 +276,7 @@ def session(request: Request, body: SessionIn | None = None):
     s = agent.new_session()
     secret = security.issue_secret(s)
     with _lock_for(s["id"]):
+        _apply_lang(s, request, body.lang if body else None)
         out = agent.resp(s, "Hi! Let's get you set up.\nUpload your business document or registration form.\n"
                             "Or type your business name, contact name and email.")
         out = _finish(s, out, "session", {})
@@ -252,6 +307,7 @@ async def upload(request: Request):
         blobs.append((f.filename, f.content_type, data))
     with _lock_for(sid or "missing"):
         s = _load(sid, _secret(request, form.get("sessionSecret")))
+        _apply_lang(s, request, form.get("lang"))
         checked = []  # validate every file before acting on any of them
         for fname, ctype, data in blobs:
             name = (fname or "").lower()
@@ -347,6 +403,7 @@ async def upload(request: Request):
 def form(body: FormIn, request: Request):
     with _lock_for(body.sessionId):
         s = _load(body.sessionId, _secret(request, body.sessionSecret))
+        _apply_lang(s, request, body.lang)
         fields = {k: v for k, v in body.fields.items() if k in FORM_KEYS}
         return _finish(s, agent.on_form(s, fields))
 
@@ -355,6 +412,7 @@ def form(body: FormIn, request: Request):
 def chat(body: ChatIn, request: Request):
     with _lock_for(body.sessionId):
         s = _load(body.sessionId, _secret(request, body.sessionSecret))
+        _apply_lang(s, request, body.lang)
         switch_lang(s, body.text)
         english = lang.to_english(body.text, s.get("lang"), s["id"])
         s.setdefault("transcript", []).append({
@@ -371,6 +429,7 @@ def language(body: LanguageIn, request: Request):
         raise HTTPException(400, "Unknown language. Choose en, zh, ms or ta.")
     with _lock_for(body.sessionId):
         s = _load(body.sessionId, _secret(request, body.sessionSecret))
+        _apply_lang(s, request, body.lang)
         s["lang"] = body.lang
         s["lang_set"] = True
         last = "Okay."
@@ -385,6 +444,7 @@ def language(body: LanguageIn, request: Request):
 def confirm(body: ConfirmIn, request: Request):
     with _lock_for(body.sessionId):
         s = _load(body.sessionId, _secret(request, body.sessionSecret))
+        _apply_lang(s, request, body.lang)
         pending = dict(s.get("pending") or {})
         doc_id = pending.get("docId")
         out = agent.on_confirm(s, body.accept, body.edits, body.remove)
@@ -404,6 +464,7 @@ def confirm(body: ConfirmIn, request: Request):
 def looks(body: LooksIn, request: Request):
     with _lock_for(body.sessionId):
         s = _load(body.sessionId, _secret(request, body.sessionSecret))
+        _apply_lang(s, request, body.lang)
         sel = body.selected or []
         out = agent.on_looks(s, sel, body.skip or not sel)
         if s.get("selected_looks"):
@@ -429,6 +490,7 @@ async def docs_delete(doc_id: str, request: Request):
     secret = request.headers.get("x-session-secret") or body.get("sessionSecret")
     with _lock_for(sid or "missing"):
         s = _load(sid, secret)
+        _apply_lang(s, request, body.get("lang"))
         docs = s.get("docs") or {}
         if doc_id not in docs:
             raise HTTPException(404, "Document not found.")
@@ -450,11 +512,107 @@ async def docs_delete(doc_id: str, request: Request):
 def review(body: ReviewIn, request: Request):
     with _lock_for(body.sessionId):
         s = _load(body.sessionId, _secret(request, body.sessionSecret))
+        _apply_lang(s, request, body.lang)
         out = agent.on_review(s, body.accepted, body.feedback)
         out = _finish(s, out, "review", {"accepted": body.accepted, "feedback": body.feedback})
         if s["status"] == "handed_off":
             store.event(s["id"], "handoff", {"reason": "3 rounds not accepted"})
         return out
+
+
+@app.post("/api/looks/pick")
+def looks_pick(body: LooksPickIn, request: Request):
+    with _lock_for(body.sessionId):
+        s = _load(body.sessionId, _secret(request, body.sessionSecret))
+        _apply_lang(s, request, body.lang)
+        sel = body.picked_ids or []
+        out = agent.on_looks(s, sel, not sel)
+        if s.get("selected_looks"):
+            ids = [lk.get("id") for lk in s["selected_looks"] if lk.get("id")]
+            if ids:
+                store.mark_looks(s["id"], ids)
+                store.audit(s["id"], "client", "look_selected", None, {"ids": ids})
+        return _finish(s, out)
+
+
+@app.post("/api/looks/skip")
+def looks_skip(body: LooksSkipIn, request: Request):
+    with _lock_for(body.sessionId):
+        s = _load(body.sessionId, _secret(request, body.sessionSecret))
+        _apply_lang(s, request, body.lang)
+        out = agent.on_looks(s, [], True)
+        if s.get("selected_looks"):
+            ids = [lk.get("id") for lk in s["selected_looks"] if lk.get("id")]
+            if ids:
+                store.mark_looks(s["id"], ids)
+                store.audit(s["id"], "client", "look_selected", None, {"ids": ids})
+        return _finish(s, out)
+
+
+@app.post("/api/extracted/confirm")
+def extracted_confirm(body: ExtractedConfirmIn, request: Request):
+    with _lock_for(body.sessionId):
+        s = _load(body.sessionId, _secret(request, body.sessionSecret))
+        _apply_lang(s, request, body.lang)
+        pending = dict(s.get("pending") or {})
+        doc_id = pending.get("docId")
+        pending_fields = pending.get("fields") or {}
+        given = body.fields or {}
+        remove = [k for k in pending_fields if k not in given]
+        out = agent.on_confirm(s, True, given, remove)
+        if doc_id and doc_id in (s.get("docs") or {}):
+            s["docs"][doc_id]["status"] = "confirmed"
+        return _finish(s, out)
+
+
+@app.delete("/api/upload")
+async def upload_delete(request: Request):
+    qsid = request.query_params.get("sessionId")
+    body: dict = {}
+    if not qsid:
+        try:
+            b = await request.json()
+            if isinstance(b, dict):
+                body = b
+        except Exception:
+            body = {}
+    sid = qsid or body.get("sessionId", "")
+    secret = request.headers.get("x-session-secret") or body.get("sessionSecret")
+    with _lock_for(sid or "missing"):
+        s = _load(sid, secret)
+        _apply_lang(s, request, body.get("lang"))
+        p = s.get("pending") or {}
+        doc_id = p.get("docId")
+        if not doc_id:
+            return _finish(s, agent.resp(s, "There's no file to remove."))
+        docs = s.get("docs") or {}
+        if doc_id not in docs:
+            raise HTTPException(404, "Document not found.")
+        if docs[doc_id].get("status") == "confirmed":
+            raise HTTPException(409, "That file's details are already saved.")
+        if docs[doc_id].get("status") != "pending":
+            raise HTTPException(404, "Document not found.")
+        try:
+            Path(docs[doc_id].get("path", "")).unlink(missing_ok=True)
+        except Exception:
+            pass
+        docs[doc_id]["status"] = "removed"
+        out = agent.remove_pending(s, doc_id)
+        store.audit(s["id"], "client", "document_removed", doc_id)
+        return _finish(s, out)
+
+
+@app.post("/api/trace")
+def trace_in(body: TraceIn, request: Request):
+    if body.kind not in ("listen", "mic"):
+        raise HTTPException(400, "Unknown trace kind.")
+    with _lock_for(body.sessionId):
+        s = _load(body.sessionId, _secret(request, body.sessionSecret))
+        _apply_lang(s, request, body.lang)
+        trace.record(step=body.kind, model="browser", ok=body.ok,
+                     latency_ms=int(body.ms), cost_sgd=0.0, session_id=s["id"])
+        _save(s)
+        return {"ok": True}
 
 
 app.mount("/media", StaticFiles(directory=MEDIA_DIR), name="media")

@@ -75,9 +75,13 @@ def _detail(store, s):
     rej = [{"round": l["round"], "id": l["id"], "url": l["url"], "title": l["title"],
             "brief": l["brief"], "at": l["at"]} for l in _rejected(store, s)]
     docs = {k: {"filename": v.get("filename"), "status": v.get("status")} for k, v in (s.get("docs") or {}).items()}
+    traces = [{"step": t.get("step"), "model": t.get("model"), "ok": t.get("ok"),
+               "ms": t.get("latency_ms"), "cost_sgd": t.get("cost_sgd"), "at": t.get("at")}
+              for t in store.traces(s["id"])]
     d = dict(base, lang=s.get("lang") or "en", transcript=s.get("transcript", []),
              looks=_all_looks(store, s["id"]), rejected_looks=rej,
-             consult=_consult_for(store, s["id"]), audit=store.audit_log(s["id"]), documents=docs)
+             consult=_consult_for(store, s["id"]), audit=store.audit_log(s["id"]), documents=docs,
+             traces=traces)
     d.pop("pending", None)  # A9: pending drafts never reach staff
     return guard.clean(d, guard.others_identifiers(store, s["id"]))[0]
 
@@ -100,8 +104,13 @@ def make_router(store, save):
 
     def rejected_looks(cid: str):
         s = load(cid)
-        out = [{"round": l["round"], "id": l["id"], "url": l["url"], "title": l["title"],
-                "brief": l["brief"], "at": l["at"]} for l in _rejected(store, s)]
+        by_round: dict = {}
+        for l in _rejected(store, s):
+            rnd = l.get("round") or 0
+            by_round.setdefault(rnd, []).append(
+                {"id": l.get("id"), "url": l.get("url"), "alt": l.get("title"),
+                 "title": l.get("title"), "brief": l.get("brief"), "at": l.get("at")})
+        out = [{"round": rnd, "options": by_round[rnd]} for rnd in sorted(by_round)]
         return guard.clean(out, guard.others_identifiers(store, cid))[0]
 
     def decide(cid: str, body: DecisionIn, request: Request):
@@ -184,6 +193,9 @@ def make_router(store, save):
                 save(s)
         return guard.clean(card, guard.others_identifiers(store, sess_id))[0]
 
+    def consult_approve(cid: str, request: Request):
+        return consult_decide(cid, ConsultDecisionIn(decision="approve"), request)
+
     def get_metrics():
         return metrics.compute(store)
 
@@ -201,6 +213,7 @@ def make_router(store, save):
     r.add_api_route("/api/staff/clients/{cid}/rejected-looks", rejected_looks, methods=["GET"])
     r.add_api_route("/api/staff/consults", list_consults, methods=["GET"])
     r.add_api_route("/api/staff/consults/{cid}/decision", consult_decide, methods=["POST"])
+    r.add_api_route("/api/staff/consults/{cid}/approve", consult_approve, methods=["POST"])
     r.add_api_route("/api/staff/metrics", get_metrics, methods=["GET"])
     r.add_api_route("/api/staff/traces", get_traces, methods=["GET"])
     r.add_api_route("/api/staff/audit", get_audit, methods=["GET"])
