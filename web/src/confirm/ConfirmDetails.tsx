@@ -75,30 +75,29 @@ export default function ConfirmDetails({
     <section className="confirm-details" aria-label={t(lang, "confirm.title")}>
       {visible.length > 0 && (
         <>
-          <dl className="confirm-fields">
+          <div className="confirm-fields">
             {visible.map((f) => {
               const label = f.label || f.field;
               const value = values[f.field] ?? f.value;
+              const inputId = `${idPrefix}-input-${f.field}`;
               return (
                 <div className="confirm-field" key={f.field}>
-                  <dt className="confirm-label">{label}</dt>
-                  <dd className="confirm-value">
-                    <span>{value}</span>
-                    <ListenButton id={`${idPrefix}-listen-${f.field}`} text={`${label}: ${value}`} lang={lang} trace={trace} />
-                  </dd>
-                  <dd className="confirm-edit">
+                  <label className="confirm-label" htmlFor={inputId}>{label}</label>
+                  <div className="confirm-edit">
                     <input
+                      id={inputId}
                       type="text"
                       value={values[f.field] ?? ""}
                       disabled={locked}
                       aria-label={t(lang, "confirm.edit", { label })}
                       onChange={(e) => setValues((prev) => ({ ...prev, [f.field]: e.target.value }))}
                     />
-                  </dd>
+                    <ListenButton id={`${idPrefix}-listen-${f.field}`} text={`${label}: ${value}`} lang={lang} trace={trace} />
+                  </div>
                 </div>
               );
             })}
-          </dl>
+          </div>
           <div className="confirm-actions">
             <button type="button" className="btn primary" disabled={locked} onClick={confirm}>
               {t(lang, "confirm.confirm")}
