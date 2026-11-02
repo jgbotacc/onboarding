@@ -118,5 +118,18 @@ const ta: typeof en = {
   "status.rejected": "ஏற்கப்படவில்லை",
   "status.link_used": "அனுப்பப்பட்டது",
   "status.link_invalid": "இணைப்பு காலாவதி",
+  "listen.listen": "கேள்",
+  "listen.pause": "இடைநிறுத்து",
+  "listen.resume": "தொடர்",
+  "listen.stop": "நிறுத்து",
+  "listen.group": "கேட்கும் கட்டுப்பாடுகள்",
+  "listen.noVoice": "இந்தச் சாதனத்தில் இம்மொழிக்குக் குரல் இல்லை.",
+  "listen.notSupported": "இந்த உலாவியில் கேட்கும் வசதி இல்லை.",
+  "listen.speaking": "உரக்க வாசிக்கிறது. இடைநிறுத்து அல்லது நிறுத்து.",
+  "listen.paused": "இடைநிறுத்தப்பட்டது. தொடர்.",
+  "mic.label": "பதிலைப் பேசுங்கள்",
+  "mic.stop": "கேட்பதை நிறுத்து",
+  "mic.listening": "கேட்கிறது…",
+  "mic.notSupported": "இந்த உலாவியில் குரல் உள்ளீடு இல்லை.",
 };
 export default ta;

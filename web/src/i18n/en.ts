@@ -117,5 +117,18 @@ const en = {
   "status.rejected": "Not approved",
   "status.link_used": "Details sent",
   "status.link_invalid": "Link expired",
+  "listen.listen": "Listen",
+  "listen.pause": "Pause",
+  "listen.resume": "Resume",
+  "listen.stop": "Stop",
+  "listen.group": "Listen controls",
+  "listen.noVoice": "No voice for this language on this device.",
+  "listen.notSupported": "Listen is not supported in this browser.",
+  "listen.speaking": "Reading aloud. Choose Pause to pause, Stop to stop.",
+  "listen.paused": "Paused. Choose Resume to continue.",
+  "mic.label": "Speak your answer",
+  "mic.stop": "Stop listening",
+  "mic.listening": "Listening…",
+  "mic.notSupported": "Voice input is not supported in this browser.",
 };
 export default en;

@@ -118,5 +118,18 @@ const zh: typeof en = {
   "status.rejected": "没通过",
   "status.link_used": "已发送",
   "status.link_invalid": "链接过期",
+  "listen.listen": "朗读",
+  "listen.pause": "暂停",
+  "listen.resume": "继续",
+  "listen.stop": "停止",
+  "listen.group": "朗读控制",
+  "listen.noVoice": "此设备没有这种语言的语音。",
+  "listen.notSupported": "此浏览器不支持朗读。",
+  "listen.speaking": "正在朗读。按暂停可暂停,按停止可停止。",
+  "listen.paused": "已暂停。按继续可接着听。",
+  "mic.label": "语音回答",
+  "mic.stop": "停止聆听",
+  "mic.listening": "正在聆听…",
+  "mic.notSupported": "此浏览器不支持语音输入。",
 };
 export default zh;

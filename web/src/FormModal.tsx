@@ -3,6 +3,7 @@ import { CloseIcon, ImageIcon } from "./icons";
 import { EMPTY_FORM, type FieldIssue, type FormFields } from "./types";
 import { validateField } from "./validation"; // [field-validation]
 import { fieldLabel, t, type I18nKey, type Lang } from "./i18n";
+import ListenButton from "./speech/ListenButton";
 
 type Key = keyof FormFields;
 interface FieldDef {
@@ -66,6 +67,8 @@ interface Props {
   only?: Key[];
   /** Resume mode: staff note shown above the fields. */
   intro?: string;
+  /** Log Listen use: client.trace("listen", ok, ms). */
+  trace?: (ok: boolean, ms: number) => void;
 }
 
 const MAX_IMAGES = 6;
@@ -140,7 +143,7 @@ function RefImages({ files, onChange, lang }: { files: File[]; onChange: (f: Fil
   );
 }
 
-export default function FormModal({ lang, onCancel, onSubmit, only, intro }: Props) {
+export default function FormModal({ lang, onCancel, onSubmit, only, intro, trace }: Props) {
   const resume = !!only?.length;
   const [values, setValues] = useState<FormFields>({ ...EMPTY_FORM });
   const [errors, setErrors] = useState<Partial<Record<Key, Issue>>>({});
@@ -307,12 +310,16 @@ export default function FormModal({ lang, onCancel, onSubmit, only, intro }: Pro
                       autoComplete: f.autoComplete,
                       onBlur: () => blur(f),
                     };
+                    const listenText = labelOf(f.key) + (err ? ". " + err.message + (ex ? ". " + t(lang, "forExample", { example: ex }) : "") : "");
                     return (
-                      <div key={f.key} className={"field" + (f.full ? " full" : "") + (err ? " invalid" : "")}>
-                        <label htmlFor={id}>
-                          {labelOf(f.key)}
-                          {f.required && <span className="req" aria-hidden="true"> *</span>}
-                        </label>
+                      <div key={f.key} className={"field" + (f.full ? " full" : "") + (err ? " invalid" : "")} lang={lang}>
+                        <div className="field-label-row">
+                          <label htmlFor={id}>
+                            {labelOf(f.key)}
+                            {f.required && <span className="req" aria-hidden="true"> *</span>}
+                          </label>
+                          <ListenButton id={"form-" + f.key} text={listenText} lang={lang} trace={trace} />
+                        </div>
                         {f.type === "textarea" ? (
                           <textarea {...common} rows={4} onChange={(e) => set(f, e.target.value)} />
                         ) : (

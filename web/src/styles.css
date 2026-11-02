@@ -266,3 +266,21 @@ button { font: inherit; }
 .dock { animation: dock-in 0.2s ease-out; }
 @keyframes dock-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .dock { animation: none; } }
+
+/* Listen buttons: read a bot message or form question aloud (WCAG 2.2: native
+   buttons with visible focus, >=24px targets, text labels, no autoplay). */
+.listen-group { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.listen-btn { min-height: 28px; min-width: 24px; }
+.listen-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.listen-btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.listen-notice { font-size: 12px; line-height: 16px; color: var(--text-2); }
+/* Mic button next to the composer: hidden where SpeechRecognition is missing
+   (.btn-icon sets display, which would override the hidden attribute). */
+.mic-btn[hidden] { display: none; }
+.mic-btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.field-label-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.field-label-row .listen-group { margin-top: 0; flex: none; }
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}

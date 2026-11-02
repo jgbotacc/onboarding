@@ -118,5 +118,18 @@ const ms: typeof en = {
   "status.rejected": "Tidak lulus",
   "status.link_used": "Maklumat dihantar",
   "status.link_invalid": "Pautan luput",
+  "listen.listen": "Dengar",
+  "listen.pause": "Jeda",
+  "listen.resume": "Sambung",
+  "listen.stop": "Henti",
+  "listen.group": "Kawalan dengar",
+  "listen.noVoice": "Tiada suara bahasa ini pada peranti ini.",
+  "listen.notSupported": "Dengar tidak disokong dalam pelayar ini.",
+  "listen.speaking": "Sedang dibaca. Pilih Jeda untuk menjeda, Henti untuk berhenti.",
+  "listen.paused": "Dijeda. Pilih Sambung untuk teruskan.",
+  "mic.label": "Cakapkan jawapan",
+  "mic.stop": "Berhenti mendengar",
+  "mic.listening": "Mendengar…",
+  "mic.notSupported": "Input suara tidak disokong dalam pelayar ini.",
 };
 export default ms;

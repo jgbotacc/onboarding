@@ -4,7 +4,9 @@ import { EMPTY_FORM, type ApiResponse, type FieldIssue, type FormFields } from "
 import FormModal from "./FormModal";
 import { toFieldKeys } from "./staff/fields";
 import { LANGS, fieldLabel, statusLabel, t, useLang, type Lang } from "./i18n";
-import { CheckboxIcon, CloseIcon, FileIcon, ImageIcon, PaperclipIcon, SendIcon } from "./icons";
+import { CheckboxIcon, CloseIcon, FileIcon, ImageIcon, MicIcon, PaperclipIcon, SendIcon } from "./icons";
+import ListenButton from "./speech/ListenButton";
+import { isMicSupported, startListening } from "./speech/mic";
 
 type Msg =
   | { id: number; role: "user"; text: string; files: string[] }
@@ -46,6 +48,9 @@ export default function App() {
   const [files, setFiles] = useState<File[]>([]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [micOn, setMicOn] = useState(false);
+  const [micSupported] = useState(() => isMicSupported());
+  const micStopRef = useRef<(() => void) | null>(null);
   const [feedbackMode, setFeedbackMode] = useState(false);
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -65,6 +70,20 @@ export default function App() {
   const uploadedRef = useRef<File[]>([]); // reference images already sent, so a resubmit doesn't re-upload
 
   const push = useCallback((m: NewMsg) => setMessages((prev) => [...prev, { ...m, id: nextId++ } as Msg]), []);
+
+  const traceListen = useCallback(
+    (ok: boolean, ms: number) => {
+      client?.trace("listen", ok, ms);
+    },
+    [client],
+  );
+
+  const traceMic = useCallback(
+    (ok: boolean, ms: number) => {
+      client?.trace("mic", ok, ms);
+    },
+    [client],
+  );
 
   useEffect(() => {
     let alive = true;
@@ -120,6 +139,20 @@ export default function App() {
     el.style.height = "auto";
     el.style.height = Math.min(el.scrollHeight, 140) + "px";
   }, [text]);
+
+  // The language changed under us: stop listening so the old language can't continue.
+  useEffect(() => {
+    micStopRef.current?.();
+    micStopRef.current = null;
+    setMicOn(false);
+  }, [lang]);
+
+  useEffect(
+    () => () => {
+      micStopRef.current?.();
+    },
+    [],
+  );
 
   const render = useCallback(
     (r: ApiResponse) => {
@@ -255,6 +288,34 @@ export default function App() {
     await run(() => (asFeedback ? client.review(false, t) : client.chat(t)));
   };
 
+  // Mic: spoken answers go into the input for the client to check; never auto-sent.
+  const toggleMic = useCallback(() => {
+    if (!micSupported || closed) return;
+    if (micOn) {
+      micStopRef.current?.();
+      return;
+    }
+    const stop = startListening(
+      lang,
+      (heard) => {
+        setText((prev) => (prev.trim() ? prev.replace(/\s+$/, "") + " " + heard : heard));
+        inputRef.current?.focus();
+      },
+      (ok, ms) => {
+        micStopRef.current = null;
+        setMicOn(false);
+        try {
+          traceMic(ok, ms);
+        } catch {
+          /* trace never breaks the UI */
+        }
+      },
+    );
+    if (!stop) return; // unsupported or blocked: onDone already ran
+    micStopRef.current = stop;
+    setMicOn(true);
+  }, [micSupported, closed, micOn, lang, traceMic]);
+
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     send();
@@ -290,6 +351,8 @@ export default function App() {
 
   const lastReviewId = [...messages].reverse().find((m) => m.role === "assistant" && m.status === "awaiting_review")?.id;
   const reviewOpen = status === "awaiting_review";
+  const micLabel = t(lang, micOn ? "mic.stop" : "mic.label");
+  const micTitle = micSupported ? micLabel : t(lang, "mic.notSupported");
 
   return (
     <div className="app" onDragEnter={onDragEnter} onDragOver={(e) => e.preventDefault()} onDragLeave={onDragLeave} onDrop={onDrop}>
@@ -324,14 +387,14 @@ export default function App() {
           {messages.map((m) => {
             if (m.role === "user")
               return (
-                <div key={m.id} className="msg user">
+                <div key={m.id} className="msg user" lang={lang}>
                   {m.text && <div>{m.text}</div>}
                   {m.files.length > 0 && <div className="files">{m.files.join(", ")}</div>}
                 </div>
               );
             if (m.role === "error")
               return (
-                <div key={m.id} className="msg error" role="alert">
+                <div key={m.id} className="msg error" role="alert" lang={lang}>
                   {m.text}
                 </div>
               );
@@ -341,8 +404,9 @@ export default function App() {
                   <img className="welcome-figure" src={ASSET + "agent-clean.png"} alt={t(lang, "agentName")} width={140} />
                   <div className="welcome-body">
                     <div className="agent-label">{t(lang, "agentName")}</div>
-                    <div className="msg assistant speech">
+                    <div className="msg assistant speech" lang={lang}>
                       <MsgText text={m.text} />
+                      <ListenButton id={"msg-" + m.id} text={m.text} lang={lang} trace={traceListen} />
                       <div className="choices">
                         <button type="button" className="btn primary" id="choiceUpload" disabled={busy} onClick={() => fileRef.current?.click()}>
                           {t(lang, "uploadPdf")}
@@ -360,8 +424,9 @@ export default function App() {
             return (
               <div key={m.id} className="row assistant">
               <Avatar />
-              <div className="msg assistant">
+              <div className="msg assistant" lang={lang}>
                 {m.text && <MsgText text={m.text} />}
+                <ListenButton id={"msg-" + m.id} text={m.text} lang={lang} trace={traceListen} />
                 {m.images.length > 0 && (
                   <div className="img-grid">
                     {m.images.map((src, i) => (
@@ -456,6 +521,22 @@ export default function App() {
               onChange={(e) => setText(e.target.value)}
               onKeyDown={onKeyDown}
             />
+            <button
+              type="button"
+              className="btn-icon mic-btn"
+              id="micBtn"
+              hidden={!micSupported}
+              title={micTitle}
+              aria-label={micLabel}
+              aria-pressed={micOn}
+              disabled={closed || !micSupported}
+              onClick={toggleMic}
+            >
+              <MicIcon />
+            </button>
+            <span className="visually-hidden" aria-live="polite">
+              {micOn ? t(lang, "mic.listening") : ""}
+            </span>
             <button type="submit" className="btn-send" id="sendBtn" disabled={busy || !client || closed}>
               <span>{t(lang, "send")}</span>
               <SendIcon />
@@ -468,7 +549,7 @@ export default function App() {
 
       {dragging && <div className="drop-overlay">{t(lang, "dropHere")}</div>}
       {formOpen && (
-        <FormModal lang={lang} onCancel={cancelForm} onSubmit={submitForm} only={refill?.keys} intro={refill?.note} />
+        <FormModal lang={lang} onCancel={cancelForm} onSubmit={submitForm} only={refill?.keys} intro={refill?.note} trace={traceListen} />
       )}
       {!formOpen && refill && (
         <div className="refill-bar">
