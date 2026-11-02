@@ -8,7 +8,9 @@ from src.features.chat import agent  # noqa: E402
 from helpers import new_session, staff_client  # noqa: E402
 
 c = staff_client(app)
-CLOSE = "Using your design preferences and business information. Here is a mockup."
+CLOSE = "Using your design preferences and business information."
+CLOSE_NO_PREFS = "Using your business information."
+LOOKS_TAIL = "\nWhich look do you prefer?\nPick one or more, or type \"skip\" for new ones."
 FULL = {"business_name": "Lumière Bakehouse", "business_type": "Bakery", "industry": "Food and beverage",
         "business_website": "lumierebakehouse.sg", "contact_name": "Clara Ong", "title_position": "Founder",
         "email": "clara@lumiere.example", "phone_number": "+65 6348 2210", "design_preferences": "cream and gold",
@@ -25,7 +27,7 @@ def test_form_summary_all_fields_in_order():
     assert r["round"] == 1 and r["images"], r
     head, body = r["reply"].split("\n\n", 1)
     assert head == "Got your registration form. Thanks, Lumière Bakehouse is registered."
-    assert body == "\n".join(LINES) + "\n\n" + CLOSE
+    assert body == "\n".join(LINES) + "\n\n" + CLOSE + LOOKS_TAIL
     assert "Round" not in r["reply"] and "round" not in r["reply"]
 
 
@@ -35,7 +37,7 @@ def test_summary_only_lists_fields_with_values_and_formats_revenue():
                    "expected_annual_revenue": "five thousand dollars", "industry": ""}
     assert agent.summary(s) == ("Business name: Acme\nContact name: Jo\nEmail: jo@acme.example\n"
                                 "Expected annual revenue: S$5,000\n\n"
-                                "Using your business information. Here is a mockup.")  # no design preferences
+                                "Using your business information.")  # no design preferences
     s["fields"]["expected_annual_revenue"] = "S$400k - 500k"  # ranges stay as typed
     assert "Expected annual revenue: S$400k - 500k" in agent.summary(s)
 
@@ -60,7 +62,7 @@ def test_no_round_wording_in_client_replies_but_handoff_after_3():
     for fb in ("more gold", "bigger text", "still no"):
         replies.append(c.post("/api/review", json={"sessionId": sid, "accepted": False, "feedback": fb}).json())
     assert [r["status"] for r in replies] == ["awaiting_review"] * 3 + ["handed_off"]
-    assert replies[1]["reply"].startswith("Here is the updated mockup.")
+    assert replies[1]["reply"].startswith("Here are 3 new looks.")
     for r in replies:
         assert "round" not in r["reply"].lower() and "of 3" not in r["reply"], r["reply"]
 
@@ -104,11 +106,11 @@ def test_first_mockup_line_without_design_preferences():
     r = agent.on_form(s, {"business_name": "Kopi Corner Pte Ltd", "contact_name": "Tan Mei Ling", "email": "jo@kopi.sg"})
     assert r["status"] == "need_direction"
     r = agent.on_chat(s, "skip")
-    assert r["reply"].endswith("\n\nUsing your business information. Here is a mockup."), r["reply"]
+    assert r["reply"].endswith("\n\n" + CLOSE_NO_PREFS + LOOKS_TAIL), r["reply"]
     s = agent.new_session()
     agent.on_form(s, {"business_name": "Kopi Corner Pte Ltd", "contact_name": "Tan Mei Ling", "email": "jo@kopi.sg"})
     r = agent.on_chat(s, "minimal, warm")  # a direction typed in chat counts as a design preference
-    assert r["reply"].endswith("\n\n" + CLOSE) and "Design preferences: minimal, warm\n" in r["reply"], r["reply"]
+    assert r["reply"].endswith("\n\n" + CLOSE + LOOKS_TAIL) and "Design preferences: minimal, warm\n" in r["reply"], r["reply"]
 
 
 def test_form_opener_comes_back_after_chat_fixes():

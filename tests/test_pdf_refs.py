@@ -103,11 +103,12 @@ def test_form_with_prefs_after_pdf_goes_straight_to_round_1():
 
 
 def test_pdf_skip_and_ref_paths_show_summary():
-    close = "Using your design preferences and business information. Here is a mockup."
+    close = "Using your design preferences and business information."
+    tail = "\nWhich look do you prefer?\nPick one or more, or type \"skip\" for new ones."
     sid = _pdf_with_prefs()
     r = c.post("/api/chat", json={"sessionId": sid, "text": "skip"}).json()
-    assert r["reply"].startswith("Business name: ") and r["reply"].endswith("\n\n" + close), r
+    assert r["reply"].startswith("Business name: ") and r["reply"].endswith("\n\n" + close + tail), r
     assert f"Design preferences: {PREFS}\n" in r["reply"]
     sid = _pdf_with_prefs()
     r = _upload(sid, ("ref.png", _png(), "image/png"))
-    assert r["reply"].startswith("Got 1 reference image(s).\n\nBusiness name: ") and r["reply"].endswith(close), r
+    assert r["reply"].startswith("Got 1 reference image(s).\n\nBusiness name: ") and r["reply"].endswith(close + tail), r

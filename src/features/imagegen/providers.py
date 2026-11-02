@@ -1,12 +1,13 @@
 """Image generation behind a provider interface. Default = labelled Pillow PLACEHOLDER."""
 import os
 import re
+import time
 import uuid
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-from src.shared import relay
+from src.shared import relay, trace
 from src.shared.config import MEDIA_DIR
 
 NAMED = {"red": "#d64545", "blue": "#2563eb", "green": "#2f9e57", "brown": "#7a4b2a", "cream": "#f3e9d2",
@@ -81,54 +82,14 @@ class PlaceholderProvider:
         return [f"/media/{name}"]
 
 
-class OpenAIProvider:
-    """Real provider slot (gpt-image-1). Used only when OPENAI_API_KEY + IMAGE_PROVIDER=openai."""
-    name = "openai"
-
-    def generate(self, brief, refs, round_n):
-        import base64, httpx
-        prompt = (f"Square 1080x1080 social media marketing post for {brief.get('business_name')}, "
-                  f"a {brief.get('industry')} business. Tagline: {brief.get('tagline','')}. "
-                  f"Brand colours: {brief.get('brand_colours','')}. Requirements: {brief.get('requirements_notes','')}. Style: {brief.get('direction','')}. "
-                  f"Changes requested: {brief.get('feedback','none')}.")
-        r = httpx.post("https://api.openai.com/v1/images/generations", timeout=120,
-                       headers={"Authorization": f"Bearer {os.environ['OPENAI_API_KEY']}"},
-                       json={"model": "gpt-image-1", "prompt": prompt, "size": "1024x1024"})
-        r.raise_for_status()
-        name = f"{uuid.uuid4().hex}.png"
-        Path(MEDIA_DIR / name).write_bytes(base64.b64decode(r.json()["data"][0]["b64_json"]))
-        return [f"/media/{name}"]
-
-
-class GeminiProvider:
-    """Default real provider. Used when GEMINI_API_KEY is set (google-genai SDK)."""
-    name = "gemini"
-
-    def generate(self, brief, refs, round_n):
-        from google import genai
-        client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-        prompt = (f"Create a square 1:1 social media marketing post for {brief.get('business_name')}, "
-                  f"a {brief.get('industry')} business. Tagline: {brief.get('tagline','')}. "
-                  f"Brand colours: {brief.get('brand_colours','')}. Requirements: {brief.get('requirements_notes','')}. Design direction: {brief.get('direction','')}. "
-                  f"Changes requested: {brief.get('feedback') or 'none'}. Use the attached images as style references.")
-        parts = [prompt] + [Image.open(r) for r in refs[:3]]
-        res = client.models.generate_content(
-            model=os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image"), contents=parts)
-        for part in res.candidates[0].content.parts:
-            if getattr(part, "inline_data", None) and part.inline_data.data:
-                name = f"{uuid.uuid4().hex}.png"
-                Path(MEDIA_DIR / name).write_bytes(part.inline_data.data)
-                return [f"/media/{name}"]
-        raise RuntimeError("Gemini returned no image")
-
-
 def build_prompt(brief: dict) -> str:
     """Muse prompt. Order: the post's headline offer (requirements / notes), then the design direction
     (style and colours), then business type and industry, then the business name. Empty fields are skipped."""
-    name = (brief.get("business_name") or "").strip() or "a small business"
-    notes = (brief.get("requirements_notes") or "").strip()
-    style = (brief.get("direction") or brief.get("design_preferences") or "").strip()
-    kind = " / ".join(x.strip() for x in (brief.get("business_type"), brief.get("industry")) if x and x.strip())
+    clean = {k: v for k, v in (brief or {}).items() if not str(k).startswith("_")}
+    name = (clean.get("business_name") or "").strip() or "a small business"
+    notes = (clean.get("requirements_notes") or "").strip()
+    style = (clean.get("direction") or clean.get("design_preferences") or "").strip()
+    kind = " / ".join(x.strip() for x in (clean.get("business_type"), clean.get("industry")) if x and x.strip())
     parts = []
     if notes:
         parts.append(f"Main message and headline offer of the post: {notes}. Make this the biggest, clearest text "
@@ -137,11 +98,14 @@ def build_prompt(brief: dict) -> str:
         parts.append(f"Social media marketing post for {name}")
     if style:
         parts.append(f"Design direction (style and colours): {style}")
-    if brief.get("brand_colours"):
-        parts.append(f"Brand colours: {brief['brand_colours']}")
+    if clean.get("brand_colours"):
+        parts.append(f"Brand colours: {clean['brand_colours']}")
     if kind:
         parts.append(f"Business type and industry: {kind}")
     parts.append(f"Business name: show '{name}' clearly")
+    avoid = [str(a).strip() for a in (clean.get("avoid") or []) if str(a).strip()]
+    if avoid:
+        parts.append(f"Avoid these looks the client rejected: {'; '.join(avoid)}")
     parts.append("Square 1:1 social media marketing post. Clean, professional layout")
     return ". ".join(parts) + "."
 
@@ -194,10 +158,6 @@ class MuseProvider:
 def get_provider():
     if (os.getenv("MODEL_API_KEY") or relay.enabled()) and os.getenv("IMAGE_PROVIDER", "muse") == "muse":
         return MuseProvider()
-    if os.getenv("IMAGE_PROVIDER") == "openai" and os.getenv("OPENAI_API_KEY"):
-        return OpenAIProvider()
-    if os.getenv("GEMINI_API_KEY"):
-        return GeminiProvider()
     return PlaceholderProvider()
 
 
@@ -215,11 +175,34 @@ def to_post_size(url: str) -> str:
     return url
 
 
-def generate(brief, refs, round_n):
+def self_check(url: str) -> bool:
+    """True when the url points to a decodable 1080x1080 file under MEDIA_DIR."""
+    try:
+        path = MEDIA_DIR / str(url).rsplit("/", 1)[-1]
+        if not path.is_file():
+            return False
+        with Image.open(path) as im:
+            return im.size == (1080, 1080)
+    except Exception:
+        return False
+
+
+def generate(brief, refs, round_n, session_id=None):
     prov = get_provider()
+    sid = session_id or (brief.get("_sid") if isinstance(brief, dict) else None)
+    model = "muse-image-1.0" if isinstance(prov, MuseProvider) else prov.name
+    t0 = time.perf_counter()
     try:
         urls = prov.generate(brief, refs, round_n)
     except Exception as e:
+        ms = int((time.perf_counter() - t0) * 1000)
+        trace.record("image_gen", model, False, ms, 0.0, sid, f"{type(e).__name__}: {e}")
         print(f"[imagegen] {prov.name} failed, using placeholder: {e}")
+        t1 = time.perf_counter()
         urls = PlaceholderProvider().generate(brief, refs, round_n)
+        trace.record("image_gen", "placeholder", True, int((time.perf_counter() - t1) * 1000), 0.0, sid)
+        return [to_post_size(u) for u in urls]
+    ms = int((time.perf_counter() - t0) * 1000)
+    cost = trace.usd_to_sgd(trace.IMAGE_USD) if isinstance(prov, MuseProvider) else 0.0
+    trace.record("image_gen", model, True, ms, cost, sid)
     return [to_post_size(u) for u in urls]
