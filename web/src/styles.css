@@ -334,3 +334,34 @@ button { font: inherit; }
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
+
+/* 375px chat: no sideways scroll, >=44px tap targets. Desktop untouched. */
+@media (max-width: 600px) {
+  /* Header: wrap onto two rows, picker gets a full 44px row. */
+  .header { row-gap: 8px; }
+  .lang-select {
+    min-height: 44px; min-width: 44px; max-width: 100%;
+    font-size: 16px; padding: 0 12px;
+  }
+  /* All chat buttons hit 44px. */
+  .btn { min-height: 44px; height: auto; padding: 10px 16px; max-width: 100%; }
+  .modal-foot .btn { height: auto; min-height: 44px; }
+  .listen-btn { min-height: 44px; min-width: 44px; padding: 8px 12px; }
+  .chip { min-height: 44px; }
+  .chip button { min-width: 44px; min-height: 44px; justify-content: center; }
+  /* Looks: fill the bubble instead of vw math (no overflow), bigger check. */
+  .looks { width: 100%; max-width: 480px; min-width: 0; }
+  .img-grid { width: 100%; max-width: 480px; }
+  .look-card { min-height: 44px; min-width: 0; }
+  .look-check { width: 24px; height: 24px; }
+  /* Confirm: value wraps instead of pushing sideways, inputs hit 44px. */
+  .confirm-details { min-width: 0; }
+  .confirm-field { min-width: 0; }
+  .confirm-value { flex-wrap: wrap; }
+  .confirm-value > span:first-child { flex: 1 1 auto; min-width: 0; }
+  .confirm-edit input, .field input { min-height: 44px; height: 44px; font-size: 16px; }
+  /* Composer: textarea shrinks, mic/attach/send hit 44px. */
+  .composer textarea { min-width: 0; min-height: 44px; font-size: 16px; }
+  .btn-icon { width: 44px; height: 44px; min-width: 44px; min-height: 44px; }
+  .btn-send { min-height: 44px; height: 44px; }
+}
