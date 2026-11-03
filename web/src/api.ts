@@ -90,9 +90,23 @@ export function normalizeChatReply(raw: unknown): ApiResponse {
           id: String(opt.id ?? ""),
           url: String(opt.url ?? ""),
           alt: typeof opt.alt === "string" ? opt.alt : typeof opt.title === "string" ? opt.title : "",
+          suggested: opt.suggested === true,
         };
       }),
     };
+  }
+  if (Array.isArray(out.suggested_looks)) {
+    out.suggested_looks = (out.suggested_looks as unknown[]).map((s) => {
+      const item = (s && typeof s === "object" ? s : {}) as Record<string, unknown>;
+      const alt = typeof item.alt === "string" ? item.alt : typeof item.title === "string" ? item.title : "";
+      return {
+        id: String(item.id ?? ""),
+        url: String(item.url ?? ""),
+        alt,
+        title: typeof item.title === "string" ? item.title : alt,
+        suggested: true,
+      };
+    });
   }
   const confirm = out.confirm as { fields?: unknown } | null | undefined;
   if (!Array.isArray(out.extracted) && confirm && Array.isArray(confirm.fields)) {
@@ -181,6 +195,8 @@ export interface Client {
   removeUpload(): Promise<ApiResponse>;
   trace(kind: TraceKind, ok: boolean, ms: number): Promise<void>;
   setLang(lang: Lang): void;
+  /** Resume poll: POST /api/session with the session secret; returns the current looks and suggested_looks. */
+  refresh(): Promise<ApiResponse>;
   /** Set when opened from a staff "more information" link (/?resume=<token>). */
   resume?: { missing: string[]; reply: string };
   /** [resume-410] Set when a resume link is used up (410) or unknown (404): show this and close the chat. */
@@ -220,6 +236,24 @@ function mockExtras(m: MockHandlers) {
     setLang: (lang: Lang) => {
       storeLang(lang);
     },
+    // Mock has no backend: the picker never polls in mock mode, so this stays a no-op.
+    refresh: () =>
+      new Promise<ApiResponse>((res) =>
+        setTimeout(
+          () =>
+            res({
+              reply: "",
+              step: "choosing_look",
+              status: "choosing_look",
+              images: [],
+              missing: [],
+              round: 0,
+              looks: null,
+              suggested_looks: null,
+            }),
+          100,
+        ),
+      ),
   };
 }
 
@@ -302,6 +336,8 @@ export function realClient(sessionId: string, secret: string): Client {
       }
       return normalizeChatReply(await res.json());
     },
+    refresh: async () =>
+      normalizeChatReply(await postJson("/api/session", { sessionId, sessionSecret: secret }, secret)),
     form: async (fields) => normalizeChatReply(await postJson("/api/form", { sessionId, fields: { ...EMPTY_FORM, ...fields } }, secret)),
     chat: async (text) => normalizeChatReply(await postJson("/api/chat", { sessionId, text }, secret)),
     review: async (accepted, feedback) =>

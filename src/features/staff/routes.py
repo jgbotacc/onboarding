@@ -1,17 +1,23 @@
 """Staff review API. Primary: /api/staff/clients*. Aliases: /api/clients*, /api/admin/clients*.
 Every route needs the staff passcode (x-staff-key header, see shared/security.py)."""
+import json
 import secrets
+import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.features.chat import agent
+from src.features.imagegen import studio
+from src.features.looks.brief import design_context
 from src.features.staff import email, metrics
 from src.shared import guard
-from src.shared.config import LABELS, PUBLIC_BASE_URL
+from src.shared.config import LABELS, MEDIA_DIR, PUBLIC_BASE_URL
 from src.shared.security import require_staff
 
 STATUS = {"approve": "approved", "reject": "rejected", "more_info": "needs_info"}
@@ -67,6 +73,16 @@ def _consult_for(store, cid):
     return None
 
 
+def _with_pins(store, card):
+    """Consult card plus pinned_drafts rendered at read time (never stored)."""
+    if not card:
+        return card
+    sid = card.get("session_id") or card.get("client_id") or ""
+    pins = [_draft_json(d) for d in store.drafts(sid)
+            if d.get("pinned_to") == "consult" and d.get("pinned_consult_id") == card.get("id")]
+    return dict(card, pinned_drafts=pins)
+
+
 def _detail(store, s):
     refs = ["/media/" + r.rsplit("/", 1)[-1] for r in s.get("refs", [])]
     base = dict(_summary(s), fields=s.get("fields", {}), labels=LABELS, images=s.get("images", []),
@@ -80,10 +96,98 @@ def _detail(store, s):
               for t in store.traces(s["id"])]
     d = dict(base, lang=s.get("lang") or "en", transcript=s.get("transcript", []),
              looks=_all_looks(store, s["id"]), rejected_looks=rej,
-             consult=_consult_for(store, s["id"]), audit=store.audit_log(s["id"]), documents=docs,
-             traces=traces)
+             consult=_with_pins(store, _consult_for(store, s["id"])),
+             audit=store.audit_log(s["id"]), documents=docs, traces=traces)
     d.pop("pending", None)  # A9: pending drafts never reach staff
     return guard.clean(d, guard.others_identifiers(store, s["id"]))[0]
+
+
+STUDIO_CAP = 9
+
+
+class DraftsIn(BaseModel):
+    marketer_prompt: str | None = Field(default=None, max_length=500)
+    chips: list[str] = []
+    preset: Literal["post", "story", "flyer"] = "post"
+
+
+class RemixIn(BaseModel):
+    source_id: str
+    source_kind: Literal["draft", "look"]
+    note: str | None = Field(default=None, max_length=300)
+    preset: Literal["post", "story", "flyer"] | None = None
+
+
+class StarIn(BaseModel):
+    starred: bool
+
+
+class PinIn(BaseModel):
+    target: Literal["client", "consult"] | None = None
+
+
+_studio_locks_guard = threading.Lock()
+_studio_locks: dict[str, threading.Lock] = {}
+
+
+def _studio_lock_for(sid: str) -> threading.Lock:
+    with _studio_locks_guard:
+        return _studio_locks.setdefault(sid, threading.Lock())
+
+
+def _draft_json(d: dict) -> dict:
+    chips = d.get("chips")
+    if isinstance(chips, str):
+        try:
+            chips = json.loads(chips)
+        except (ValueError, TypeError):
+            pass
+    return {"id": d.get("id"), "run_id": d.get("run_id"), "parent_id": d.get("parent_id"),
+            "parent_kind": d.get("parent_kind"), "preset": d.get("preset"),
+            "width": d.get("width"), "height": d.get("height"), "url": d.get("url"),
+            "status": d.get("status"), "style_title": d.get("style_title"),
+            "marketer_prompt": d.get("marketer_prompt"), "chips": chips,
+            "author": d.get("author"), "starred": bool(d.get("starred")),
+            "pinned_to": d.get("pinned_to"), "pinned_consult_id": d.get("pinned_consult_id"),
+            "error": d.get("error"), "sent_at": d.get("sent_at"), "created_at": d.get("created_at")}
+
+
+def _studio_usage(store, cid):
+    """(drafts, used, remaining): used counts reserved+ok; failed rows free their slots."""
+    ds = store.drafts(cid)
+    used = sum(1 for d in ds if d.get("status") in ("reserved", "ok"))
+    return ds, used, STUDIO_CAP - used
+
+
+def _reconcile(store, cid):
+    """Free timed-out reservations; flag ok drafts whose media file is gone."""
+    store.sweep_stale_drafts(cid)
+    for d in store.drafts(cid):
+        if d.get("status") == "ok" and d.get("url"):
+            if not (MEDIA_DIR / str(d["url"]).rsplit("/", 1)[-1]).is_file():
+                store.finish_draft(d["id"], d.get("url"), "failed", "file missing")
+
+
+def _mask_ids(fields) -> set[str]:
+    """Mask set for marketer text: own email/phone/UEN/name plus the other
+    contact-ish fields (website, address, title, revenue) that must never
+    reach the image prompt. NRIC is always scrubbed by guard.clean."""
+    ids = set(studio.own_identifiers(fields))
+    for k in ("business_website", "website", "registered_address", "address",
+              "title_position", "expected_annual_revenue"):
+        v = (fields or {}).get(k)
+        if isinstance(v, str) and len(v.strip()) >= 3:
+            ids.add(v.strip())
+    return ids
+
+
+def _ref_paths(s) -> list[str]:
+    out = []
+    for r in s.get("refs") or []:
+        p = Path(str(r))
+        if p.is_file():
+            out.append(str(p))
+    return out
 
 
 def make_router(store, save):
@@ -164,7 +268,7 @@ def make_router(store, save):
         out = []
         for c in store.consults():
             sid = c.get("session_id") or c.get("client_id")
-            out.append(guard.clean(c, guard.others_identifiers(store, sid))[0])
+            out.append(guard.clean(_with_pins(store, c), guard.others_identifiers(store, sid))[0])
         return out
 
     def consult_decide(cid: str, body: ConsultDecisionIn, request: Request):
@@ -205,6 +309,200 @@ def make_router(store, save):
     def get_audit(client: str | None = None):
         return store.audit_log(client or None)
 
+    def studio_get(cid: str):
+        s = load(cid)
+        _reconcile(store, cid)
+        others = guard.others_identifiers(store, cid)
+        brief = design_context(s.get("fields", {}), s.get("direction"), None)
+        avoid = [{"id": l["id"], "title": l["title"], "brief": l.get("brief"), "url": l.get("url")}
+                 for l in _rejected(store, s)]
+        presets = [{"id": p["id"], "label": p["label"], "w": p["w"], "h": p["h"]}
+                   for p in studio.PRESETS.values()]
+        chips = [{"id": c["id"], "label": c["label"], "text": c["text"]}
+                 for c in studio.CHIPS.values()]
+        ds, used, remaining = _studio_usage(store, cid)
+        out = {"brief": brief, "avoid": avoid, "presets": presets, "chips": chips,
+               "drafts": [_draft_json(d) for d in ds],
+               "cap": STUDIO_CAP, "used": used, "remaining": remaining}
+        return guard.clean(out, others)[0]
+
+    def studio_drafts(cid: str, body: DraftsIn, request: Request):
+        s = load(cid)
+        with _studio_lock_for(cid):
+            _reconcile(store, cid)
+            fields = s.get("fields", {})
+            others = guard.others_identifiers(store, cid)
+            own_ids = _mask_ids(fields)
+            rejected = _rejected(store, s)
+            rej_titles = [l.get("title") for l in rejected if l.get("title")]
+            vs = studio.variants(rej_titles, s.get("direction"))
+            masked_mp, _ = guard.clean(body.marketer_prompt or "", set(own_ids))
+            chips = [c for c in (body.chips or []) if c in studio.CHIPS]
+            cfg = studio.PRESETS[body.preset]
+            run_id = uuid.uuid4().hex
+            author = actor(request)
+            refs = _ref_paths(s)
+            rows, prompts = [], []
+            for v in vs:
+                prompt = studio.studio_prompt(fields, s.get("direction"), rejected, masked_mp,
+                                              chips, body.preset, style=v, own_ids=own_ids)
+                prompts.append(prompt)
+                rows.append({"run_id": run_id, "preset": body.preset,
+                             "width": cfg["w"], "height": cfg["h"],
+                             "marketer_prompt": masked_mp or None, "chips": chips,
+                             "style_title": v.get("title"), "style": v.get("style"),
+                             "prompt": prompt, "author": author})
+            ids = store.reserve_drafts(cid, rows, cap=STUDIO_CAP)
+            if ids is None:
+                raise HTTPException(409, "Draft limit reached")
+
+            def _one(i):
+                did = ids[i]
+                res = studio.studio_generate(prompts[i], body.preset, images=refs, session_id=cid)
+                if res.get("ok"):
+                    d = store.finish_draft(did, res.get("url"), "ok")
+                    status = "ok"
+                else:
+                    d = store.finish_draft(did, None, "failed", res.get("error"))
+                    status = "failed"
+                store.audit(cid, author, "studio_draft", did,
+                            {"prompt": prompts[i], "preset": body.preset,
+                             "run_id": run_id, "parent_id": None, "status": status})
+                return d
+
+            with ThreadPoolExecutor(max_workers=3) as ex:
+                ds = [d for d in ex.map(_one, range(len(ids))) if d]
+            _, _, remaining = _studio_usage(store, cid)
+            out = {"run_id": run_id, "drafts": [_draft_json(d) for d in ds], "remaining": remaining}
+            return guard.clean(out, others)[0]
+
+    def studio_remix(cid: str, body: RemixIn, request: Request):
+        s = load(cid)
+        if body.source_kind == "draft":
+            src = store.get_draft(body.source_id)
+            if not src or src.get("session_id") != cid:
+                raise HTTPException(404, "Source not found.")
+            if not src.get("url"):
+                raise HTTPException(404, "Source not found.")
+            src_file = MEDIA_DIR / str(src["url"]).rsplit("/", 1)[-1]
+            if not src_file.is_file():
+                raise HTTPException(404, "Source not found.")
+            preset = body.preset or (src.get("preset") if src.get("preset") in studio.PRESETS else "post")
+            src_style = {"title": src.get("style_title"), "style": src.get("style")} if src.get("style") else None
+        else:
+            lk = next((l for l in store.looks(cid) if l.get("id") == body.source_id), None)
+            if not lk:
+                raise HTTPException(404, "Source not found.")
+            src_file = MEDIA_DIR / str(lk.get("url") or "").rsplit("/", 1)[-1]
+            if not lk.get("url") or not src_file.is_file():
+                raise HTTPException(404, "Source not found.")
+            preset = body.preset or "post"
+            src_style = None
+        with _studio_lock_for(cid):
+            _reconcile(store, cid)
+            fields = s.get("fields", {})
+            others = guard.others_identifiers(store, cid)
+            own_ids = _mask_ids(fields)
+            masked_note, _ = guard.clean(body.note or "", set(own_ids))
+            rejected = _rejected(store, s)
+            base = studio.studio_prompt(fields, s.get("direction"), rejected, "", [],
+                                        preset, style=src_style, own_ids=own_ids)
+            prompt = base + " Make a close variation of this design; keep layout and colours."
+            if isinstance(masked_note, str) and masked_note.strip():
+                prompt += f" Note: {masked_note.strip()}"
+            prompt = prompt[:studio.MAX_PROMPT]
+            cfg = studio.PRESETS[preset]
+            run_id = uuid.uuid4().hex
+            author = actor(request)
+            rows = [{"run_id": run_id, "parent_id": body.source_id, "parent_kind": body.source_kind,
+                     "preset": preset, "width": cfg["w"], "height": cfg["h"],
+                     "marketer_prompt": masked_note.strip() or None, "chips": [],
+                     "style_title": (src_style or {}).get("title") or "Remix",
+                     "style": (src_style or {}).get("style") or (s.get("direction") or ""),
+                     "prompt": prompt, "author": author}]
+            ids = store.reserve_drafts(cid, rows, cap=STUDIO_CAP)
+            if ids is None:
+                raise HTTPException(409, "Draft limit reached")
+            res = studio.studio_generate(prompt, preset, images=[str(src_file)] + _ref_paths(s),
+                                         session_id=cid)
+            if res.get("ok"):
+                d = store.finish_draft(ids[0], res.get("url"), "ok")
+                status = "ok"
+            else:
+                d = store.finish_draft(ids[0], None, "failed", res.get("error"))
+                status = "failed"
+            store.audit(cid, author, "studio_draft", ids[0],
+                        {"prompt": prompt, "preset": preset, "run_id": run_id,
+                         "parent_id": body.source_id, "parent_kind": body.source_kind, "status": status})
+            _, _, remaining = _studio_usage(store, cid)
+            out = {"run_id": run_id, "drafts": [_draft_json(d)], "remaining": remaining}
+            return guard.clean(out, others)[0]
+
+    def studio_star(cid: str, did: str, body: StarIn, request: Request):
+        load(cid)
+        d = store.get_draft(did)
+        if not d or d.get("session_id") != cid:
+            raise HTTPException(404, "Draft not found.")
+        d = store.set_draft_flags(did, starred=body.starred)
+        store.audit(cid, actor(request), "studio_star", did, {"starred": bool(body.starred)})
+        return guard.clean(_draft_json(d), guard.others_identifiers(store, cid))[0]
+
+    def studio_pin(cid: str, did: str, body: PinIn, request: Request):
+        load(cid)
+        d = store.get_draft(did)
+        if not d or d.get("session_id") != cid:
+            raise HTTPException(404, "Draft not found.")
+        if body.target == "consult":
+            card = _consult_for(store, cid)
+            if not card:
+                raise HTTPException(409, "This client has no consult.")
+            d = store.set_draft_flags(did, pinned_to="consult", pinned_consult_id=card["id"])
+            details = {"target": "consult", "pinned_consult_id": card["id"]}
+        elif body.target == "client":
+            d = store.set_draft_flags(did, pinned_to="client", pinned_consult_id=None)
+            details = {"target": "client"}
+        else:
+            d = store.set_draft_flags(did, pinned_to=None, pinned_consult_id=None)
+            details = {"target": None}
+        store.audit(cid, actor(request), "studio_pin", did, details)
+        return guard.clean(_draft_json(d), guard.others_identifiers(store, cid))[0]
+
+    def studio_send(cid: str, did: str, request: Request):
+        s = load(cid)
+        with _studio_lock_for(cid):
+            d = store.get_draft(did)
+            if not d or d.get("session_id") != cid:
+                raise HTTPException(404, "Draft not found.")
+            if d.get("sent_at"):
+                raise HTTPException(409, "This draft was already sent.")
+            if d.get("status") != "ok" or not d.get("url"):
+                raise HTTPException(409, "Only finished drafts can be sent.")
+            act = actor(request)
+            look = {"id": d["id"], "url": d.get("url"), "title": "Suggested by our team",
+                    "brief": d.get("style"), "round": s.get("round", 0),
+                    "suggested": True, "source": "staff"}
+            store.add_looks(cid, s.get("round", 0), [look], source="staff")
+            d = store.mark_draft_sent(
+                did, act, datetime.now(timezone.utc).isoformat(timespec="seconds"))
+            if s.get("status") == "awaiting_review":
+                s.setdefault("looks", []).append(look)
+            else:
+                s.setdefault("suggested_looks", []).append(look)
+                card = _consult_for(store, cid)
+                if card:
+                    entry = {"id": look["id"], "url": look["url"], "title": look["title"],
+                             "brief": look.get("brief"), "round": look.get("round"),
+                             "suggested": True}
+                    card.setdefault("suggested_looks", []).append(entry)
+                    store.save_consult(card)
+                    if s.get("consult") and s["consult"].get("id") == card["id"]:
+                        s["consult"] = card
+            save(s)
+            store.audit(cid, act, "studio_send", did,
+                        {"look_id": look["id"], "round": look.get("round")})
+            out = dict(_draft_json(d), look_id=look["id"])
+            return guard.clean(out, guard.others_identifiers(store, cid))[0]
+
     for prefix in ("/api/staff/clients", "/api/clients", "/api/admin/clients"):
         r.add_api_route(prefix, list_clients, methods=["GET"])
         r.add_api_route(prefix + "/{cid}", get_client, methods=["GET"])
@@ -214,6 +512,12 @@ def make_router(store, save):
     r.add_api_route("/api/staff/consults", list_consults, methods=["GET"])
     r.add_api_route("/api/staff/consults/{cid}/decision", consult_decide, methods=["POST"])
     r.add_api_route("/api/staff/consults/{cid}/approve", consult_approve, methods=["POST"])
+    r.add_api_route("/api/staff/clients/{cid}/studio", studio_get, methods=["GET"])
+    r.add_api_route("/api/staff/clients/{cid}/studio/drafts", studio_drafts, methods=["POST"])
+    r.add_api_route("/api/staff/clients/{cid}/studio/remix", studio_remix, methods=["POST"])
+    r.add_api_route("/api/staff/clients/{cid}/studio/drafts/{did}/star", studio_star, methods=["POST"])
+    r.add_api_route("/api/staff/clients/{cid}/studio/drafts/{did}/pin", studio_pin, methods=["POST"])
+    r.add_api_route("/api/staff/clients/{cid}/studio/drafts/{did}/send", studio_send, methods=["POST"])
     r.add_api_route("/api/staff/metrics", get_metrics, methods=["GET"])
     r.add_api_route("/api/staff/traces", get_traces, methods=["GET"])
     r.add_api_route("/api/staff/audit", get_audit, methods=["GET"])

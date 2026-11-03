@@ -62,6 +62,8 @@ def clean(obj, others: set[str] = frozenset()) -> tuple:
             continue
         if o.isdigit():
             pats.append(re.compile(r"\+?" + r"[\s\-]*".join(re.escape(d) for d in o)))
+        elif re.fullmatch(r"[A-Za-z'’\- ]+", o) and re.search(r"[A-Za-z]", o):
+            pats.append(re.compile(r"\b" + re.escape(o) + r"\b", re.I))
         else:
             pats.append(re.compile(re.escape(o), re.I))
     n = 0

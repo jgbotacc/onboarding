@@ -55,3 +55,7 @@ Decisions were made by Jin. Assumptions are ours; Jin can override any of them.
 - A28. The front end's route names (`/api/looks/pick`, `/api/looks/skip`, `/api/extracted/confirm`, `DELETE /api/upload`, `POST /api/trace`, `POST /api/staff/consults/{id}/approve`, `x-lang`) are served as aliases of the PRD routes, so both work.
 - A29. The confirm step's reply text does not repeat the extracted values; the front end shows them in the confirm card (they used to show twice).
 - A30. Code for this build was written with Muse Code. The first sessions (tasks 1 to 5) ran on `muse-spark-1.3-contributor` (Muse Code's default Contributor mode, which allows Meta to train on the prompts and code sent; no client data was sent, only repo code and the made-up fixture). From 04:16 SGT every session runs `--model muse-spark-1.3 --contributor-mode off` (Standard). The app's own Meta calls always use Standard `muse-spark-1.3` (A1).
+- A31. Studio drafts never fall back to a placeholder image; a failed draft is shown as failed and frees its slot.
+- A32. Cap of 9 studio drafts per client, counted over reserved and ok drafts.
+- A33. Partial-name masking in studio prompts may over-mask ordinary words that match a part of the client's name (for example "tan colours"). Accepted trade-off for now.
+- A34. A staff suggestion sent during a round disappears if the client skips to the next round. Accepted for the demo.

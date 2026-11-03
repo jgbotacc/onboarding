@@ -114,6 +114,7 @@ const ta: typeof en = {
   "looks.round": "சுற்று {round} / {max}",
   "looks.option": "வடிவமைப்பு {n}",
   "looks.selected": "தேர்ந்தெடுக்கப்பட்டது",
+  "looks.suggested": "எங்கள் குழு பரிந்துரைக்கிறது",
   "looks.useThese": "இவற்றைப் பயன்படுத்து",
   "looks.skipNew": "தவிர், புதியவற்றைக் காட்டு",
   "consult.note": "உங்கள் விருப்பத்தை நன்கு அறிய எங்கள் குழு ஒரு consult ஏற்பாடு செய்யும்.",

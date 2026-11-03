@@ -113,6 +113,7 @@ const en = {
   "looks.round": "Round {round} of {max}",
   "looks.option": "Look {n}",
   "looks.selected": "Selected",
+  "looks.suggested": "Suggested by our team",
   "looks.useThese": "Use these",
   "looks.skipNew": "Skip, show me new ones",
   "consult.note": "Our team will arrange a consult with you to better understand what you like.",

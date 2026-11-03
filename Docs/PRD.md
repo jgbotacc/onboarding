@@ -171,6 +171,150 @@ Each step gets only what it needs:
 - HEIC needs `pillow-heif` (added to requirements); without it HEIC uploads get a "please send a JPG" reply.
 - Gap: no server-side voice; Listen and the mic use the browser (front end).
 
+### 4.7 Staff image studio
+
+Feature: staff "image studio" panel per client in onboarding-agent-v2. Built on branch `staff-studio`.
+Docs checked 2026-11-04.
+
+---
+
+#### 4.7.1 Integration inventory
+
+| System | Endpoint / capability used | Checked against | Owner |
+|---|---|---|---|
+| Meta Muse Image `muse-image-1.0`, text to image | `POST https://api.meta.ai/v1/images/generations` (JSON: `model, prompt, n, size, response_format:"b64_json", output_format:"png"`, optional `reasoning_strength`, `tool_enablement`, `user`) | https://dev.meta.ai/docs/api-reference/images/create-image , https://dev.meta.ai/docs/image-generation ; repo `MuseProvider.generate` in `src/features/imagegen/providers.py` | Third party (Meta), Jin's key |
+| Meta Muse Image, edit / remix / reference images | `POST https://api.meta.ai/v1/images/edits` (Meta JSON body: `images:[{image_url:"data:image/jpeg;base64,..."}]`, 1 to 10 items) | https://dev.meta.ai/docs/api-reference/images/edit-image ; repo already uses this for round 2+ and for reference photos | Third party (Meta) |
+| Meta pricing and rate limits | Flat US$0.01 per returned image; `muse-image-1.0` 150 RPM per team; Muse Spark 1.3 standard US$1.25 in / US$0.15 cached / US$4.25 out per 1M | https://dev.meta.ai/docs/pricing-rate-limits | Third party |
+| Vercel relay (v1, `relay/api/muse.js`) | `POST {RELAY_URL}/api/muse?op=generations|edits`. It passes the body through unchanged to `api.meta.ai/v1/images/<op>` (4.5 MB body limit, so images are downscaled with `_data_url`) | `relay/api/muse.js`, `src/shared/relay.py` | Us. **Not changed by this feature.** |
+| Muse Spark `muse-spark-1.3` (optional) | `POST /v1/chat/completions`, only if we reuse `make_briefs` to get 2 alternative styles for drafts 2 and 3 | `src/shared/meta.py`, `src/features/looks/brief.py` | Third party |
+| App store (SQLite live, Neo4j optional) | New `staff_drafts` table plus `Draft` node parity in `src/data/neo4j_store.py`; existing `audit`, `traces`, `looks`, `consults` | `db/migrations/*.sql`, `src/data/store.py`, `src/data/neo4j_store.py` | Us |
+| Media storage | `var/media/*.png` on the app host (`MEDIA_DIR`) | `src/shared/config.py` | Us |
+| Staff web (`web/src/staff/*`) and client picker (`web/src/looks/LooksPicker.tsx`) | New Studio panel; "Suggested by our team" label in the picker | repo | Us |
+| Daytona sandbox `44729a7d` | Redeploy with `scripts/deploy_daytona.py` (it reuses the id in `.daytona_sandbox`, which isn't in the clone) | repo script | Us (Jin's Daytona) |
+
+Not used: the Responses API (`/v1/responses` with `previous_response_id`). It keeps conversation state on Meta's side (`store` defaults to true), which we don't need and would add data retention. Remix uses single-shot `images/edits` with the source image attached, like the existing round 2+ flow.
+
+#### 4.7.2 Source of truth
+
+| Record | Owner | Derived copies |
+|---|---|---|
+| Client design fields used for the brief | the session (`sessions.state.fields`), filtered by `design_context` (the `ALLOWED` list) | studio prefill (read only, never written back) |
+| Rejected looks | `looks` table (`selected=0`, older round, or every non-pick once the status is handed_off or accepted), via `_rejected()` in `src/features/staff/routes.py` | the `avoid` list in the studio prompt, remix sources |
+| Staff drafts (prompt, author, preset, parent, status, pin, sent) | **new `staff_drafts` table** (Neo4j `Draft` node when live) | staff detail view, audit rows |
+| Draft image bytes | `var/media/<uuid>.png` | URL in `staff_drafts.url` |
+| Pin to consult | `staff_drafts.pinned_to` + `pinned_consult_id` | `consult.card.pinned_drafts` is rendered from `staff_drafts` at read time and **not stored in the card JSON**, so the two can't drift |
+| Sent-to-client looks | `staff_drafts.sent_at`; the client sees it as a `looks` row with `round` = current round and `source='staff'` | the session's `looks` options in `out["looks"]` |
+| Draft cap (9 per client) | count of `staff_drafts` rows with status in (`reserved`,`ok`) for the session | `remaining` in the studio GET |
+| Spend | `traces` rows `step='studio_image'` (cost_sgd) + `/workspace/usage/meta-local-tally.md` for build-time calls | metrics API |
+| Who acted | `audit` table (`actor = "staff:" + x-staff-name`) | staff audit view |
+
+#### 4.7.3 Data contract
+
+##### 4.7.3.1 New migration `db/migrations/007_staff_studio.sql`
+```sql
+CREATE TABLE IF NOT EXISTS staff_drafts (
+  id TEXT PRIMARY KEY,               -- uuid hex, also the media file stem
+  session_id TEXT NOT NULL,          -- client id (matches sessions.id)
+  run_id TEXT NOT NULL,              -- one id per Generate/Remix click
+  parent_id TEXT,                    -- draft id or look id this was remixed from
+  parent_kind TEXT,                  -- 'draft' | 'look' | NULL
+  preset TEXT NOT NULL,              -- 'post' | 'story' | 'flyer'
+  width INTEGER NOT NULL, height INTEGER NOT NULL,
+  marketer_prompt TEXT,              -- after guard scrub
+  chips TEXT,                        -- JSON list of chip ids
+  style_title TEXT, style TEXT,      -- variant used for this draft
+  prompt TEXT,                       -- full prompt sent to Meta (scrubbed, no contact fields)
+  url TEXT,                          -- /media/<id>.png, NULL until ok
+  status TEXT NOT NULL,              -- 'reserved' | 'ok' | 'failed'
+  error TEXT,
+  author TEXT NOT NULL,              -- 'staff:<x-staff-name>'
+  starred INTEGER NOT NULL DEFAULT 0,
+  pinned_to TEXT,                    -- NULL | 'client' | 'consult'
+  pinned_consult_id TEXT,
+  sent_at TEXT, sent_by TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS staff_drafts_session ON staff_drafts(session_id, created_at);
+ALTER TABLE looks ADD COLUMN source TEXT DEFAULT 'agent';   -- 'agent' | 'staff'
+```
+(SQLite `ALTER TABLE ADD COLUMN` isn't idempotent. Wrap it in a guarded migration step in `SqliteStore.__init__`, or put `source` in a side table. This is decided in M1.)
+
+##### 4.7.3.2 Store methods (both `SqliteStore` and `Neo4jStore`)
+`reserve_drafts(sid, n, cap, rows) -> list[id] | None` (atomic count and insert), `finish_draft(id, url|None, status, error)`, `drafts(sid)`, `get_draft(id)`, `set_draft_flags(id, starred?, pinned_to?, pinned_consult_id?)`, `mark_draft_sent(id, actor, at)`, `add_looks(..., source='staff')`.
+
+##### 4.7.3.3 API routes (all on the existing staff router, so `require_staff` applies)
+| Method and path | Body | Returns |
+|---|---|---|
+| `GET /api/staff/clients/{cid}/studio` | none | `{brief:{...design_context}, avoid:[{id,title,brief,url}], presets:[{id,label,w,h}], chips:[{id,label,text}], drafts:[Draft], cap:9, used:n, remaining:n}` |
+| `POST /api/staff/clients/{cid}/studio/drafts` | `{marketer_prompt?: str<=500, chips?: [id], preset: 'post'|'story'|'flyer'}` | `{run_id, drafts:[Draft x3], remaining}`. 409 if fewer than 3 slots are left |
+| `POST /api/staff/clients/{cid}/studio/remix` | `{source_id, source_kind:'draft'|'look', note?: str<=300, preset?}` | `{run_id, drafts:[Draft x1], remaining}` (409 at cap) |
+| `POST /api/staff/clients/{cid}/studio/drafts/{did}/star` | `{starred: bool}` | Draft |
+| `POST /api/staff/clients/{cid}/studio/drafts/{did}/pin` | `{target: 'client'|'consult'|null}` | Draft (409 `consult` when the client has no consult) |
+| `POST /api/staff/clients/{cid}/studio/drafts/{did}/send` | `{}` | Draft with `sent_at` and the new client look id. 409 if already sent or the client can't receive it |
+
+`Draft = {id, run_id, parent_id, parent_kind, preset, width, height, url, status, style_title, marketer_prompt, chips, author, starred, pinned_to, sent_at, created_at}`. The full `prompt` is returned only in the audit view.
+
+Client side: the existing look option `{id,url,title}` gains `suggested: true` for staff-sent looks. The picker shows the label `looks.suggested` ("Suggested by our team", plus the zh/ms/ta strings).
+
+##### 4.7.3.4 Meta request built by the studio
+- Prompt = `build_prompt(dict(design_context(fields, direction, None), avoid=[rejected titles and briefs]))`, plus `Marketer direction: <scrubbed prompt>`, plus the chip texts, plus a size line ("Portrait 9:16 story", etc.), capped at 3,900 chars. The existing `build_prompt` ends with "Square 1:1...", so the studio needs a `build_prompt(..., shape=...)` parameter.
+- 3 drafts per run: three calls with `n:1`, one per style variant. Variant 1 follows the brief and variants 2 and 3 come from `ALTERNATIVES` minus the rejected titles (no Spark call by default). Alternatively, one call with `n:3`. That's cheaper on latency but all 3 drafts come from one prompt, so there's less variety. **Default: 3 calls with `n:1`, run concurrently.**
+- With the client's reference photos, or on remix: `images/edits` with up to 6 `image_url` data URLs. The remix source image goes first.
+- `tool_enablement: {enable_web_search:false, enable_shell:false}` and `reasoning_strength:"low"` are recommended (faster, and no web lookups on a client's name). This needs a live check.
+- Contact fields (`contact_name, email, phone_number, title_position, business_website, expected_annual_revenue, uen, registered_address`) are never in the prompt. Enforcement: `design_context` `ALLOWED` plus `guard.clean` on the marketer text with the client's **own** email, phone and UEN added to the mask set, plus `scrub_nric`, plus a test that asserts none of those values appear in the outgoing body.
+
+#### 4.7.4 Auth and secrets (names only)
+
+| Connection | Auth | Where (env var names) |
+|---|---|---|
+| Meta images (direct) | Bearer [REDACTED] key | `MODEL_API_KEY` (box: `/home/box/.secrets/onboarding-app/meta.env`). Optional `META_API_BASE`, `MUSE_MODEL`, `IMAGE_PROVIDER` |
+| Meta images (via relay) | shared secret header `x-relay-secret`; the relay holds `MODEL_API_KEY` | `RELAY_URL`, `RELAY_SECRET` |
+| Staff studio routes | shared passcode header `x-staff-key`; author from optional `x-staff-name` (self-reported, not proof) | `STAFF_PASSCODE` |
+| Client picker (sent drafts) | per-session secret `x-session-secret` (hash stored) | none (runtime) |
+| Daytona redeploy | API key | `DAYTONA_API_KEY`; sandbox id file `.daytona_sandbox` |
+| Muse Code (build time only) | `muse exec --provider meta --model muse-spark-1.3 --contributor-mode off`, using `MODEL_API_KEY` | env only |
+| Tests | none; `MODEL_API_KEY`, `RELAY_*` unset, httpx mocked (A24) | n/a |
+
+#### 4.7.5 Failure plan
+
+- **Retries:** add a small retry wrapper to the studio's image call: 2 retries on 429, 503, timeouts and transport errors, with exponential backoff (0.5 s, then 1 s, plus jitter) that honours `Retry-After`. No retry on 400 (`content_policy_violation`, bad size) or other 4xx. Timeouts are 180 s direct and 90 s via the relay (as now). Every attempt is traced as `studio_image`.
+- **No silent placeholder:** unlike client rounds, a failed studio draft is marked `failed` with a short error and shown as a failed tile. It does **not** fall back to a Pillow placeholder, so marketers never mistake a placeholder for a real draft. Failed drafts don't count toward the cap, and Meta doesn't bill failed or filtered images.
+- **Cap atomicity (9 per client):** `reserve_drafts` runs in one locked SQLite transaction: `SELECT COUNT(*) WHERE session_id=? AND status IN ('reserved','ok')`, and if `count + n <= 9` it inserts `n` `reserved` rows, otherwise it returns None and the route returns 409. Meta is called only after the reservation commits. Each call then moves its row to `ok` or `failed`. In Neo4j, one Cypher statement does the conditional create (`MATCH ... WITH count(d) AS c WHERE c + $n <= 9 UNWIND ... CREATE`). The per-session `_lock_for(sid)` in `app.py` should also wrap the run, so two marketers can't race.
+- **Partial writes:** the image file is written before the row moves to `ok`. If the process dies, the row stays `reserved`. The audit row (`studio_draft`) is written after `ok` or `failed`. Send-to-client happens in one transaction (insert the `looks` row with `source='staff'` and set `sent_at`), then the session state, then the audit row.
+- **Reconciliation:** on studio GET (and in `scripts/reconcile.py`), `reserved` rows older than 10 minutes become `failed` ("timed out"), which frees their slots. `ok` rows whose media file is missing are flagged `failed` ("file missing"). Sent drafts with no matching `looks` row are listed in the metrics API as drift.
+- **Contact-name leak (found by the 2026-11-04 smoke test):** a partial contact name in the marketer text reached the prompt. Fixed by masking each name part, whole words only, which can also mask an ordinary word equal to a name part.
+- **Spend guard:** each successful image is traced with `cost_sgd = usd_to_sgd(0.01)`. Stop if the team's high estimate reaches S$115.
+
+#### 4.7.6 Tool reality check (from docs and code only; nothing was called)
+
+Confirmed from docs:
+- `n` is 1 to 10, and a request returning `n` images is billed for `n` images at a flat US$0.01 each, whatever `reasoning_strength` or tool use.
+- `size` is a `"WxH"` string that **sets the aspect ratio only**. The returned pixels won't match, and anything beyond 16:1 returns 400. The repo notes back this up: "Muse returns ~1600x1600 regardless of size".
+- `output_format` can be `webp` (default), `png` or `jpeg`; the repo sends `png`. `response_format` can be `b64_json` or `url`.
+- `images/edits` accepts 1 to 10 images, given as `image_url` data URLs or `file_id`s, so remixing from a draft or a rejected look (all local files) works the same way the repo does round 2+ now.
+- `tool_enablement`, `reasoning_strength` and `user` are top-level fields on the images endpoints. Unknown top-level fields (for example `seed`) return 400, and `moderation` returns 400 on `muse-image-1.0`.
+- Errors: 503 retryable, 500 not classified, 400 `content_policy_violation`.
+
+Gaps and workarounds:
+- **Exact sizes aren't guaranteed.** Send the aspect-ratio hint (`1024x1024`, `1080x1920`, `1240x1754`), then post-process to the exact preset with a new `to_size(url, (w,h))` that uses `ImageOps.fit` (centre crop, no stretching). Use pad mode if the hint wasn't honoured and the crop would cut more than 15% of the image. Presets: post 1080x1080, story 1080x1920, flyer 1240x1754 (A5 portrait at 150 dpi, ratio 1:√2; open to change). Today's `to_post_size` stretches to square with `resize`. Keep it for client rounds and don't use it for the studio.
+- **No seed or variation endpoint**, so "more like this" = `images/edits` with the source image plus "Make a close variation of this design; keep layout and colours" plus the optional note.
+- **There's no negative-prompt field**, so steering away from rejected looks is prompt text only (the existing `avoid` line). It's best effort, not a guarantee.
+- **The images endpoints don't return a `reasoning` item** (docs), so there's nothing to show marketers about what the model did.
+- **The relay's 4.5 MB body limit**: keep `_data_url(max_side=1024)` and at most 6 images (already in place).
+- **No server-side spend cap from Meta.** The 9-draft cap and traces are our only controls.
+
+**Live check (2026-11-04):** direct path (no relay), muse-image-1.0. One run of 3 square drafts took 14 s with the calls in parallel (single calls 9.6 to 13.3 s). A story remix and a flyer remix of a rejected look both returned 200. All outputs were exact preset sizes after to_size, with no pad bands, so the aspect hint looks honoured; native pixel sizes were not recorded. reasoning_strength low and tool_enablement were accepted on generations and edits. Relay path not tested live.
+
+#### 4.7.7 Decisions on earlier open questions
+- Live size check: non-square `size` and `tool_enablement` / `reasoning_strength` on `muse-image-1.0` are confirmed by one paid smoke test per preset (recorded in the README once done).
+- Config path: the studio uses the same path as `MuseProvider` (relay when `RELAY_URL` and `RELAY_SECRET` are set, else direct with `MODEL_API_KEY`).
+- Sent drafts: a sent draft is added to the client's session as a look labelled "Suggested by our team". If the client is already handed off or approved it still appears in their session and is also attached to the consult card.
+- Remix makes 1 draft.
+- Flyer preset = A5 portrait 1240x1754.
+- Neo4j parity is unit-tested with a fake, not run against Aura (as A23). Accepted.
+- Author identity is the self-reported `x-staff-name`. Accepted until per-staff logins exist.
+- Client picker polls every 15 s while open so sent suggestions appear; a suggestion sent during a round is replaced when the client skips to the next round.
+
 ## 5. Flows (backend)
 ```
 upload (PDF or photo) -> read (regex for the registration form; ACRA parser + Muse Spark for other documents)
@@ -219,6 +363,12 @@ New statuses: `confirm_details`.
 | `GET /api/staff/metrics` | `{outcomes: {sessions, completed, completion_rate, avg_minutes_to_finish, avg_fields_needing_fixes, avg_rounds_to_pick, consult_rate}, steps: [{step, model, calls, ok_rate, avg_latency_ms, cost_sgd}], total_cost_sgd, errors: [recent failed traces], evals: {doc_extraction_accuracy, image_fit, n, at} \| null}` |
 | `GET /api/staff/traces?client=<id>&limit=100` | traces newest first |
 | `GET /api/staff/audit?client=<id>` | audit entries `{at, actor, action, target, client_id, details}` |
+| `GET /api/staff/clients/{cid}/studio` | `{brief, avoid, presets, chips, drafts, cap: 9, used, remaining}` |
+| `POST /api/staff/clients/{cid}/studio/drafts` | `{marketer_prompt?, chips?, preset}` -> `{run_id, drafts x3, remaining}`; 409 if fewer than 3 slots left |
+| `POST /api/staff/clients/{cid}/studio/remix` | `{source_id, source_kind, note?, preset?}` -> `{run_id, drafts x1, remaining}`; 409 at cap |
+| `POST /api/staff/clients/{cid}/studio/drafts/{did}/star` | `{starred: bool}` -> Draft |
+| `POST /api/staff/clients/{cid}/studio/drafts/{did}/pin` | `{target: 'client'\|'consult'\|null}` -> Draft; 409 `consult` with no consult |
+| `POST /api/staff/clients/{cid}/studio/drafts/{did}/send` | `{}` -> Draft with `sent_at` and new client look id; 409 if already sent or client can't receive it |
 
 ### Front-end route names (aliases, see `Docs/UI-API-CONTRACT.md`)
 `POST /api/looks/pick {picked_ids}`, `POST /api/looks/skip`, `POST /api/extracted/confirm {fields}`, `DELETE /api/upload`,

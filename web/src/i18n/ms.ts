@@ -114,6 +114,7 @@ const ms: typeof en = {
   "looks.round": "Pusingan {round} daripada {max}",
   "looks.option": "Rekaan {n}",
   "looks.selected": "Dipilih",
+  "looks.suggested": "Disarankan oleh pasukan kami",
   "looks.useThese": "Guna yang ini",
   "looks.skipNew": "Langkau, tunjuk yang baharu",
   "consult.note": "Pasukan kami akan mengaturkan sesi consult untuk lebih memahami citarasa anda.",

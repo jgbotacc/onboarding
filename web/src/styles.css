@@ -292,6 +292,15 @@ button { font: inherit; }
 .look-check:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .look-card img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 4px; background: var(--surface); }
 .look-caption { font-size: 12px; line-height: 16px; color: var(--text-2); overflow-wrap: anywhere; }
+.look-suggested {
+  align-self: flex-start; font-size: 11px; line-height: 16px; font-weight: 600;
+  padding: 0 6px; border-radius: 4px; background: var(--accent-soft); color: var(--accent);
+}
+.suggested-card { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; width: min(480px, 70vw); }
+.suggested-title { margin: 0; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--text-2); }
+.suggested-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 4px; }
+.suggested-item { margin: 0; display: flex; flex-direction: column; gap: 4px; padding: 6px; border: 1px solid var(--border); border-radius: var(--r); background: var(--subtle); }
+.suggested-item img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 4px; background: var(--surface); }
 .look-badge {
   position: absolute; top: 8px; right: 8px; font-size: 11px; line-height: 16px; font-weight: 600;
   padding: 0 6px; border-radius: 4px; background: var(--accent); color: #fff;
@@ -326,6 +335,7 @@ button { font: inherit; }
 }
 @media (max-width: 600px) {
   .looks { width: calc(100vw - 112px); max-width: 480px; }
+  .suggested-card { width: calc(100vw - 112px); max-width: 480px; }
 }
 /* Mic button next to the composer: hidden where SpeechRecognition is missing
    (.btn-icon sets display, which would override the hidden attribute). */
@@ -354,6 +364,7 @@ button { font: inherit; }
   .chip button { min-width: 44px; min-height: 44px; justify-content: center; }
   /* Looks: fill the bubble instead of vw math (no overflow), bigger check. */
   .looks { width: 100%; max-width: 480px; min-width: 0; }
+  .suggested-card { width: 100%; max-width: 480px; min-width: 0; }
   .img-grid { width: 100%; max-width: 480px; }
   .look-card { min-height: 44px; min-width: 0; }
   .look-check { width: 24px; height: 24px; }

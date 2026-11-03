@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
 import { connect, HttpError, type Client } from "./api";
-import { EMPTY_FORM, type ApiResponse, type ConsultInfo, type ExtractedField, type FieldIssue, type FormFields, type Looks, type RetakeInfo } from "./types";
+import { EMPTY_FORM, type ApiResponse, type ConsultInfo, type ExtractedField, type FieldIssue, type FormFields, type Looks, type RetakeInfo, type SuggestedLook } from "./types";
 import ConfirmDetails from "./confirm/ConfirmDetails";
 import FormModal from "./FormModal";
 import LooksPicker from "./looks/LooksPicker";
+import { mergeLooks, mergeSuggested } from "./looks/refresh";
 import { toFieldKeys } from "./staff/fields";
 import { LANGS, fieldLabel, statusLabel, t, useLang, type Lang } from "./i18n";
 import { CheckboxIcon, CloseIcon, FileIcon, ImageIcon, MicIcon, PaperclipIcon, SendIcon } from "./icons";
@@ -12,7 +13,7 @@ import { isMicSupported, startListening } from "./speech/mic";
 
 type Msg =
   | { id: number; role: "user"; text: string; files: string[] }
-  | { id: number; role: "assistant"; text: string; images: string[]; status: string; round: number; choices?: boolean; looks?: Looks | null; extracted?: ExtractedField[] | null; retake?: RetakeInfo | null; consult?: ConsultInfo | null }
+  | { id: number; role: "assistant"; text: string; images: string[]; status: string; round: number; choices?: boolean; looks?: Looks | null; suggested_looks?: SuggestedLook[] | null; extracted?: ExtractedField[] | null; retake?: RetakeInfo | null; consult?: ConsultInfo | null }
   | { id: number; role: "error"; text: string };
 
 type NewMsg = Msg extends infer T ? (T extends Msg ? Omit<T, "id"> : never) : never;
@@ -158,7 +159,7 @@ export default function App() {
 
   const render = useCallback(
     (r: ApiResponse) => {
-      push({ role: "assistant", text: r.reply || "", images: r.consult ? [] : r.images || [], status: r.status || "", round: r.round || 0, looks: r.consult ? null : r.looks ?? null, extracted: r.extracted ?? null, retake: r.retake ?? null, consult: r.consult ?? null });
+      push({ role: "assistant", text: r.reply || "", images: r.consult ? [] : r.images || [], status: r.status || "", round: r.round || 0, looks: r.consult ? null : r.looks ?? null, suggested_looks: r.suggested_looks ?? null, extracted: r.extracted ?? null, retake: r.retake ?? null, consult: r.consult ?? null });
       if (r.status) setStatus(r.status);
       setMissing(r.missing || []);
     },
@@ -368,6 +369,48 @@ export default function App() {
   const lastConfirmId = [...messages].reverse().find((m) => m.role === "assistant" && ((m.extracted?.length ?? 0) > 0 || !!m.retake))?.id;
   const reviewOpen = status === "awaiting_review";
   const handedOff = status === "handed_off" || messages.some((m) => m.role === "assistant" && !!m.consult);
+
+  // Staff can send looks while the picker is open: refresh the open looks message
+  // in place (no new chat message) every 15 s and on window focus. Stops once the
+  // client picks, skips, or the status leaves awaiting_review; never polls in mock mode.
+  useEffect(() => {
+    if (!client || client.mock || closed || busy || handedOff) return;
+    if (status !== "awaiting_review") return;
+    if (lastLooksId == null) return;
+    const targetId = lastLooksId;
+    let stopped = false;
+    const tick = async () => {
+      if (stopped) return;
+      let r: ApiResponse;
+      try {
+        r = await client.refresh();
+      } catch {
+        return; // a failed poll never breaks the chat
+      }
+      if (stopped) return;
+      if (r.status && r.status !== "awaiting_review") {
+        setStatus(r.status);
+        return;
+      }
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.id !== targetId || m.role !== "assistant") return m;
+          const looks = m.looks ? mergeLooks(m.looks, r.looks) : null;
+          const suggested = mergeSuggested(m.suggested_looks, r.suggested_looks);
+          if (!looks && !suggested) return m;
+          return { ...m, looks: looks ?? m.looks, suggested_looks: suggested ?? m.suggested_looks };
+        }),
+      );
+    };
+    const onFocus = () => void tick();
+    const timer = setInterval(() => void tick(), 15000);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [client, closed, busy, handedOff, status, lastLooksId]);
   const micLabel = t(lang, micOn ? "mic.stop" : "mic.label");
   const micTitle = micSupported ? micLabel : t(lang, "mic.notSupported");
 
@@ -465,6 +508,19 @@ export default function App() {
                       ))}
                     </div>
                   )
+                )}
+                {!m.consult && !(m.looks?.options?.length ?? 0) && (m.suggested_looks?.length ?? 0) > 0 && (
+                  <div className="suggested-card">
+                    <p className="suggested-title">{t(lang, "looks.suggested")}</p>
+                    <div className="suggested-grid">
+                      {m.suggested_looks!.map((s, i) => (
+                        <figure key={s.id} className="suggested-item">
+                          <img src={s.url} alt={s.alt || t(lang, "looks.option", { n: i + 1 })} loading="lazy" />
+                          {(s.alt || s.title) && <figcaption className="look-caption">{s.alt || s.title}</figcaption>}
+                        </figure>
+                      ))}
+                    </div>
+                  </div>
                 )}
                 {(m.extracted?.length || m.retake) && client ? (
                   <ConfirmDetails
