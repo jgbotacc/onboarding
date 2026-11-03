@@ -282,6 +282,7 @@ Client side: the existing look option `{id,url,title}` gains `suggested: true` f
 - **Cap atomicity (9 per client):** `reserve_drafts` runs in one locked SQLite transaction: `SELECT COUNT(*) WHERE session_id=? AND status IN ('reserved','ok')`, and if `count + n <= 9` it inserts `n` `reserved` rows, otherwise it returns None and the route returns 409. Meta is called only after the reservation commits. Each call then moves its row to `ok` or `failed`. In Neo4j, one Cypher statement does the conditional create (`MATCH ... WITH count(d) AS c WHERE c + $n <= 9 UNWIND ... CREATE`). The per-session `_lock_for(sid)` in `app.py` should also wrap the run, so two marketers can't race.
 - **Partial writes:** the image file is written before the row moves to `ok`. If the process dies, the row stays `reserved`. The audit row (`studio_draft`) is written after `ok` or `failed`. Send-to-client happens in one transaction (insert the `looks` row with `source='staff'` and set `sent_at`), then the session state, then the audit row.
 - **Reconciliation:** on studio GET (and in `scripts/reconcile.py`), `reserved` rows older than 10 minutes become `failed` ("timed out"), which frees their slots. `ok` rows whose media file is missing are flagged `failed` ("file missing"). Sent drafts with no matching `looks` row are listed in the metrics API as drift.
+- **Contact-name leak (found by the 2026-11-04 smoke test):** a partial contact name in the marketer text reached the prompt. Fixed by masking each name part, whole words only, which can also mask an ordinary word equal to a name part.
 - **Spend guard:** each successful image is traced with `cost_sgd = usd_to_sgd(0.01)`. Stop if the team's high estimate reaches S$115.
 
 #### 4.7.6 Tool reality check (from docs and code only; nothing was called)
@@ -302,6 +303,8 @@ Gaps and workarounds:
 - **The relay's 4.5 MB body limit**: keep `_data_url(max_side=1024)` and at most 6 images (already in place).
 - **No server-side spend cap from Meta.** The 9-draft cap and traces are our only controls.
 
+**Live check (2026-11-04):** direct path (no relay), muse-image-1.0. One run of 3 square drafts took 14 s with the calls in parallel (single calls 9.6 to 13.3 s). A story remix and a flyer remix of a rejected look both returned 200. All outputs were exact preset sizes after to_size, with no pad bands, so the aspect hint looks honoured; native pixel sizes were not recorded. reasoning_strength low and tool_enablement were accepted on generations and edits. Relay path not tested live.
+
 #### 4.7.7 Decisions on earlier open questions
 - Live size check: non-square `size` and `tool_enablement` / `reasoning_strength` on `muse-image-1.0` are confirmed by one paid smoke test per preset (recorded in the README once done).
 - Config path: the studio uses the same path as `MuseProvider` (relay when `RELAY_URL` and `RELAY_SECRET` are set, else direct with `MODEL_API_KEY`).
@@ -310,6 +313,7 @@ Gaps and workarounds:
 - Flyer preset = A5 portrait 1240x1754.
 - Neo4j parity is unit-tested with a fake, not run against Aura (as A23). Accepted.
 - Author identity is the self-reported `x-staff-name`. Accepted until per-staff logins exist.
+- Client picker polls every 15 s while open so sent suggestions appear; a suggestion sent during a round is replaced when the client skips to the next round.
 
 ## 5. Flows (backend)
 ```

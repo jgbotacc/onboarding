@@ -54,6 +54,17 @@ Env vars, by name only:
 - `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD` optional, SQLite fallback in `var/` if not set
 - `ONBOARDING_NOTIFY_EMAIL`, `RESEND_API_KEY` optional
 
+## Staff image studio
+Staff-only Studio tab per client: runs 3 drafts per run from the client brief, with remix of a draft or a rejected look. Rejected looks steer the prompt away (best effort, prompt text only). Drafts can be starred, pinned to the client or consult card, and sent to the client, where they appear as "Suggested by our team". Cap is 9 drafts per client. Drafts are staff-only until sent; every studio action is written to the audit log.
+Routes (all under `/api/staff`, staff passcode applies):
+- `GET /api/staff/clients/{cid}/studio`
+- `POST /api/staff/clients/{cid}/studio/drafts`
+- `POST /api/staff/clients/{cid}/studio/remix`
+- `POST /api/staff/clients/{cid}/studio/drafts/{did}/star`
+- `POST /api/staff/clients/{cid}/studio/drafts/{did}/pin`
+- `POST /api/staff/clients/{cid}/studio/drafts/{did}/send`
+To try it without a backend, open the staff page with `?mock=1` for demo data.
+
 ## Docs
 - [Docs/PRD.md](Docs/PRD.md)
 - [Docs/ASSUMPTIONS.md](Docs/ASSUMPTIONS.md)
