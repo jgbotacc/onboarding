@@ -114,6 +114,7 @@ const zh: typeof en = {
   "looks.round": "第 {round} 轮,共 {max} 轮",
   "looks.option": "设计 {n}",
   "looks.selected": "已选择",
+  "looks.suggested": "我们团队推荐",
   "looks.useThese": "使用这些",
   "looks.skipNew": "跳过,看新的设计",
   "consult.note": "我们的团队会安排一次咨询,更了解你喜欢的风格。",

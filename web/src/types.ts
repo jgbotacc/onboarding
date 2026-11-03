@@ -17,6 +17,18 @@ export interface LookOption {
   url: string;
   /** Short description in the client's language (PRD name: `title`). */
   alt: string;
+  /** True for staff-sent looks (PRD: `suggested: true`). */
+  suggested?: boolean;
+}
+
+/** Read-only staff suggestion shown after the picker (session `suggested_looks`). */
+export interface SuggestedLook {
+  id: string;
+  url: string;
+  /** Short description (backend PRD name: `title`; normalized to `alt` too). */
+  alt: string;
+  title?: string;
+  suggested?: boolean;
 }
 
 export interface Looks {
@@ -58,6 +70,7 @@ export interface ChatReply {
   /** [field-validation] Values the server rejected; the reply asks to re-enter them with an example. */
   invalid?: FieldIssue[];
   looks?: Looks | null;
+  suggested_looks?: SuggestedLook[] | null;
   extracted?: ExtractedField[] | null;
   retake?: RetakeInfo | null;
   consult?: ConsultInfo | null;

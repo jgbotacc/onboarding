@@ -79,6 +79,7 @@ export default function LooksPicker({ looks, lang, client, disabled, trace, onRe
                 aria-label={name}
               />
               <img src={o.url} alt={name} loading="lazy" />
+              {o.suggested === true && <span className="look-suggested">{t(lang, "looks.suggested")}</span>}
               <span className="look-caption">{name}</span>
               {selected && <span className="look-badge">{t(lang, "looks.selected")}</span>}
             </label>

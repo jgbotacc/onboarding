@@ -90,9 +90,23 @@ export function normalizeChatReply(raw: unknown): ApiResponse {
           id: String(opt.id ?? ""),
           url: String(opt.url ?? ""),
           alt: typeof opt.alt === "string" ? opt.alt : typeof opt.title === "string" ? opt.title : "",
+          suggested: opt.suggested === true,
         };
       }),
     };
+  }
+  if (Array.isArray(out.suggested_looks)) {
+    out.suggested_looks = (out.suggested_looks as unknown[]).map((s) => {
+      const item = (s && typeof s === "object" ? s : {}) as Record<string, unknown>;
+      const alt = typeof item.alt === "string" ? item.alt : typeof item.title === "string" ? item.title : "";
+      return {
+        id: String(item.id ?? ""),
+        url: String(item.url ?? ""),
+        alt,
+        title: typeof item.title === "string" ? item.title : alt,
+        suggested: true,
+      };
+    });
   }
   const confirm = out.confirm as { fields?: unknown } | null | undefined;
   if (!Array.isArray(out.extracted) && confirm && Array.isArray(confirm.fields)) {

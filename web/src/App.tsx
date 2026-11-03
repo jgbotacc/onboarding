@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
 import { connect, HttpError, type Client } from "./api";
-import { EMPTY_FORM, type ApiResponse, type ConsultInfo, type ExtractedField, type FieldIssue, type FormFields, type Looks, type RetakeInfo } from "./types";
+import { EMPTY_FORM, type ApiResponse, type ConsultInfo, type ExtractedField, type FieldIssue, type FormFields, type Looks, type RetakeInfo, type SuggestedLook } from "./types";
 import ConfirmDetails from "./confirm/ConfirmDetails";
 import FormModal from "./FormModal";
 import LooksPicker from "./looks/LooksPicker";
@@ -12,7 +12,7 @@ import { isMicSupported, startListening } from "./speech/mic";
 
 type Msg =
   | { id: number; role: "user"; text: string; files: string[] }
-  | { id: number; role: "assistant"; text: string; images: string[]; status: string; round: number; choices?: boolean; looks?: Looks | null; extracted?: ExtractedField[] | null; retake?: RetakeInfo | null; consult?: ConsultInfo | null }
+  | { id: number; role: "assistant"; text: string; images: string[]; status: string; round: number; choices?: boolean; looks?: Looks | null; suggested_looks?: SuggestedLook[] | null; extracted?: ExtractedField[] | null; retake?: RetakeInfo | null; consult?: ConsultInfo | null }
   | { id: number; role: "error"; text: string };
 
 type NewMsg = Msg extends infer T ? (T extends Msg ? Omit<T, "id"> : never) : never;
@@ -158,7 +158,7 @@ export default function App() {
 
   const render = useCallback(
     (r: ApiResponse) => {
-      push({ role: "assistant", text: r.reply || "", images: r.consult ? [] : r.images || [], status: r.status || "", round: r.round || 0, looks: r.consult ? null : r.looks ?? null, extracted: r.extracted ?? null, retake: r.retake ?? null, consult: r.consult ?? null });
+      push({ role: "assistant", text: r.reply || "", images: r.consult ? [] : r.images || [], status: r.status || "", round: r.round || 0, looks: r.consult ? null : r.looks ?? null, suggested_looks: r.suggested_looks ?? null, extracted: r.extracted ?? null, retake: r.retake ?? null, consult: r.consult ?? null });
       if (r.status) setStatus(r.status);
       setMissing(r.missing || []);
     },
@@ -465,6 +465,19 @@ export default function App() {
                       ))}
                     </div>
                   )
+                )}
+                {!m.consult && !(m.looks?.options?.length ?? 0) && (m.suggested_looks?.length ?? 0) > 0 && (
+                  <div className="suggested-card">
+                    <p className="suggested-title">{t(lang, "looks.suggested")}</p>
+                    <div className="suggested-grid">
+                      {m.suggested_looks!.map((s, i) => (
+                        <figure key={s.id} className="suggested-item">
+                          <img src={s.url} alt={s.alt || t(lang, "looks.option", { n: i + 1 })} loading="lazy" />
+                          {(s.alt || s.title) && <figcaption className="look-caption">{s.alt || s.title}</figcaption>}
+                        </figure>
+                      ))}
+                    </div>
+                  </div>
                 )}
                 {(m.extracted?.length || m.retake) && client ? (
                   <ConfirmDetails
