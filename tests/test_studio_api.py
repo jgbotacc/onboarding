@@ -246,6 +246,18 @@ def test_remix_of_draft(monkeypatch):
                   json={"source_id": "nope", "source_kind": "draft"}).status_code == 404
 
 
+def test_remix_note_partial_name_masked(monkeypatch):
+    sid, _ = _client()
+    calls = _fake(monkeypatch)
+    src = c.post(f"/api/staff/clients/{sid}/studio/drafts", json={}).json()["drafts"][0]
+    r = c.post(f"/api/staff/clients/{sid}/studio/remix",
+               json={"source_id": src["id"], "source_kind": "draft", "note": "call Mei Lin please"})
+    assert r.status_code == 200
+    low = calls[-1]["prompt"].lower()
+    assert re.search(r"\bmei\b", low) is None, calls[-1]["prompt"]
+    assert re.search(r"\blin\b", low) is None, calls[-1]["prompt"]
+
+
 def test_remix_of_rejected_look_and_foreign_draft_404(monkeypatch):
     sid, contact = _client()
     calls = _fake(monkeypatch)

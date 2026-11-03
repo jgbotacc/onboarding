@@ -52,6 +52,35 @@ def test_marketer_text_repeating_email_and_phone_is_masked():
     assert "S1234567D".lower() not in low
 
 
+def test_partial_reordered_and_lowercase_name_parts_masked():
+    fields = dict(FIELDS, contact_name="Tan Mei Ling")
+    for marketer in ("call Mei Ling on Friday", "call Ling Mei Tan today", "call mei ling now"):
+        p = studio.studio_prompt(fields, "Warm and cosy", [], marketer, [], "post")
+        low = p.lower()
+        assert "mei ling" not in low, (marketer, p)
+        assert "ling mei tan" not in low, (marketer, p)
+        assert re.search(r"\bmei\b", low) is None, (marketer, p)
+        assert re.search(r"\bling\b", low) is None, (marketer, p)
+        assert re.search(r"\btan\b", low) is None, (marketer, p)
+
+
+def test_ordinary_words_not_masked_by_name_parts():
+    fields = dict(FIELDS, contact_name="Tan Mei Ling")
+    p = studio.studio_prompt(fields, "Warm and cosy", [], "tangent meiosis darling", [], "post")
+    assert "tangent meiosis darling" in p.lower(), p
+
+
+def test_avoid_skips_your_brief_and_current_direction():
+    fields = dict(FIELDS, design_preferences="Warm and cosy, wood tones")
+    rejected = [{"title": "Your brief", "brief": "Warm and cosy, wood tones"},
+                {"title": "Neon Blast", "brief": "neon cyberpunk poster"},
+                {"title": "Copy", "brief": "warm minimal"}]
+    p = studio.studio_prompt(fields, "warm minimal", rejected, "", [], "post")
+    assert "Your brief" not in p
+    assert "Neon Blast" in p and "neon cyberpunk poster" in p
+    assert re.search(r"Design direction.*warm minimal.*Avoid.*warm minimal", p, re.S) is None, p
+
+
 def test_avoid_line_lists_rejected_titles():
     rejected = [{"title": "Neon Blast", "brief": "neon cyberpunk poster"},
                 {"title": "Dark Luxe", "style": "black and gold"}]

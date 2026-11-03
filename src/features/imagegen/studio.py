@@ -55,7 +55,7 @@ CHIPS = {
 
 
 def own_identifiers(fields: dict | None) -> set[str]:
-    """The client's own email, phone digits and UEN (for guard.clean masking)."""
+    """The client's own email, phone digits, UEN and contact-name parts (for guard.clean masking)."""
     out: set[str] = set()
     f = fields or {}
     email = f.get("email")
@@ -64,6 +64,8 @@ def own_identifiers(fields: dict | None) -> set[str]:
     name = f.get("contact_name")
     if isinstance(name, str) and len(name.strip()) >= 3:
         out.add(name.strip())
+        for part in re.findall(r"[A-Za-z]{3,}", name):
+            out.add(part.strip())
     for key in ("phone_number", "phone", "mobile"):
         v = f.get(key)
         if isinstance(v, str) and v.strip():
@@ -89,15 +91,26 @@ def _rejected_titles(rejected) -> set[str]:
     return titles
 
 
-def _avoid_list(rejected) -> list[str]:
+def _avoid_list(rejected, exclude=()) -> list[str]:
+    exc = {str(e).strip().lower() for e in (exclude or [])
+           if isinstance(e, str) and str(e).strip()}
     items: list[str] = []
     for r in rejected or []:
         if isinstance(r, dict):
-            for k in ("title", "brief", "style"):
+            t = r.get("title")
+            if isinstance(t, str) and t.strip():
+                if t.strip().lower() != "your brief" and t.strip() not in items:
+                    items.append(t.strip())
+            for k in ("brief", "style"):
                 v = r.get(k)
                 if isinstance(v, str) and v.strip() and v.strip() not in items:
-                    items.append(v.strip())
+                    if v.strip().lower() not in exc:
+                        items.append(v.strip())
         elif isinstance(r, str) and r.strip() and r.strip() not in items:
+            if r.strip().lower() == "your brief":
+                continue
+            if r.strip().lower() in exc:
+                continue
             items.append(r.strip())
     return items
 
@@ -146,7 +159,13 @@ def studio_prompt(fields, direction=None, rejected=None, marketer_prompt: str = 
         style_text = style
     ctx = design_context(fields, (str(style_text).strip() or direction)
                          if style_text else direction, None)
-    avoid = _avoid_list(rejected)
+    _exc = []
+    if isinstance(direction, str) and direction.strip():
+        _exc.append(direction.strip())
+    _dp = (fields or {}).get("design_preferences")
+    if isinstance(_dp, str) and _dp.strip():
+        _exc.append(_dp.strip())
+    avoid = _avoid_list(rejected, _exc)
     if avoid:
         ctx = dict(ctx, avoid=avoid)
     key = str(preset) if str(preset) in PRESETS else "post"
