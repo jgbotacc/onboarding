@@ -200,7 +200,6 @@ const STUDIO_PRESETS = [
 const STUDIO_CHIPS = [
   { id: "add_logo", label: "Add logo", text: "Include the business logo prominently at the top of the design" },
   { id: "less_text", label: "Less text", text: "Keep text minimal, only the headline offer and the business name" },
-  { id: "story_size", label: "Story size", text: "Optimise the layout for a vertical full-screen story format" },
   { id: "match_photos", label: "Match photos", text: "Match the colours and style of the attached reference photos" },
   { id: "festive", label: "Festive", text: "Festive look with warm celebratory accents" },
   { id: "bolder_headline", label: "Bolder headline", text: "Make the headline extra big and bold, the dominant element" },
@@ -361,8 +360,9 @@ export function createStaffMock() {
       const runId = `mock-run-${Date.now().toString(36)}-${seq + 1}`;
       const preset = body.preset || "post";
       const chips = (body.chips || []).filter((c) => STUDIO_CHIPS.some((s) => s.id === c));
+      const base = seq;
       const made = [0, 1, 2].map((i) =>
-        makeDraft(cid, name, preset, seq + i, { run_id: runId, marketer_prompt: (body.marketer_prompt || "").slice(0, 500) || null, chips }),
+        makeDraft(cid, name, preset, base + i, { run_id: runId, marketer_prompt: (body.marketer_prompt || "").slice(0, 500) || null, chips }),
       );
       list.push(...made);
       return wait({ run_id: runId, drafts: made, remaining: STUDIO_CAP - usage(cid).used });

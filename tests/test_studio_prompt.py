@@ -100,6 +100,18 @@ def test_variants_skip_rejected_titles():
     assert len(set(titles)) == 3
 
 
+def test_variants_all_rejected_still_distinct():
+    vs = studio.variants([t for t, _ in ALTERNATIVES])
+    assert len(vs) == 3
+    titles = [v["title"] for v in vs]
+    assert len(set(titles)) == 3
+
+
+def test_unknown_chip_id_ignored():
+    p = studio.studio_prompt(FIELDS, "Warm", [], "", ["story_size", "nope"], "post")
+    assert "vertical full-screen story" not in p
+
+
 def _make_url(size):
     name = f"studio-test-{uuid.uuid4().hex}.png"
     Image.new("RGB", size, (90, 140, 200)).save(MEDIA_DIR / name)
@@ -147,8 +159,9 @@ def test_presets_and_chips_shape():
     assert studio.PRESETS["story"]["hint"] == "1080x1920"
     assert studio.PRESETS["flyer"]["w"] == 1240 and studio.PRESETS["flyer"]["h"] == 1754
     assert studio.PRESETS["flyer"]["hint"] == "1240x1754"
-    for cid in ("add_logo", "less_text", "story_size", "match_photos", "festive", "bolder_headline"):
+    for cid in ("add_logo", "less_text", "match_photos", "festive", "bolder_headline"):
         assert studio.CHIPS[cid]["label"] and studio.CHIPS[cid]["text"]
+    assert "story_size" not in studio.CHIPS
     p = studio.studio_prompt(FIELDS, "Warm", [], "", ["festive", "bolder_headline"], "flyer")
     assert "Portrait A5 flyer" in p
     assert studio.CHIPS["festive"]["text"] in p

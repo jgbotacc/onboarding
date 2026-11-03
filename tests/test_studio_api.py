@@ -114,7 +114,8 @@ def test_studio_get_empty():
     assert body["avoid"] == [] and body["drafts"] == []
     assert {p["id"] for p in body["presets"]} == {"post", "story", "flyer"}
     assert {p["w"] for p in body["presets"] if p["id"] == "flyer"} == {1240}
-    assert len(body["chips"]) == 6
+    assert len(body["chips"]) == 5
+    assert "story_size" not in {chip["id"] for chip in body["chips"]}
     assert "prompt" not in blob
 
 
@@ -152,6 +153,30 @@ def test_run_returns_3_drafts_and_remaining_6(monkeypatch):
         for s in _secrets(contact):
             assert s.lower() not in low, s
     assert c.get(f"/api/staff/clients/{sid}/studio").json()["used"] == 3
+
+
+def test_run_all_alternatives_rejected_still_distinct(monkeypatch):
+    from src.features.looks.brief import ALTERNATIVES
+    sid, _ = _client()
+    _fake(monkeypatch)
+    store.add_looks(sid, 1, [{"id": f"rej-{i}", "url": _look_media(),
+                              "title": t, "brief": s}
+                             for i, (t, s) in enumerate(ALTERNATIVES)])
+    s = store.load(sid)
+    s["round"] = 2
+    store.save(s)
+    body = c.post(f"/api/staff/clients/{sid}/studio/drafts", json={}).json()
+    assert len(body["drafts"]) == 3
+    assert len({d["style_title"] for d in body["drafts"]}) == 3
+
+
+def test_run_unknown_chip_ids_ignored(monkeypatch):
+    sid, _ = _client()
+    _fake(monkeypatch)
+    body = c.post(f"/api/staff/clients/{sid}/studio/drafts",
+                  json={"chips": ["story_size", "nope", "festive"]}).json()
+    assert len(body["drafts"]) == 3
+    assert all(d["chips"] == ["festive"] for d in body["drafts"])
 
 
 def test_draft_validation():

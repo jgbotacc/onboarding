@@ -39,9 +39,6 @@ CHIPS = {
     "less_text": {"id": "less_text", "label": "Less text",
                   "text": "Keep text minimal, only the headline offer and the business name",
                   "prompt": "Keep text minimal, only the headline offer and the business name"},
-    "story_size": {"id": "story_size", "label": "Story size",
-                   "text": "Optimise the layout for a vertical full-screen story format",
-                   "prompt": "Optimise the layout for a vertical full-screen story format"},
     "match_photos": {"id": "match_photos", "label": "Match photos",
                      "text": "Match the colours and style of the attached reference photos",
                      "prompt": "Match the colours and style of the attached reference photos"},
@@ -140,6 +137,16 @@ def variants(rejected_titles=None, direction: str | None = None) -> list[dict]:
                 out.append({"title": title, "style": style})
             if len(out) == 3:
                 break
+    # One run must never show the same style title twice: suffix any repeat.
+    seen: set[str] = set()
+    for d in out:
+        title = d["title"]
+        if title in seen:
+            i = 2
+            while f"{title} ({i})" in seen:
+                i += 1
+            d["title"] = f"{title} ({i})"
+        seen.add(d["title"])
     return out
 
 

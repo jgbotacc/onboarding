@@ -67,7 +67,7 @@ export default function LooksPicker({ looks, lang, client, disabled, trace, onRe
       <div className="look-grid" role="group" aria-label={prompt}>
         {looks.options.map((o, i) => {
           const selected = isPicked(picked, o.id);
-          const name = o.alt || t(lang, "looks.option", { n: i + 1 });
+          const name = o.suggested === true ? t(lang, "looks.option", { n: i + 1 }) : (o.alt || t(lang, "looks.option", { n: i + 1 }));
           return (
             <label key={o.id} className={"look-card" + (selected ? " selected" : "")}>
               <input
