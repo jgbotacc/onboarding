@@ -82,9 +82,22 @@ class PlaceholderProvider:
         return [f"/media/{name}"]
 
 
-def build_prompt(brief: dict) -> str:
+SQUARE_LINE = "Square 1:1 social media marketing post. Clean, professional layout"
+SHAPES = {
+    "post": SQUARE_LINE,
+    "story": "Portrait 9:16 social media story",
+    "flyer": "Portrait A5 flyer",
+}
+
+
+def build_prompt(brief: dict, shape: str | None = None) -> str:
     """Muse prompt. Order: the post's headline offer (requirements / notes), then the design direction
-    (style and colours), then business type and industry, then the business name. Empty fields are skipped."""
+    (style and colours), then business type and industry, then the business name. Empty fields are skipped.
+
+    shape replaces the closing size line; None keeps the exact square text.
+    A preset id ('post' | 'story' | 'flyer') maps to its size line, any other
+    string is used verbatim.
+    """
     clean = {k: v for k, v in (brief or {}).items() if not str(k).startswith("_")}
     name = (clean.get("business_name") or "").strip() or "a small business"
     notes = (clean.get("requirements_notes") or "").strip()
@@ -106,7 +119,13 @@ def build_prompt(brief: dict) -> str:
     avoid = [str(a).strip() for a in (clean.get("avoid") or []) if str(a).strip()]
     if avoid:
         parts.append(f"Avoid these looks the client rejected: {'; '.join(avoid)}")
-    parts.append("Square 1:1 social media marketing post. Clean, professional layout")
+    if shape is None:
+        line = SQUARE_LINE
+    elif str(shape) in SHAPES:
+        line = SHAPES[str(shape)]
+    else:
+        line = str(shape)
+    parts.append(line)
     return ". ".join(parts) + "."
 
 
