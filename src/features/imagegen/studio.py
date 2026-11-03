@@ -1,14 +1,22 @@
-"""Staff image studio prompt builder and post-process resizing (no Meta calls)."""
+"""Staff image studio: prompt builder, post-process resizing, and Meta image calls."""
+import base64
+import os
+import random
 import re
+import time
+import uuid
 from pathlib import Path
 
+import httpx
 from PIL import Image, ImageOps
 
 from src.features.imagegen import providers
 from src.features.looks import brief as looks_brief
 from src.features.looks.brief import design_context
-from src.shared import guard
+from src.shared import guard, relay, trace
 from src.shared.config import MEDIA_DIR
+
+_sleep = time.sleep
 
 MAX_PROMPT = 3900
 
@@ -53,6 +61,9 @@ def own_identifiers(fields: dict | None) -> set[str]:
     email = f.get("email")
     if isinstance(email, str) and email.strip():
         out.add(email.strip().lower())
+    name = f.get("contact_name")
+    if isinstance(name, str) and len(name.strip()) >= 3:
+        out.add(name.strip())
     for key in ("phone_number", "phone", "mobile"):
         v = f.get(key)
         if isinstance(v, str) and v.strip():
@@ -200,3 +211,118 @@ def to_size(url: str, size: tuple) -> str:
             out = ImageOps.fit(im, (w, h), Image.LANCZOS)
     out.save(path, "PNG")
     return url
+
+
+def _http_error(status, text) -> str:
+    """Short one-line error for an HTTP failure."""
+    text = re.sub(r"\s+", " ", str(text or "")).strip()
+    if text:
+        return f"HTTP {status}: {text[:150]}"
+    return f"HTTP {status}"
+
+
+def _retry_delay(response, attempt: int) -> float:
+    """Backoff before the next retry: 0.5 s then 1 s plus jitter, or Retry-After (capped at 10 s)."""
+    try:
+        raw = response.headers.get("retry-after")
+    except Exception:
+        raw = None
+    if raw is not None:
+        try:
+            return max(0.0, min(float(str(raw).strip()), 10.0))
+        except (TypeError, ValueError):
+            pass
+    base = 0.5 if attempt == 0 else 1.0
+    return base + random.uniform(0, 0.1)
+
+
+def studio_generate(prompt, preset="post", images=(), session_id=None, user=None) -> dict:
+    """One studio image call (generations, or edits with reference images). Never raises.
+
+    Returns {"ok": True, "url": "/media/<uuid>.png"} or {"ok": False, "error": short text}.
+    Retries 429, 503, timeouts and transport errors twice; every attempt is traced
+    as "studio_image". No placeholder fallback: failures stay failed.
+    """
+    try:
+        return _studio_generate(prompt, preset, images, session_id, user)
+    except Exception as e:
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"[:200]}
+
+
+def _studio_generate(prompt, preset="post", images=(), session_id=None, user=None) -> dict:
+    use_relay = relay.enabled()
+    key = os.getenv("MODEL_API_KEY")
+    if not use_relay and not key:
+        return {"ok": False, "error": "image generation is not configured"}
+    model = os.getenv("MUSE_MODEL", "muse-image-1.0")
+    cfg = PRESETS.get(str(preset)) or PRESETS["post"]
+    refs = list(images or [])
+    op = "edits" if refs else "generations"
+    body = {"model": model, "prompt": prompt, "n": 1, "size": cfg["hint"],
+            "response_format": "b64_json", "output_format": "png",
+            "reasoning_strength": "low",
+            "tool_enablement": {"enable_web_search": False, "enable_shell": False}}
+    if user:
+        body["user"] = user
+    if refs:
+        try:
+            data_urls = [providers._data_url(p) for p in refs[:6]]
+        except Exception as e:
+            err = f"{type(e).__name__}: {e}"[:200]
+            trace.record("studio_image", model, False, 0, 0.0, session_id, err)
+            return {"ok": False, "error": err}
+        body["images"] = [{"image_url": u} for u in data_urls]
+    for attempt in range(3):
+        t0 = time.perf_counter()
+        try:
+            if use_relay:
+                r = relay.post(f"/api/muse?op={op}", json=body, timeout=90)
+            else:
+                base = os.getenv("META_API_BASE", "https://api.meta.ai/v1")
+                r = httpx.post(f"{base}/images/{op}", json=body, timeout=180,
+                               headers={"Authorization": f"Bearer {key}"})
+        except (httpx.TimeoutException, httpx.TransportError) as e:
+            ms = int((time.perf_counter() - t0) * 1000)
+            err = f"{type(e).__name__}: {e}"[:200] or type(e).__name__
+            trace.record("studio_image", model, False, ms, 0.0, session_id, err)
+            if attempt < 2:
+                _sleep(0.5 + random.uniform(0, 0.1) if attempt == 0
+                       else 1.0 + random.uniform(0, 0.1))
+                continue
+            return {"ok": False, "error": err}
+        except Exception as e:
+            ms = int((time.perf_counter() - t0) * 1000)
+            err = f"{type(e).__name__}: {e}"[:200]
+            trace.record("studio_image", model, False, ms, 0.0, session_id, err)
+            return {"ok": False, "error": err}
+        ms = int((time.perf_counter() - t0) * 1000)
+        status = r.status_code
+        if status >= 400:
+            try:
+                text = r.text
+            except Exception:
+                text = ""
+            err = _http_error(status, text)
+            trace.record("studio_image", model, False, ms, 0.0, session_id, err)
+            if status in (429, 503) and attempt < 2:
+                _sleep(_retry_delay(r, attempt))
+                continue
+            return {"ok": False, "error": err}
+        try:
+            raw = base64.b64decode(r.json()["data"][0]["b64_json"])
+        except Exception as e:
+            err = f"bad response: {e}"[:200]
+            trace.record("studio_image", model, False, ms, 0.0, session_id, err)
+            return {"ok": False, "error": err}
+        try:
+            name = f"{uuid.uuid4().hex}.png"
+            (MEDIA_DIR / name).write_bytes(raw)
+            url = f"/media/{name}"
+            to_size(url, (cfg["w"], cfg["h"]))
+        except Exception as e:
+            err = f"{type(e).__name__}: {e}"[:200]
+            trace.record("studio_image", model, False, ms, 0.0, session_id, err)
+            return {"ok": False, "error": err}
+        trace.record("studio_image", model, True, ms, trace.usd_to_sgd(trace.IMAGE_USD), session_id)
+        return {"ok": True, "url": url}
+    return {"ok": False, "error": "request failed"}
