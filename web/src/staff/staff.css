@@ -115,6 +115,40 @@ a.staff-cc-value:hover { text-decoration: underline; }
 
 .staff-metrics { padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); margin-bottom: 16px; }
 
+/* Studio tab */
+.studio { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.staff-tabs { display: flex; gap: 4px; padding: 12px 0 0; }
+.staff-tab { padding: 8px 16px; border: 1px solid var(--border); border-bottom: 0; border-radius: var(--r) var(--r) 0 0; background: var(--subtle); color: var(--text-2); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.staff-tab.on { background: var(--surface); color: var(--text); }
+.studio-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.studio-chip { padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text-2); font: inherit; font-size: 13px; cursor: pointer; max-width: 100%; }
+.studio-chip.on { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+.studio-presets { margin: 8px 0 0; padding: 0; border: 0; min-width: 0; }
+.studio-presets legend { padding: 0; margin-bottom: 8px; font-weight: 600; font-size: 13px; color: var(--text); }
+.studio-preset-row { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.studio-preset { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); cursor: pointer; }
+.studio-preset input { width: 14px; height: 14px; margin: 0; }
+.studio-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.studio-card { min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: var(--r-lg); background: #fff; display: flex; flex-direction: column; gap: 8px; }
+.studio-img { padding: 0; border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; background: var(--subtle); cursor: zoom-in; width: 100%; }
+.studio-img img { width: 100%; height: auto; display: block; object-fit: cover; }
+.studio-meta { display: flex; flex-direction: column; min-width: 0; }
+.studio-meta strong { font-size: 13px; overflow-wrap: anywhere; }
+.studio-sub { font-size: 12px; color: var(--text-3); overflow-wrap: anywhere; }
+.studio-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.studio-btn { height: 32px; padding: 0 12px; font-size: 13px; }
+.studio-note { display: flex; flex-direction: column; gap: 4px; flex: 1 1 100%; min-width: 0; }
+.studio-note-row { display: flex; gap: 8px; min-width: 0; }
+.studio-note-row input { flex: 1 1 auto; min-width: 0; padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--r); font: inherit; font-size: 13px; }
+.studio-sent { font-size: 13px; font-weight: 600; color: var(--ok); }
+.studio-failed { display: flex; flex-direction: column; gap: 4px; padding: 12px; border-radius: var(--r); background: var(--danger-soft); color: var(--danger); font-size: 13px; overflow-wrap: anywhere; }
+
+@media (max-width: 720px) {
+  .studio-grid { grid-template-columns: minmax(0, 1fr); }
+  .studio-note-row { flex-direction: column; align-items: stretch; }
+  .studio-note-row .btn { align-self: flex-start; }
+}
+
 /* [staff-key] passcode screen */
 .staff-gate { max-width: 360px; margin: 48px auto; padding: 24px; background: #fff; border: 1px solid var(--border, #e5e7eb); border-radius: 12px; display: flex; flex-direction: column; gap: 10px; }
 .staff-gate h2 { margin: 0; font-size: 18px; }

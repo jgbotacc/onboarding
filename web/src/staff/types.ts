@@ -35,6 +35,9 @@ export interface RejectedLookOption {
   id: string;
   url: string;
   alt: string;
+  title?: string;
+  brief?: string;
+  at?: string;
 }
 
 export interface RejectedLookRound {
@@ -112,6 +115,83 @@ export interface DecisionBody {
   decision: Decision;
   fields: FieldKey[];
   note: string;
+}
+
+/** GET /api/staff/clients/:id/studio */
+export interface StudioPreset {
+  id: string;
+  label: string;
+  w: number;
+  h: number;
+}
+
+export interface StudioChip {
+  id: string;
+  label: string;
+  text: string;
+}
+
+export interface StudioAvoid {
+  id: string;
+  title: string;
+  brief?: string | null;
+  url?: string | null;
+}
+
+export type StudioDraftStatus = "reserved" | "ok" | "failed";
+export type StudioSizePreset = "post" | "story" | "flyer";
+
+export interface StudioDraft {
+  id: string;
+  run_id: string;
+  parent_id?: string | null;
+  parent_kind?: "draft" | "look" | null;
+  preset: string;
+  width: number;
+  height: number;
+  url: string | null;
+  status: StudioDraftStatus;
+  style_title?: string | null;
+  marketer_prompt?: string | null;
+  chips?: string[] | null;
+  author?: string | null;
+  starred: boolean;
+  pinned_to?: "client" | "consult" | null;
+  pinned_consult_id?: string | null;
+  error?: string | null;
+  sent_at?: string | null;
+  created_at?: string | null;
+}
+
+export interface StudioGet {
+  brief: Record<string, string>;
+  avoid: StudioAvoid[];
+  presets: StudioPreset[];
+  chips: StudioChip[];
+  drafts: StudioDraft[];
+  cap: number;
+  used: number;
+  remaining: number;
+}
+
+/** POST .../studio/drafts and .../studio/remix */
+export interface StudioRunResult {
+  run_id: string;
+  drafts: StudioDraft[];
+  remaining: number;
+}
+
+export interface StudioDraftsBody {
+  marketer_prompt?: string;
+  chips?: string[];
+  preset: StudioSizePreset;
+}
+
+export interface StudioRemixBody {
+  source_id: string;
+  source_kind: "draft" | "look";
+  note?: string;
+  preset?: StudioSizePreset;
 }
 
 export const STAFF_STATUS_LABELS: Record<string, string> = {

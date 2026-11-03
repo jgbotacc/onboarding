@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { connectStaff, setOnAuthFail, setStaffKey, StaffAuthError, type StaffClient } from "./api";
 import ConsultList from "./ConsultCard";
 import RejectedLooks from "./RejectedLooks";
+import StudioPanel from "./StudioPanel";
 import { FIELDS, type FieldKey } from "./fields";
 import { statusLabel, type Decision, type DecisionResult, type EmailInfo, type StaffDetail, type StaffMetrics, type StaffRow } from "./types";
 import "./staff.css";
@@ -68,6 +69,7 @@ function Detail({ client, row, onDecided, onOpen }: DetailProps) {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ decision: Decision; res: DecisionResult } | null>(null);
   const [failed, setFailed] = useState("");
+  const [tab, setTab] = useState<"details" | "studio">("details");
 
   useEffect(() => {
     let alive = true;
@@ -106,6 +108,36 @@ function Detail({ client, row, onDecided, onOpen }: DetailProps) {
 
   return (
     <div className="staff-detail">
+      <div className="staff-tabs" role="tablist" aria-label="Client sections">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "details"}
+          aria-controls={`panel-details-${row.id}`}
+          id={`tab-details-${row.id}`}
+          className={"staff-tab" + (tab === "details" ? " on" : "")}
+          onClick={() => setTab("details")}
+        >
+          Details
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "studio"}
+          aria-controls={`panel-studio-${row.id}`}
+          id={`tab-studio-${row.id}`}
+          className={"staff-tab" + (tab === "studio" ? " on" : "")}
+          onClick={() => setTab("studio")}
+        >
+          Studio
+        </button>
+      </div>
+      {tab === "studio" ? (
+        <div id={`panel-studio-${row.id}`} role="tabpanel" aria-labelledby={`tab-studio-${row.id}`}>
+          <StudioPanel client={client} clientId={row.id} onOpen={onOpen} />
+        </div>
+      ) : (
+      <div id={`panel-details-${row.id}`} role="tabpanel" aria-labelledby={`tab-details-${row.id}`}>
       <div className="staff-contactcard">
         <div className="staff-cc-item">
           <span className="staff-cc-label">Contact</span>
@@ -260,6 +292,8 @@ function Detail({ client, row, onDecided, onOpen }: DetailProps) {
             Approve
           </button>
         </div>
+      )}
+      </div>
       )}
     </div>
   );

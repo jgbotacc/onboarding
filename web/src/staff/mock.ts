@@ -1,5 +1,5 @@
 // Mock staff API (demo data only). Used on ?mock=1 or when /api/staff/* is unreachable.
-import type { Consult, DecisionBody, DecisionResult, RejectedLookRound, StaffDetail, StaffMetrics, StaffRow, StepTrace } from "./types";
+import type { Consult, DecisionBody, DecisionResult, RejectedLookRound, StaffDetail, StaffMetrics, StaffRow, StepTrace, StudioDraft, StudioDraftsBody, StudioGet, StudioRemixBody, StudioRunResult, StudioSizePreset } from "./types";
 
 function art(title: string, sub: string, bg: string, fg: string): string {
   const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
@@ -189,10 +189,118 @@ const SUBMITTED = ["2026-10-31T09:12:00Z", "2026-10-30T14:40:00Z", "2026-10-29T0
 
 const STATUS_AFTER: Record<string, string> = { approve: "approved", reject: "rejected", more_info: "needs_info" };
 
+const STUDIO_CAP = 9;
+
+const STUDIO_PRESETS = [
+  { id: "post", label: "Square post", w: 1080, h: 1080 },
+  { id: "story", label: "Story", w: 1080, h: 1920 },
+  { id: "flyer", label: "Flyer", w: 1240, h: 1754 },
+];
+
+const STUDIO_CHIPS = [
+  { id: "add_logo", label: "Add logo", text: "Include the business logo prominently at the top of the design" },
+  { id: "less_text", label: "Less text", text: "Keep text minimal, only the headline offer and the business name" },
+  { id: "story_size", label: "Story size", text: "Optimise the layout for a vertical full-screen story format" },
+  { id: "match_photos", label: "Match photos", text: "Match the colours and style of the attached reference photos" },
+  { id: "festive", label: "Festive", text: "Festive look with warm celebratory accents" },
+  { id: "bolder_headline", label: "Bolder headline", text: "Make the headline extra big and bold, the dominant element" },
+];
+
+const STUDIO_STYLES = [
+  { title: "Your brief", style: "Warm retro layout in brand colours" },
+  { title: "Minimal pastel", style: "Soft pastel, minimal, lots of white space" },
+  { title: "Bold contrast", style: "Bold, dark, high contrast headline" },
+  { title: "Festive warm", style: "Festive look with warm celebratory accents" },
+];
+
+const PRESET_SIZE: Record<StudioSizePreset, { w: number; h: number }> = {
+  post: { w: 1080, h: 1080 },
+  story: { w: 1080, h: 1920 },
+  flyer: { w: 1240, h: 1754 },
+};
+
+function studioArt(title: string, sub: string, bg: string, fg: string, w: number, h: number): string {
+  const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">` +
+    `<rect width="${w}" height="${h}" fill="${bg}"/>` +
+    `<rect x="${w * 0.09}" y="${h * 0.12}" width="${w * 0.82}" height="${h * 0.34}" rx="8" fill="${fg}" fill-opacity=".14"/>` +
+    `<circle cx="${w / 2}" cy="${h * 0.29}" r="${Math.min(w, h) * 0.12}" fill="${fg}" fill-opacity=".5"/>` +
+    `<text x="${w / 2}" y="${h * 0.58}" font-family="system-ui,sans-serif" font-size="${Math.round(Math.min(w, h) * 0.067)}" font-weight="600" text-anchor="middle" fill="${fg}">${esc(title)}</text>` +
+    `<text x="${w / 2}" y="${h * 0.58 + Math.round(Math.min(w, h) * 0.06)}" font-family="system-ui,sans-serif" font-size="${Math.round(Math.min(w, h) * 0.039)}" text-anchor="middle" fill="${fg}" fill-opacity=".75">${esc(sub)}</text>` +
+    `<text x="${w / 2}" y="${h * 0.92}" font-family="system-ui,sans-serif" font-size="${Math.round(Math.min(w, h) * 0.027)}" text-anchor="middle" fill="${fg}" fill-opacity=".6">Mock image</text></svg>`;
+  return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+}
+
+const STUDIO_BG: [string, string][] = [
+  ["#F3E6D3", "#6B3F1F"],
+  ["#F6E8EE", "#8A3B5C"],
+  ["#EAF2EA", "#2F6B45"],
+  ["#1D2129", "#E8F0FF"],
+  ["#FFF3E0", "#9C6B2F"],
+  ["#E8F0FF", "#1664FF"],
+];
+
 export function createStaffMock() {
   const db = DETAILS.map((d) => ({ ...d, traces: TRACES[d.id] || [] }));
   const consultDb = CONSULTS.map((c) => ({ ...c }));
+  const draftsDb = new Map<string, StudioDraft[]>();
+  let seq = 0;
   const wait = <T,>(v: T) => new Promise<T>((r) => setTimeout(() => r(structuredClone(v)), 300));
+  const draftsFor = (cid: string): StudioDraft[] => {
+    let list = draftsDb.get(cid);
+    if (!list) {
+      list = [];
+      draftsDb.set(cid, list);
+    }
+    return list;
+  };
+  const usage = (cid: string) => {
+    const list = draftsFor(cid);
+    const used = list.filter((d) => d.status === "ok").length;
+    return { list, used, remaining: STUDIO_CAP - used };
+  };
+  const briefFor = (cid: string): Record<string, string> => {
+    const d = db.find((x) => x.id === cid);
+    const f = d?.fields || {};
+    const brief: Record<string, string> = {};
+    if (f.business_name) brief.business_name = String(f.business_name);
+    if (f.business_type) brief.business_type = String(f.business_type);
+    if (f.industry) brief.industry = String(f.industry);
+    const prefs = (f as Record<string, unknown>).design_preferences;
+    if (typeof prefs === "string" && prefs.trim()) brief.design_preferences = prefs;
+    const notes = (f as Record<string, unknown>).requirements_notes;
+    if (typeof notes === "string" && notes.trim()) brief.requirements_notes = notes;
+    return brief;
+  };
+  const makeDraft = (cid: string, name: string, preset: StudioSizePreset, styleIdx: number, extra?: Partial<StudioDraft>): StudioDraft => {
+    seq += 1;
+    const size = PRESET_SIZE[preset] || PRESET_SIZE.post;
+    const [bg, fg] = STUDIO_BG[seq % STUDIO_BG.length];
+    const style = STUDIO_STYLES[styleIdx % STUDIO_STYLES.length];
+    const runId = extra?.run_id || `mock-run-${seq}`;
+    return {
+      id: `mock-draft-${seq}`,
+      run_id: runId,
+      parent_id: extra?.parent_id ?? null,
+      parent_kind: extra?.parent_kind ?? null,
+      preset,
+      width: size.w,
+      height: size.h,
+      url: studioArt(name, style.title, bg, fg, size.w, size.h),
+      status: "ok",
+      style_title: style.title,
+      marketer_prompt: extra?.marketer_prompt ?? null,
+      chips: extra?.chips ?? [],
+      author: "staff:demo",
+      starred: false,
+      pinned_to: null,
+      pinned_consult_id: null,
+      error: null,
+      sent_at: null,
+      created_at: new Date().toISOString(),
+    };
+  };
   return {
     list: (): Promise<StaffRow[]> =>
       wait(
@@ -237,5 +345,70 @@ export function createStaffMock() {
       return wait(c);
     },
     metrics: (): Promise<StaffMetrics> => wait(METRICS),
+    studio: (cid: string): Promise<StudioGet> => {
+      if (!db.some((x) => x.id === cid)) return Promise.reject(new Error("HTTP 404"));
+      const { list, used, remaining } = usage(cid);
+      const avoid = (REJECTED[cid] || []).flatMap((g) =>
+        g.options.map((o) => ({ id: o.id, title: o.title || o.alt, brief: o.brief || o.alt, url: o.url })),
+      );
+      return wait({ brief: briefFor(cid), avoid, presets: STUDIO_PRESETS, chips: STUDIO_CHIPS, drafts: list, cap: STUDIO_CAP, used, remaining });
+    },
+    generateDrafts: (cid: string, body: StudioDraftsBody): Promise<StudioRunResult> => {
+      if (!db.some((x) => x.id === cid)) return Promise.reject(new Error("HTTP 404"));
+      const { list, remaining } = usage(cid);
+      if (remaining < 3) return Promise.reject(new Error(`Draft limit reached — only ${remaining} of ${STUDIO_CAP} drafts left.`));
+      const name = db.find((x) => x.id === cid)?.fields.business_name || "Mock draft";
+      const runId = `mock-run-${Date.now().toString(36)}-${seq + 1}`;
+      const preset = body.preset || "post";
+      const chips = (body.chips || []).filter((c) => STUDIO_CHIPS.some((s) => s.id === c));
+      const made = [0, 1, 2].map((i) =>
+        makeDraft(cid, name, preset, seq + i, { run_id: runId, marketer_prompt: (body.marketer_prompt || "").slice(0, 500) || null, chips }),
+      );
+      list.push(...made);
+      return wait({ run_id: runId, drafts: made, remaining: STUDIO_CAP - usage(cid).used });
+    },
+    remixDraft: (cid: string, body: StudioRemixBody): Promise<StudioRunResult> => {
+      if (!db.some((x) => x.id === cid)) return Promise.reject(new Error("HTTP 404"));
+      const { list, remaining } = usage(cid);
+      if (remaining < 1) return Promise.reject(new Error(`Draft limit reached — only ${remaining} of ${STUDIO_CAP} drafts left.`));
+      const src = body.source_kind === "draft" ? list.find((d) => d.id === body.source_id) : (REJECTED[cid] || []).flatMap((g) => g.options).find((o) => o.id === body.source_id);
+      if (!src) return Promise.reject(new Error("HTTP 404"));
+      const name = db.find((x) => x.id === cid)?.fields.business_name || "Mock draft";
+      const runId = `mock-run-${Date.now().toString(36)}-${seq + 1}`;
+      const preset = body.preset || (body.source_kind === "draft" ? ((src as StudioDraft).preset as StudioSizePreset) : "post") || "post";
+      const made = makeDraft(cid, name, preset, seq, {
+        run_id: runId,
+        parent_id: body.source_id,
+        parent_kind: body.source_kind,
+        marketer_prompt: (body.note || "").slice(0, 300) || null,
+        chips: [],
+      });
+      list.push(made);
+      return wait({ run_id: runId, drafts: [made], remaining: STUDIO_CAP - usage(cid).used });
+    },
+    starDraft: (cid: string, draftId: string, starred: boolean): Promise<StudioDraft> => {
+      const d = draftsFor(cid).find((x) => x.id === draftId);
+      if (!d) return Promise.reject(new Error("HTTP 404"));
+      d.starred = starred;
+      return wait(d);
+    },
+    pinDraft: (cid: string, draftId: string, target: "client" | "consult" | null): Promise<StudioDraft> => {
+      const d = draftsFor(cid).find((x) => x.id === draftId);
+      if (!d) return Promise.reject(new Error("HTTP 404"));
+      if (target === "consult" && !consultDb.some((c) => c.client_id === cid)) {
+        return Promise.reject(new Error("This client has no consult."));
+      }
+      d.pinned_to = target;
+      d.pinned_consult_id = target === "consult" ? consultDb.find((c) => c.client_id === cid)?.id ?? null : null;
+      return wait(d);
+    },
+    sendDraft: (cid: string, draftId: string): Promise<StudioDraft> => {
+      const d = draftsFor(cid).find((x) => x.id === draftId);
+      if (!d) return Promise.reject(new Error("HTTP 404"));
+      if (d.sent_at) return Promise.reject(new Error("This draft was already sent."));
+      if (d.status !== "ok" || !d.url) return Promise.reject(new Error("Only finished drafts can be sent."));
+      d.sent_at = new Date().toISOString();
+      return wait(d);
+    },
   };
 }
