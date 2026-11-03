@@ -88,9 +88,13 @@ def resp(s, reply, images=None):
     looks = s.get("looks") or []
     out["looks"] = ({"round": s.get("round", 0), "max_rounds": MAX_ROUNDS,
                      "prompt": "Which look do you prefer?",
-                     "options": [{"id": lk.get("id"), "url": lk.get("url"), "title": lk.get("title")}
+                     "options": [{"id": lk.get("id"), "url": lk.get("url"), "title": lk.get("title"),
+                                  "suggested": bool(lk.get("suggested") or lk.get("source") == "staff")}
                                  for lk in looks]}
                     if s.get("status") == "awaiting_review" and looks else None)
+    sug = s.get("suggested_looks") or []
+    out["suggested_looks"] = ([{"id": lk.get("id"), "url": lk.get("url"), "title": lk.get("title"),
+                                "suggested": True} for lk in sug] if sug else None)
     cc = s.get("consult")
     out["consult"] = ({"id": cc.get("id"), "status": cc.get("status")} if cc else None)
     return out

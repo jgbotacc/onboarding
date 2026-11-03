@@ -73,6 +73,16 @@ def _consult_for(store, cid):
     return None
 
 
+def _with_pins(store, card):
+    """Consult card plus pinned_drafts rendered at read time (never stored)."""
+    if not card:
+        return card
+    sid = card.get("session_id") or card.get("client_id") or ""
+    pins = [_draft_json(d) for d in store.drafts(sid)
+            if d.get("pinned_to") == "consult" and d.get("pinned_consult_id") == card.get("id")]
+    return dict(card, pinned_drafts=pins)
+
+
 def _detail(store, s):
     refs = ["/media/" + r.rsplit("/", 1)[-1] for r in s.get("refs", [])]
     base = dict(_summary(s), fields=s.get("fields", {}), labels=LABELS, images=s.get("images", []),
@@ -86,8 +96,8 @@ def _detail(store, s):
               for t in store.traces(s["id"])]
     d = dict(base, lang=s.get("lang") or "en", transcript=s.get("transcript", []),
              looks=_all_looks(store, s["id"]), rejected_looks=rej,
-             consult=_consult_for(store, s["id"]), audit=store.audit_log(s["id"]), documents=docs,
-             traces=traces)
+             consult=_with_pins(store, _consult_for(store, s["id"])),
+             audit=store.audit_log(s["id"]), documents=docs, traces=traces)
     d.pop("pending", None)  # A9: pending drafts never reach staff
     return guard.clean(d, guard.others_identifiers(store, s["id"]))[0]
 
@@ -258,7 +268,7 @@ def make_router(store, save):
         out = []
         for c in store.consults():
             sid = c.get("session_id") or c.get("client_id")
-            out.append(guard.clean(c, guard.others_identifiers(store, sid))[0])
+            out.append(guard.clean(_with_pins(store, c), guard.others_identifiers(store, sid))[0])
         return out
 
     def consult_decide(cid: str, body: ConsultDecisionIn, request: Request):
@@ -457,6 +467,42 @@ def make_router(store, save):
         store.audit(cid, actor(request), "studio_pin", did, details)
         return guard.clean(_draft_json(d), guard.others_identifiers(store, cid))[0]
 
+    def studio_send(cid: str, did: str, request: Request):
+        s = load(cid)
+        with _studio_lock_for(cid):
+            d = store.get_draft(did)
+            if not d or d.get("session_id") != cid:
+                raise HTTPException(404, "Draft not found.")
+            if d.get("sent_at"):
+                raise HTTPException(409, "This draft was already sent.")
+            if d.get("status") != "ok" or not d.get("url"):
+                raise HTTPException(409, "Only finished drafts can be sent.")
+            act = actor(request)
+            look = {"id": d["id"], "url": d.get("url"), "title": "Suggested by our team",
+                    "brief": d.get("style"), "round": s.get("round", 0),
+                    "suggested": True, "source": "staff"}
+            store.add_looks(cid, s.get("round", 0), [look], source="staff")
+            d = store.mark_draft_sent(
+                did, act, datetime.now(timezone.utc).isoformat(timespec="seconds"))
+            if s.get("status") == "awaiting_review":
+                s.setdefault("looks", []).append(look)
+            else:
+                s.setdefault("suggested_looks", []).append(look)
+                card = _consult_for(store, cid)
+                if card:
+                    entry = {"id": look["id"], "url": look["url"], "title": look["title"],
+                             "brief": look.get("brief"), "round": look.get("round"),
+                             "suggested": True}
+                    card.setdefault("suggested_looks", []).append(entry)
+                    store.save_consult(card)
+                    if s.get("consult") and s["consult"].get("id") == card["id"]:
+                        s["consult"] = card
+            save(s)
+            store.audit(cid, act, "studio_send", did,
+                        {"look_id": look["id"], "round": look.get("round")})
+            out = dict(_draft_json(d), look_id=look["id"])
+            return guard.clean(out, guard.others_identifiers(store, cid))[0]
+
     for prefix in ("/api/staff/clients", "/api/clients", "/api/admin/clients"):
         r.add_api_route(prefix, list_clients, methods=["GET"])
         r.add_api_route(prefix + "/{cid}", get_client, methods=["GET"])
@@ -471,6 +517,7 @@ def make_router(store, save):
     r.add_api_route("/api/staff/clients/{cid}/studio/remix", studio_remix, methods=["POST"])
     r.add_api_route("/api/staff/clients/{cid}/studio/drafts/{did}/star", studio_star, methods=["POST"])
     r.add_api_route("/api/staff/clients/{cid}/studio/drafts/{did}/pin", studio_pin, methods=["POST"])
+    r.add_api_route("/api/staff/clients/{cid}/studio/drafts/{did}/send", studio_send, methods=["POST"])
     r.add_api_route("/api/staff/metrics", get_metrics, methods=["GET"])
     r.add_api_route("/api/staff/traces", get_traces, methods=["GET"])
     r.add_api_route("/api/staff/audit", get_audit, methods=["GET"])

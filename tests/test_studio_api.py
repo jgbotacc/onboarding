@@ -312,3 +312,113 @@ def test_client_routes_never_expose_drafts(monkeypatch):
     assert '"drafts"' not in json.dumps(body) and "studio_draft" not in json.dumps(body)
     detail = c.get(f"/api/staff/clients/{sid}").json()
     assert "drafts" not in detail
+
+
+def _to_awaiting(sid):
+    s = store.load(sid)
+    s["status"] = "awaiting_review"
+    s["round"] = 1
+    base = [{"id": f"base-{i}-{sid[:4]}", "url": _look_media(), "title": f"Base {i}",
+             "brief": f"base style {i}", "round": 1} for i in range(3)]
+    s["looks"] = base
+    s["images"] = [b["url"] for b in base]
+    store.save(s)
+    return base
+
+
+def _client_view(sid, secret):
+    anon_c = TestClient(app, headers={"x-session-secret": secret})
+    r = anon_c.post("/api/session", json={"sessionId": sid})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+# 10. send to an awaiting_review client
+def test_send_to_awaiting_review_shows_suggested_and_picks(monkeypatch):
+    sid, _ = _client()
+    secret = c.headers["x-session-secret"]
+    base = _to_awaiting(sid)
+    _fake(monkeypatch)
+    drafts = c.post(f"/api/staff/clients/{sid}/studio/drafts", json={}).json()["drafts"]
+    did = drafts[0]["id"]
+    # unsent drafts never reach client routes
+    before = _client_view(sid, secret)
+    assert did not in {o["id"] for o in before["looks"]["options"]}
+    r = c.post(f"/api/staff/clients/{sid}/studio/drafts/{did}/send", json={})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["sent_at"] and body["look_id"] == did
+    after = _client_view(sid, secret)
+    opts = {o["id"]: o for o in after["looks"]["options"]}
+    assert did in opts
+    assert opts[did]["suggested"] is True
+    assert opts[did]["title"] == "Suggested by our team"
+    # picking it works like any look
+    anon_c = TestClient(app, headers={"x-session-secret": secret})
+    pick = anon_c.post("/api/looks/pick", json={"sessionId": sid, "picked_ids": [did]})
+    assert pick.status_code == 200, pick.text
+    assert pick.json()["status"] == "accepted"
+    rows = [a for a in store.audit_log(sid) if a["action"] == "studio_send"]
+    assert rows and rows[0]["actor"] == "staff:Studio QA" and rows[0]["target"] == did
+
+
+# 11. send to a handed_off client lands in suggested_looks + consult card
+def test_send_to_handed_off_shows_suggested_and_consult_card(monkeypatch):
+    sid, _ = _client()
+    secret = c.headers["x-session-secret"]
+    _fake(monkeypatch)
+    drafts = c.post(f"/api/staff/clients/{sid}/studio/drafts", json={}).json()["drafts"]
+    s = store.load(sid)
+    s["status"] = "handed_off"
+    s["round"] = 3
+    card = {"id": f"consult-{sid}", "session_id": sid, "client_id": sid,
+            "status": "pending_approval", "business_name": "x"}
+    store.save_consult(card)
+    s["consult"] = dict(card)
+    store.save(s)
+    did = drafts[0]["id"]
+    r = c.post(f"/api/staff/clients/{sid}/studio/drafts/{did}/send", json={})
+    assert r.status_code == 200, r.text
+    view = _client_view(sid, secret)
+    assert view.get("looks") is None
+    sug = {o["id"]: o for o in (view.get("suggested_looks") or [])}
+    assert did in sug and sug[did]["suggested"] is True
+    detail = c.get(f"/api/staff/clients/{sid}").json()
+    card_out = detail["consult"]
+    assert did in {o["id"] for o in card_out["suggested_looks"]}
+    listed = [x for x in c.get("/api/staff/consults").json() if x["id"] == card["id"]]
+    assert listed and did in {o["id"] for o in listed[0]["suggested_looks"]}
+
+
+# 12. double send 409, failed draft send 409, foreign draft 404
+def test_send_conflicts_and_failed(monkeypatch):
+    sid, _ = _client()
+    _fake(monkeypatch)
+    did = c.post(f"/api/staff/clients/{sid}/studio/drafts", json={}).json()["drafts"][0]["id"]
+    assert c.post(f"/api/staff/clients/{sid}/studio/drafts/{did}/send", json={}).status_code == 200
+    assert c.post(f"/api/staff/clients/{sid}/studio/drafts/{did}/send",
+                 json={}).status_code == 409
+    other, _ = _client()
+    _fake(monkeypatch, fail_first_n=99)
+    failed = c.post(f"/api/staff/clients/{other}/studio/drafts", json={}).json()["drafts"][0]
+    assert failed["status"] == "failed"
+    assert c.post(f"/api/staff/clients/{other}/studio/drafts/{failed['id']}/send",
+                 json={}).status_code == 409
+    assert c.post(f"/api/staff/clients/{other}/studio/drafts/{did}/send",
+                 json={}).status_code == 404
+
+
+# 13. pinned drafts appear on the consult card
+def test_pinned_drafts_on_consult_card(monkeypatch):
+    sid, _ = _client()
+    _fake(monkeypatch)
+    did = c.post(f"/api/staff/clients/{sid}/studio/drafts", json={}).json()["drafts"][0]["id"]
+    store.save_consult({"id": f"consult-{sid}", "session_id": sid, "status": "pending_approval"})
+    pinned = c.post(f"/api/staff/clients/{sid}/studio/drafts/{did}/pin",
+                    json={"target": "consult"}).json()
+    assert pinned["pinned_consult_id"] == f"consult-{sid}"
+    detail = c.get(f"/api/staff/clients/{sid}").json()
+    assert did in {d["id"] for d in detail["consult"]["pinned_drafts"]}
+    listed = [x for x in c.get("/api/staff/consults").json()
+              if x["id"] == f"consult-{sid}"]
+    assert listed and did in {d["id"] for d in listed[0]["pinned_drafts"]}
