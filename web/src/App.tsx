@@ -4,6 +4,7 @@ import { EMPTY_FORM, type ApiResponse, type ConsultInfo, type ExtractedField, ty
 import ConfirmDetails from "./confirm/ConfirmDetails";
 import FormModal from "./FormModal";
 import LooksPicker from "./looks/LooksPicker";
+import { mergeLooks, mergeSuggested } from "./looks/refresh";
 import { toFieldKeys } from "./staff/fields";
 import { LANGS, fieldLabel, statusLabel, t, useLang, type Lang } from "./i18n";
 import { CheckboxIcon, CloseIcon, FileIcon, ImageIcon, MicIcon, PaperclipIcon, SendIcon } from "./icons";
@@ -368,6 +369,48 @@ export default function App() {
   const lastConfirmId = [...messages].reverse().find((m) => m.role === "assistant" && ((m.extracted?.length ?? 0) > 0 || !!m.retake))?.id;
   const reviewOpen = status === "awaiting_review";
   const handedOff = status === "handed_off" || messages.some((m) => m.role === "assistant" && !!m.consult);
+
+  // Staff can send looks while the picker is open: refresh the open looks message
+  // in place (no new chat message) every 15 s and on window focus. Stops once the
+  // client picks, skips, or the status leaves awaiting_review; never polls in mock mode.
+  useEffect(() => {
+    if (!client || client.mock || closed || busy || handedOff) return;
+    if (status !== "awaiting_review") return;
+    if (lastLooksId == null) return;
+    const targetId = lastLooksId;
+    let stopped = false;
+    const tick = async () => {
+      if (stopped) return;
+      let r: ApiResponse;
+      try {
+        r = await client.refresh();
+      } catch {
+        return; // a failed poll never breaks the chat
+      }
+      if (stopped) return;
+      if (r.status && r.status !== "awaiting_review") {
+        setStatus(r.status);
+        return;
+      }
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.id !== targetId || m.role !== "assistant") return m;
+          const looks = m.looks ? mergeLooks(m.looks, r.looks) : null;
+          const suggested = mergeSuggested(m.suggested_looks, r.suggested_looks);
+          if (!looks && !suggested) return m;
+          return { ...m, looks: looks ?? m.looks, suggested_looks: suggested ?? m.suggested_looks };
+        }),
+      );
+    };
+    const onFocus = () => void tick();
+    const timer = setInterval(() => void tick(), 15000);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [client, closed, busy, handedOff, status, lastLooksId]);
   const micLabel = t(lang, micOn ? "mic.stop" : "mic.label");
   const micTitle = micSupported ? micLabel : t(lang, "mic.notSupported");
 

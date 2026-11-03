@@ -195,6 +195,8 @@ export interface Client {
   removeUpload(): Promise<ApiResponse>;
   trace(kind: TraceKind, ok: boolean, ms: number): Promise<void>;
   setLang(lang: Lang): void;
+  /** Resume poll: POST /api/session with the session secret; returns the current looks and suggested_looks. */
+  refresh(): Promise<ApiResponse>;
   /** Set when opened from a staff "more information" link (/?resume=<token>). */
   resume?: { missing: string[]; reply: string };
   /** [resume-410] Set when a resume link is used up (410) or unknown (404): show this and close the chat. */
@@ -234,6 +236,24 @@ function mockExtras(m: MockHandlers) {
     setLang: (lang: Lang) => {
       storeLang(lang);
     },
+    // Mock has no backend: the picker never polls in mock mode, so this stays a no-op.
+    refresh: () =>
+      new Promise<ApiResponse>((res) =>
+        setTimeout(
+          () =>
+            res({
+              reply: "",
+              step: "choosing_look",
+              status: "choosing_look",
+              images: [],
+              missing: [],
+              round: 0,
+              looks: null,
+              suggested_looks: null,
+            }),
+          100,
+        ),
+      ),
   };
 }
 
@@ -316,6 +336,8 @@ export function realClient(sessionId: string, secret: string): Client {
       }
       return normalizeChatReply(await res.json());
     },
+    refresh: async () =>
+      normalizeChatReply(await postJson("/api/session", { sessionId, sessionSecret: secret }, secret)),
     form: async (fields) => normalizeChatReply(await postJson("/api/form", { sessionId, fields: { ...EMPTY_FORM, ...fields } }, secret)),
     chat: async (text) => normalizeChatReply(await postJson("/api/chat", { sessionId, text }, secret)),
     review: async (accepted, feedback) =>
