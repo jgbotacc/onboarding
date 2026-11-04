@@ -46,6 +46,16 @@ def test_skip_3_times_hands_off_with_consult_card():
     assert "consult" in r["reply"].lower()
 
 
+def test_look_reply_never_mentions_skip_but_typed_skip_still_works():
+    s, r = _round1()
+    assert "Which look do you prefer?" in r["reply"] and "Pick one or more." in r["reply"], r["reply"]
+    assert "skip" not in r["reply"].lower(), r["reply"]
+    r = agent.on_chat(s, "skip")  # typed skip still moves to the next round
+    assert r["status"] == "awaiting_review" and s["round"] == 2, r
+    assert "Which look do you prefer?" in r["reply"] and "Pick one or more." in r["reply"], r["reply"]
+    assert "skip" not in r["reply"].lower(), r["reply"]
+
+
 def test_pick_1_and_3_via_chat():
     s, _ = _round1()
     r = agent.on_chat(s, "1 and 3")

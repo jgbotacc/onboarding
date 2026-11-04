@@ -195,6 +195,8 @@ export interface Client {
   removeUpload(): Promise<ApiResponse>;
   trace(kind: TraceKind, ok: boolean, ms: number): Promise<void>;
   setLang(lang: Lang): void;
+  /** Re-translate stored bot replies (POST /api/translate); `texts` come back in order. */
+  translate(texts: string[], lang: Lang): Promise<{ lang: Lang; texts: string[] }>;
   /** Resume poll: POST /api/session with the session secret; returns the current looks and suggested_looks. */
   refresh(): Promise<ApiResponse>;
   /** Set when opened from a staff "more information" link (/?resume=<token>). */
@@ -236,6 +238,7 @@ function mockExtras(m: MockHandlers) {
     setLang: (lang: Lang) => {
       storeLang(lang);
     },
+    translate: (texts: string[], lang: Lang) => m.translate(texts, lang),
     // Mock has no backend: the picker never polls in mock mode, so this stays a no-op.
     refresh: () =>
       new Promise<ApiResponse>((res) =>
@@ -338,6 +341,28 @@ export function realClient(sessionId: string, secret: string): Client {
     },
     refresh: async () =>
       normalizeChatReply(await postJson("/api/session", { sessionId, sessionSecret: secret }, secret)),
+    // History re-translation: sends the target lang explicitly (postJson would use the stored one).
+    translate: async (texts, lang) => {
+      const r = await fetch(API_BASE + "/api/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-lang": lang, ...(secret ? { "x-session-secret": secret } : {}) },
+        body: JSON.stringify({ sessionId, sessionSecret: secret, lang, texts }),
+      });
+      if (!r.ok) {
+        let detail = "";
+        try {
+          detail = errorDetail(await r.json());
+        } catch {
+          /* not JSON */
+        }
+        throw new HttpError(r.status, detail);
+      }
+      const j = (await r.json()) as { lang?: unknown; texts?: unknown };
+      return {
+        lang: isLang(j.lang) ? j.lang : lang,
+        texts: Array.isArray(j.texts) ? j.texts.map((x) => String(x)) : texts.slice(),
+      };
+    },
     form: async (fields) => normalizeChatReply(await postJson("/api/form", { sessionId, fields: { ...EMPTY_FORM, ...fields } }, secret)),
     chat: async (text) => normalizeChatReply(await postJson("/api/chat", { sessionId, text }, secret)),
     review: async (accepted, feedback) =>

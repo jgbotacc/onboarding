@@ -124,6 +124,7 @@ export function createMock(opts: { resumed?: boolean } = {}) {
     return {
       reply: p.reply,
       lang,
+      source: p.reply,
       step,
       status: step,
       images: p.looks ? p.looks.options.map((o) => o.url) : imagesForRound(s.round),
@@ -313,6 +314,8 @@ export function createMock(opts: { resumed?: boolean } = {}) {
 
   const delay = <T,>(v: T) => new Promise<T>((res) => setTimeout(() => res(v), 100));
   return {
+    // History re-translation: a tagged copy so the eye (and checks) can see it worked.
+    translate: (texts: string[], lang: Lang) => delay({ lang, texts: texts.map((s) => `[${lang}] ${s}`) }),
     upload: (f: File[]) => delay(handlers.upload(f)),
     form: (f: FormFields) => delay(handlers.form(f)),
     chat: (x: string) => delay(handlers.chat(x)),

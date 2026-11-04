@@ -225,8 +225,8 @@ def _ordered_fields(fields: dict):
 SUMMARY_CLOSE = "Using your design preferences and business information."
 SUMMARY_CLOSE_NO_PREFS = "Using your business information."
 LOOKS_PROMPT = "Which look do you prefer?"
-LOOKS_HINT = "Pick one or more, or type \"skip\" for new ones."
-LOOKS_HINT_SHORT = "Pick one or more, or type \"skip\"."
+LOOKS_HINT = "Pick one or more."
+LOOKS_HINT_SHORT = "Pick one or more."
 
 
 def _money(v):
@@ -279,11 +279,12 @@ def run_round(s):
     base = dict(ctx, direction=s.get("direction"), feedback=s.get("feedback"), prev_image=prev)
     avoid = [r.get("brief") or r.get("style") for r in (s.get("rejected") or [])
              if r.get("brief") or r.get("style")]
-    url1 = _checked(dict(base, _fn=generate), s.get("refs", []), s["round"], s)
+    url1 = _checked(dict(base, _fn=generate, look_title=briefs[0]["title"]),
+                    s.get("refs", []), s["round"], s)
     looks = [_make_look(url1, briefs[0]["title"], briefs[0]["style"], s["round"])]
     for b in briefs[1:]:
         alt = dict(base, direction=b["style"], prev_image=None, feedback=None, avoid=avoid,
-                   _fn=generate_alt)
+                   _fn=generate_alt, look_title=b["title"])
         looks.append(_make_look(_checked(alt, s.get("refs", []), s["round"], s),
                                 b["title"], b["style"], s["round"]))
     s["looks"] = looks
