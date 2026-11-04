@@ -2,6 +2,7 @@
 @import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap");
 
 .staff {
+  overflow-x: clip;
   --ground: #fbf7f8;
   --surface: #ffffff;
   --raised: #f3f4f6;
@@ -53,8 +54,8 @@
 .staff-thumb { width: 48px; height: 48px; border-radius: 8px; border: 1px solid var(--border); background: var(--raised); overflow: hidden; }
 .staff-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .staff-who { display: flex; flex-direction: column; min-width: 0; }
-.staff-name { font-weight: 600; font-size: 14px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.staff-contact { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.staff-name { font-weight: 600; font-size: 14px; color: var(--text); overflow-wrap: anywhere; }
+.staff-contact { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
 .staff-date { font-size: 13px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .staff-chev { color: var(--muted); }
 .staff-item.open .staff-chev { transform: rotate(180deg); }
@@ -194,9 +195,11 @@ a.staff-cc-value:hover { text-decoration: underline; }
 .staff .field textarea { font: inherit; font-size: 14px; border: 1px solid var(--control); border-radius: 6px; padding: 8px 10px; width: 100%; box-sizing: border-box; background: #fff; color: var(--text); }
 
 @media (max-width: 720px) {
+  .staff .header { height: auto; min-height: 48px; flex-wrap: wrap; row-gap: 4px; padding-top: 8px; padding-bottom: 8px; }
+  .staff .header h1 { font-size: 20px; line-height: 28px; }
   .staff-main { padding: 8px 12px 96px; }
   .staff-column { padding: 16px; border-radius: 16px; }
-  .staff-row { grid-template-columns: 24px 40px minmax(0, 1fr) auto 16px; grid-template-areas: "n t w p c" "n t m m c"; gap: 4px 12px; padding: 12px; }
+  .staff-row { grid-template-columns: 24px 40px minmax(0, 1fr) auto 16px; grid-template-areas: "n t w w c" "n t m p c"; gap: 4px 12px; padding: 12px; }
   .staff-queue-num { grid-area: n; }
   .staff-thumb { grid-area: t; width: 40px; height: 40px; }
   .staff-who { grid-area: w; }

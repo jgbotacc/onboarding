@@ -5,17 +5,11 @@ import RejectedLooks from "./RejectedLooks";
 import StudioPanel from "./StudioPanel";
 import { FIELDS, type FieldKey } from "./fields";
 import { statusLabel, type Decision, type DecisionResult, type EmailInfo, type StaffDetail, type StaffMetrics, type StaffRow } from "./types";
+import { formatDate, stepName } from "./format";
 import "./staff.css";
 
 const ASSET = import.meta.env.BASE_URL;
 const FINAL = ["approved", "rejected"];
-
-const fmtDate = (iso: string) => {
-  const d = new Date(iso);
-  return isNaN(d.getTime())
-    ? iso
-    : d.toLocaleString("en-SG", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
-};
 
 const emailText = (e?: EmailInfo | null) => {
   if (!e || !e.status) return "";
@@ -196,7 +190,7 @@ function Detail({ client, row, onDecided, onOpen }: DetailProps) {
             <tbody>
               {d.traces.map((t, i) => (
                 <tr key={i} data-ok={t.ok}>
-                  <td>{t.step}</td>
+                  <td>{stepName(t.step)}</td>
                   <td>{t.model}</td>
                   <td>{t.ok ? "Yes" : "No"}</td>
                   <td className="num">{t.ms}</td>
@@ -382,7 +376,7 @@ function MetricsPanel({ client }: { client: StaffClient }) {
           <tbody>
             {m.steps.map((s, i) => (
               <tr key={i}>
-                <td>{s.step}</td>
+                <td>{stepName(s.step)}</td>
                 <td>{s.model}</td>
                 <td className="num">{s.calls}</td>
                 <td className="num">{Math.round(s.ok_rate * 100)}%</td>
@@ -488,7 +482,7 @@ export default function StaffPage() {
                         {r.email ? ` · ${r.email}` : ""}
                       </span>
                     </span>
-                    <span className="staff-date">{r.updated ? fmtDate(r.updated) : ""}</span>
+                    <span className="staff-date">{formatDate(r.updated)}</span>
                     <span className="staff-dot" data-status={r.status} aria-hidden="true" />
                     <Pill status={r.status} />
                     <svg className="staff-chev" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">

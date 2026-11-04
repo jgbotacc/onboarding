@@ -1,14 +1,7 @@
 import { useEffect, useState } from "react";
 import type { StaffClient } from "./api";
 import type { Consult } from "./types";
-
-const fmtDecided = (iso?: string | null) => {
-  if (!iso) return "";
-  const d = new Date(iso);
-  return isNaN(d.getTime())
-    ? iso
-    : d.toLocaleString("en-SG", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
-};
+import { formatDate } from "./format";
 
 interface CardProps {
   client: StaffClient;
@@ -71,7 +64,7 @@ function ConsultCard({ client, consult, onApproved }: CardProps) {
       )}
       <div className="staff-actions">
         {approved ? (
-          <span className="staff-hint">Handed off{consult.decided_at ? ` on ${fmtDecided(consult.decided_at)}` : ""}.</span>
+          <span className="staff-hint">Handed off{consult.decided_at ? ` on ${formatDate(consult.decided_at)}` : ""}.</span>
         ) : (
           <>
             <span className="staff-hint">Approving books the consult hand-off.</span>
