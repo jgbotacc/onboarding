@@ -346,7 +346,7 @@ Design decisions (fixed here so build has no open questions):
 | Studio prompt builder | `studio_prompt(..., rejected=feedback_as_rejected)` reuses `_avoid_list` and `variants`; no new steer-away code | `src/features/imagegen/studio.py`, `src/features/looks/brief.py` (`make_briefs`, `design_context`) | Us |
 | Outbound guard | `guard.clean` scrubs client change-request notes with the client's own identifiers before staff see them | `src/shared/guard.py`, `src/shared/security.py` | Us |
 | Staff web (`web/src/staff/*`) | Send-link button, shortlist view, feedback feed; new strings follow the existing i18n check scripts | repo `web/scripts/test-i18n.mjs` | Us |
-| Public share page (new, no login) | Reads the public `GET /api/share/{token}` contract below; polls every 15 s like the client picker while open | this doc | Us |
+| Public share page (new, no login) | Opens `{base}/share#t=<token>` (token in the fragment, never sent to the server); reads the public header-based share contract below; polls every 15 s like the client picker while open | this doc | Us |
 | Vercel relay (v1) | Not used. No Meta call is needed for this feature | `relay/README.md` | Us. **Not changed by this feature.** |
 | Daytona sandbox | No redeploy in this work; hosting stays on the existing sandbox | repo script `scripts/deploy_daytona.py` | Us |
 
@@ -410,18 +410,19 @@ Staff (existing staff router, so `require_staff` applies):
 
 | Method and path | Body | Returns |
 |---|---|---|
-| `POST /api/staff/clients/{cid}/studio/share` | `{days?: int 1..30, default 7}` | `{id, url, expires_at}`. The `url` holds the plaintext token and is shown once |
+| `POST /api/staff/clients/{cid}/studio/share` | `{days?: int 1..30, default 7}` | `{id, url, expires_at}`. The `url` is `{base}/share#t=<token>` (token in the fragment, never sent to the server) and is shown once |
 | `GET /api/staff/clients/{cid}/studio/shares` | none | `[{id, expires_at, revoked_at, used_at, created_by}]` (no hashes, no tokens) |
 | `POST /api/staff/clients/{cid}/studio/shares/{tid}/revoke` | `{}` | `{id, revoked_at}` |
 | `GET /api/staff/clients/{cid}/studio/shortlist` | none | `{drafts:[Draft], feedback:[{draft_id, kind, note, actor, created_at}]}` |
 | `POST /api/staff/clients/{cid}/studio/shortlist/{did}` | `{add: bool}` | `{drafts:[Draft]}` |
 
-Public (no login; the token is the only secret):
+Public (no login; the token is the only secret, sent in the `x-share-token` header —
+never in the path or query string, so server access logs cannot record it):
 
-| Method and path | Body | Returns |
-|---|---|---|
-| `GET /api/share/{token}` | none | `{business_name, drafts:[{id, url, title, liked: bool}], shortlist:[id], decided: null \| {draft_id, kind}}`. 404 for unknown/revoked, 410 for expired |
-| `POST /api/share/{token}/feedback` | `{draft_id, kind: 'heart' \| 'reject' \| 'approve' \| 'changes', note?: str<=500}` | `{ok:true, shortlist:[id]}`. `note` is required for `changes` and ignored for other kinds |
+| Method and path | Headers | Body | Returns |
+|---|---|---|---|
+| `GET /api/share` | `x-share-token` | none | `{business_name, drafts:[{id, url, title, liked: bool}], shortlist:[id], decided: null \| {draft_id, kind}}`. 404 for unknown/revoked/missing, 410 for expired |
+| `POST /api/share/feedback` | `x-share-token` | `{draft_id, kind: 'heart' \| 'reject' \| 'approve' \| 'changes', note?: str<=500}` | `{ok:true, shortlist:[id]}`. `note` is required for `changes` and ignored for other kinds |
 
 `approve` records the final pick and marks the draft's `looks` row selected, like a client pick
 (when the client's session is still awaiting review and holds the look, the session is marked
@@ -433,7 +434,7 @@ accepted too). `changes` appends the scrubbed note to the feedback feed for the 
 | Connection | Auth | Where (env var names) |
 |---|---|---|
 | Staff share routes | shared passcode header `x-staff-key`; author from optional `x-staff-name` (self-reported, not proof) | `STAFF_PASSCODE` |
-| Share link | unguessable token (`secrets.token_urlsafe(32)`); only its SHA-256 hash is stored, compared with `hmac.compare_digest`; logged or shown nowhere except the one-time staff response | none (runtime) |
+| Share link | unguessable token (`secrets.token_urlsafe(32)`); only its SHA-256 hash is stored, compared with `hmac.compare_digest`; sent by the client in the `x-share-token` header, carried in the share page URL fragment (`/share#t=<token>`, never sent to the server); logged or shown nowhere except the one-time staff response | none (runtime) |
 | Client picker / session routes | unchanged: per-session secret `x-session-secret` (hash stored) | none (runtime) |
 | Tests | none; model and relay keys unset, httpx mocked | n/a |
 
@@ -457,6 +458,15 @@ accepted too). `changes` appends the scrubbed note to the feedback feed for the 
   unknown tokens read as 404, so a revoked link is indistinguishable from a made-up one.
 - **Abuse guard:** public feedback is rate-limited per token (30 writes per hour; 429 over that),
   and notes pass `guard.clean` before staff see them.
+- **Log safety:** the token never appears in a URL path or query string — the public API
+  reads it from the `x-share-token` header and the share page link keeps it in the URL
+  fragment (`/share#t=<token>`), which browsers never send. Only the SHA-256 hash is
+  stored, and audit rows hold the link id, never the token or hash. As a second layer,
+  `src/shared/redact.py` installs a logging filter on the app and uvicorn loggers
+  (access log included) that rewrites any residual `/share/<token>` or `token=` value
+  before it is emitted. Error messages stay generic (unknown/revoked read 404, expired
+  reads 410) and never echo the token. A test drives the share routes and asserts the
+  plaintext token appears in no captured log record, trace or audit row.
 
 #### 4.8.6 Tool reality check (actually run, 2026-11-04)
 

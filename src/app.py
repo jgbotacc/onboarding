@@ -21,10 +21,11 @@ from src.features.intake import document, photo
 from src.features.intake.extract import pdf_text
 from src.features.i18n.lang import LANGS
 from src.features.staff import routes as staff
-from src.shared import guard, security, trace
+from src.shared import guard, redact, security, trace
 from src.shared.config import DATA_DIR, FORM_KEYS, MEDIA_DIR
 
 logging.basicConfig(level=logging.INFO)
+redact.install()  # scrub share tokens from every log, uvicorn.access included
 logger = logging.getLogger("onboarding")
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -625,7 +626,8 @@ if not (WEB / "index.html").exists() and (ROOT / "web" / "legacy" / "index.html"
 if (WEB / "index.html").exists():
     from fastapi.responses import FileResponse
 
-    for _page in ("/staff", "/review", "/admin", "/staff/{rest:path}", "/review/{rest:path}"):
+    for _page in ("/staff", "/review", "/admin", "/share",
+                  "/staff/{rest:path}", "/review/{rest:path}"):
         app.add_api_route(_page, lambda rest="": FileResponse(WEB / "index.html"), methods=["GET"], include_in_schema=False)
     app.mount("/", StaticFiles(directory=WEB, html=True), name="web")
 else:

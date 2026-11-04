@@ -547,7 +547,10 @@ def make_router(store, save):
         tid, token = store.issue_share_token(cid, actor(request), days=body.days)
         base = PUBLIC_BASE_URL or str(request.base_url).rstrip("/")
         exp = next((t["expires_at"] for t in store.shares_for(cid) if t["id"] == tid), None)
-        return {"id": tid, "url": f"{base}/share/{token}", "expires_at": exp}
+        # Fragment carries the token: it never leaves the browser, so it never
+        # reaches the server (or its access log). The page reads it and sends
+        # it back in the x-share-token header.
+        return {"id": tid, "url": f"{base}/share#t={token}", "expires_at": exp}
 
     def studio_shares(cid: str):
         load(cid)
@@ -657,16 +660,26 @@ def _share_limited(tid: str) -> bool:
         return False
 
 
+def _share_token_from(request: Request) -> str | None:
+    """The share token arrives in the x-share-token header only.
+
+    It is never read from the path or query string, so uvicorn's access log
+    (which records the request target) cannot capture it.
+    """
+    return request.headers.get("x-share-token")
+
+
 def make_share_router(store, save, lock_for):
     """Public share links: no login, the token is the only secret."""
     r = APIRouter()
 
-    def resolve(token: str) -> dict:
-        """Hash the token, then check session, expiry and revoked_at.
+    def resolve(request: Request) -> dict:
+        """Hash the header token, then check session, expiry and revoked_at.
 
         Unknown and revoked tokens both read 404, so a revoked link is
         indistinguishable from a made-up one; expired tokens read 410.
         """
+        token = _share_token_from(request)
         row = store.find_share_token(token) if token else None
         if not row:
             raise HTTPException(404, "This link is no longer valid. Please ask our team for a new one.")
@@ -674,8 +687,8 @@ def make_share_router(store, save, lock_for):
             raise HTTPException(410, "This link has expired. Please ask our team for a new one.")
         return row
 
-    def share_get(token: str):
-        row = resolve(token)
+    def share_get(request: Request):
+        row = resolve(request)
         if not row.get("used_at"):
             store.mark_share_used(row["id"])
         store.sweep_expired_tokens()
@@ -696,8 +709,8 @@ def make_share_router(store, save, lock_for):
                "drafts": drafts, "shortlist": sorted(liked), "decided": dec}
         return guard.clean(out, guard.others_identifiers(store, sid))[0]
 
-    def share_feedback(token: str, body: ShareFeedbackIn):
-        row = resolve(token)
+    def share_feedback(request: Request, body: ShareFeedbackIn):
+        row = resolve(request)
         sid = row["session_id"]
         with lock_for(sid):
             if _share_limited(row["id"]):
@@ -726,8 +739,8 @@ def make_share_router(store, save, lock_for):
             save(s)
             return {"ok": True, "shortlist": store.shortlist_for(sid)}
 
-    r.add_api_route("/api/share/{token}", share_get, methods=["GET"])
-    r.add_api_route("/api/share/{token}/feedback", share_feedback, methods=["POST"])
+    r.add_api_route("/api/share", share_get, methods=["GET"])
+    r.add_api_route("/api/share/feedback", share_feedback, methods=["POST"])
     return r
 
 

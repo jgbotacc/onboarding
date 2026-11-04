@@ -1,5 +1,6 @@
 """Client feedback and share links API: staff routes, public routes, expiry, audit (no network)."""
 import json
+import logging
 import os
 import tempfile
 import uuid
@@ -30,6 +31,19 @@ def _client(tag=None):
     return sid, fields
 
 
+def _h(token):
+    """Share auth header: the token travels in a header, never in a URL."""
+    return {"x-share-token": token}
+
+
+def sget(token):
+    return anon.get("/api/share", headers=_h(token))
+
+
+def spost(token, body):
+    return anon.post("/api/share/feedback", json=body, headers=_h(token))
+
+
 def _media():
     name = f"share-{uuid.uuid4().hex}.png"
     Image.new("RGB", (300, 300), (90, 140, 200)).save(MEDIA_DIR / name)
@@ -55,7 +69,7 @@ def _issue(sid, days=None):
     r = c.post(f"/api/staff/clients/{sid}/studio/share", json=body)
     assert r.status_code == 200, r.text
     out = r.json()
-    return out["id"], out["url"].rsplit("/", 1)[-1], out
+    return out["id"], out["url"].rsplit("t=", 1)[-1], out
 
 
 def _awaiting(sid, did):
@@ -75,7 +89,8 @@ def test_share_needs_passcode():
 def test_issue_list_revoke_round_trip():
     sid, _ = _client()
     tid, token, out = _issue(sid)
-    assert out["url"].endswith(f"/share/{token}") and out["expires_at"]
+    assert out["url"].endswith(f"/share#t={token}") and out["expires_at"]
+    assert token not in out["url"].split("#")[0]  # servable path carries no token
     listed = c.get(f"/api/staff/clients/{sid}/studio/shares").json()
     assert len(listed) == 1
     assert listed[0]["id"] == tid and listed[0]["revoked_at"] is None
@@ -107,10 +122,20 @@ def test_share_get_lists_only_sent_drafts():
                                             "height": 1080, "author": "staff:x"}])
     store.finish_draft(unsent, _media(), "ok")  # finished but never sent
     _, token, _ = _issue(sid)
-    body = anon.get(f"/api/share/{token}").json()
+    body = sget(token).json()
     assert body["business_name"] == store.load(sid)["fields"]["business_name"]
     assert {d["id"] for d in body["drafts"]} == {did}
     assert body["drafts"][0]["liked"] is False and body["shortlist"] == [] and body["decided"] is None
+
+
+def test_share_token_not_in_path_or_query():
+    """The token is header-only: path and query shapes never resolve."""
+    sid, _ = _client()
+    _sent(sid)
+    _, token, _ = _issue(sid)
+    assert anon.get(f"/api/share/{token}").status_code == 404  # legacy path shape gone
+    assert anon.get("/api/share").status_code == 404  # no header
+    assert anon.get(f"/api/share?token={token}").status_code == 404  # query never read
 
 
 def test_share_unknown_revoked_expired():
@@ -118,22 +143,20 @@ def test_share_unknown_revoked_expired():
     _sent(sid)
     _, token, _ = _issue(sid)
     tid = c.get(f"/api/staff/clients/{sid}/studio/shares").json()[0]["id"]
-    unknown = anon.get("/api/share/made-up-token")
+    unknown = sget("made-up-token")
     assert unknown.status_code == 404
     c.post(f"/api/staff/clients/{sid}/studio/shares/{tid}/revoke", json={})
-    revoked = anon.get(f"/api/share/{token}")
+    revoked = sget(token)
     assert revoked.status_code == 404
     assert revoked.json() == unknown.json()  # revoked reads exactly like unknown
-    assert anon.post(f"/api/share/{token}/feedback",
-                     json={"draft_id": "x", "kind": "heart"}).status_code == 404
+    assert spost(token, {"draft_id": "x", "kind": "heart"}).status_code == 404
     tid2, token2, _ = _issue(sid)
     store.db.execute("UPDATE share_tokens SET expires_at='2000-01-01T00:00:00+00:00' WHERE id=?",
                      (tid2,))
     store.db.commit()
-    expired = anon.get(f"/api/share/{token2}")
+    expired = sget(token2)
     assert expired.status_code == 410
-    assert anon.post(f"/api/share/{token2}/feedback",
-                     json={"draft_id": "x", "kind": "heart"}).status_code == 410
+    assert spost(token2, {"draft_id": "x", "kind": "heart"}).status_code == 410
 
 
 def test_share_first_read_marks_used():
@@ -141,7 +164,7 @@ def test_share_first_read_marks_used():
     _sent(sid)
     _, token, _ = _issue(sid)
     assert c.get(f"/api/staff/clients/{sid}/studio/shares").json()[0]["used_at"] is None
-    assert anon.get(f"/api/share/{token}").status_code == 200
+    assert sget(token).status_code == 200
     assert c.get(f"/api/staff/clients/{sid}/studio/shares").json()[0]["used_at"]
 
 
@@ -150,11 +173,11 @@ def test_heart_and_reject_toggle_shortlist():
     sid, _ = _client()
     did, _ = _sent(sid)
     _, token, _ = _issue(sid)
-    r = anon.post(f"/api/share/{token}/feedback", json={"draft_id": did, "kind": "heart"})
+    r = spost(token, {"draft_id": did, "kind": "heart"})
     assert r.status_code == 200 and r.json() == {"ok": True, "shortlist": [did]}
-    assert anon.get(f"/api/share/{token}").json()["shortlist"] == [did]
-    assert anon.get(f"/api/share/{token}").json()["drafts"][0]["liked"] is True
-    r = anon.post(f"/api/share/{token}/feedback", json={"draft_id": did, "kind": "reject"})
+    assert sget(token).json()["shortlist"] == [did]
+    assert sget(token).json()["drafts"][0]["liked"] is True
+    r = spost(token, {"draft_id": did, "kind": "reject"})
     assert r.json() == {"ok": True, "shortlist": []}
     view = c.get(f"/api/staff/clients/{sid}/studio/shortlist").json()
     assert view["drafts"] == [] and sorted(f["kind"] for f in view["feedback"]) == ["heart", "reject"]
@@ -169,13 +192,10 @@ def test_feedback_guesses_and_foreign_drafts_404():
     did, _ = _sent(sid)
     other, _ = _client()
     _, token, _ = _issue(sid)
-    assert anon.post(f"/api/share/{token}/feedback",
-                     json={"draft_id": "made-up", "kind": "heart"}).status_code == 404
+    assert spost(token, {"draft_id": "made-up", "kind": "heart"}).status_code == 404
     foreign, _ = _sent(other)
-    assert anon.post(f"/api/share/{token}/feedback",
-                     json={"draft_id": foreign, "kind": "heart"}).status_code == 404
-    assert anon.post(f"/api/share/{token}/feedback",
-                     json={"draft_id": did, "kind": "approve"}).status_code == 200  # own draft works
+    assert spost(token, {"draft_id": foreign, "kind": "heart"}).status_code == 404
+    assert spost(token, {"draft_id": did, "kind": "approve"}).status_code == 200  # own draft works
 
 
 def test_approve_picks_and_audits_like_client_pick():
@@ -183,11 +203,11 @@ def test_approve_picks_and_audits_like_client_pick():
     did, _ = _sent(sid)
     _awaiting(sid, did)
     _, token, _ = _issue(sid)
-    r = anon.post(f"/api/share/{token}/feedback", json={"draft_id": did, "kind": "approve"})
+    r = spost(token, {"draft_id": did, "kind": "approve"})
     assert r.status_code == 200, r.text
     assert store.load(sid)["status"] == "accepted"
     assert [l for l in store.looks(sid) if l["id"] == did][0]["selected"] == 1
-    assert anon.get(f"/api/share/{token}").json()["decided"] == {"draft_id": did, "kind": "approve"}
+    assert sget(token).json()["decided"] == {"draft_id": did, "kind": "approve"}
     rows = [a for a in store.audit_log(sid) if a["action"] == "feedback_approve"]
     assert rows and rows[0]["actor"] == "client:share" and rows[0]["target"]
     assert did in json.dumps(rows[0]["details"])
@@ -197,17 +217,13 @@ def test_changes_needs_note_and_scrubs_it():
     sid, fields = _client()
     did, _ = _sent(sid)
     _, token, _ = _issue(sid)
-    assert anon.post(f"/api/share/{token}/feedback",
-                     json={"draft_id": did, "kind": "changes"}).status_code == 400
-    assert anon.post(f"/api/share/{token}/feedback",
-                     json={"draft_id": did, "kind": "changes", "note": "   "}).status_code == 400
-    assert anon.post(f"/api/share/{token}/feedback",
-                     json={"draft_id": did, "kind": "changes",
-                           "note": "x" * 501}).status_code == 422
+    assert spost(token, {"draft_id": did, "kind": "changes"}).status_code == 400
+    assert spost(token, {"draft_id": did, "kind": "changes", "note": "   "}).status_code == 400
+    assert spost(token, {"draft_id": did, "kind": "changes",
+                         "note": "x" * 501}).status_code == 422
     email = fields["email"]
-    r = anon.post(f"/api/share/{token}/feedback",
-                  json={"draft_id": did, "kind": "changes",
-                        "note": f"make it warmer, reply to {email} please"})
+    r = spost(token, {"draft_id": did, "kind": "changes",
+                      "note": f"make it warmer, reply to {email} please"})
     assert r.status_code == 200, r.text
     stored = [f for f in store.feedback_for(sid) if f["kind"] == "changes"][0]
     assert email.lower() not in stored["note"].lower()
@@ -215,18 +231,32 @@ def test_changes_needs_note_and_scrubs_it():
     assert email.lower() not in json.dumps(feed).lower()
     rows = [a for a in store.audit_log(sid) if a["action"] == "feedback_changes"]
     assert rows and email.lower() not in json.dumps(rows).lower()
-    assert anon.get(f"/api/share/{token}").json()["decided"] == {"draft_id": did, "kind": "changes"}
+    assert sget(token).json()["decided"] == {"draft_id": did, "kind": "changes"}
 
 
 def test_no_plaintext_token_in_db_audit_traces_or_logs(caplog):
+    import logging
+
+    from src.shared import redact  # noqa: E402
+
     sid, _ = _client()
     did, _ = _sent(sid)
     _, token, out = _issue(sid)
-    anon.get(f"/api/share/{token}")
-    anon.post(f"/api/share/{token}/feedback", json={"draft_id": did, "kind": "heart"})
+    assert token not in out["url"].split("#")[0]  # servable path is token-free
+    with caplog.at_level(logging.INFO):
+        assert sget(token).status_code == 200
+        assert spost(token, {"draft_id": did, "kind": "heart"}).status_code == 200
+        # A legacy path-style hit, as uvicorn.access would log it, must be scrubbed.
+        logging.getLogger("uvicorn.access").info(
+            '127.0.0.1:1 - "GET /api/share/%s HTTP/1.1" 404', token)
+        assert any(isinstance(f, redact.RedactShareTokenFilter)
+                   for f in logging.getLogger("uvicorn.access").filters)
     blob = json.dumps(store.db.execute("SELECT * FROM share_tokens").fetchall())
-    blob += json.dumps(store.audit_log(sid)) + json.dumps(store.all_traces()) + caplog.text
+    blob += json.dumps(store.audit_log(sid)) + json.dumps(store.all_traces())
     assert token not in blob
+    for r in caplog.records:
+        assert token not in r.getMessage(), r.getMessage()
+    assert token not in caplog.text
 
 
 def test_share_writes_rate_limited():
@@ -234,11 +264,9 @@ def test_share_writes_rate_limited():
     did, _ = _sent(sid)
     _, token, _ = _issue(sid)
     for i in range(30):
-        r = anon.post(f"/api/share/{token}/feedback",
-                      json={"draft_id": did, "kind": "heart" if i % 2 == 0 else "reject"})
+        r = spost(token, {"draft_id": did, "kind": "heart" if i % 2 == 0 else "reject"})
         assert r.status_code == 200, i
-    over = anon.post(f"/api/share/{token}/feedback",
-                     json={"draft_id": did, "kind": "heart"})
+    over = spost(token, {"draft_id": did, "kind": "heart"})
     assert over.status_code == 429
 
 

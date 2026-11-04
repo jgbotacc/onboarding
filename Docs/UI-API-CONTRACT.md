@@ -57,6 +57,26 @@ All client paths are under `/api`, send `x-session-secret`, and include the lang
 | `GET /api/staff/clients/{id}` | v1 detail + optional `traces: [{step, model, ok, ms, cost_sgd, at}]`; the UI hides the table when absent |
 | `GET /api/staff/metrics` | `{outcomes: {sessions, completed, completion_rate, avg_minutes_to_finish, avg_fields_needing_fixes, avg_rounds_to_pick, consult_rate}, steps: [{step, model, calls, ok_rate, avg_latency_ms, cost_sgd}], total_cost_sgd, errors?: [trace], evals?: {doc_extraction_accuracy, image_fit, n, at} \| null}` (PRD 3.1/3.5). Section hidden if the call fails |
 
+## Share links (PRD 4.8)
+
+Staff create a no-login link per client; the client opens it, hearts/rejects drafts,
+approves one, or requests changes with a short note.
+
+- Staff: `POST /api/staff/clients/{id}/studio/share` (`{days?: 1..30, default 7}`) returns
+  `{id, url, expires_at}`. The `url` is `{base}/share#t=<token>` — the token sits in the
+  URL **fragment**, which the browser never sends to the server, so the servable path
+  (`/share`) carries no secret. The token is shown once.
+- Share page: serves from `/share`. It reads the token from the fragment and sends it in
+  the `x-share-token` header on every share API call. It never puts the token in a path,
+  query string, or body that a server log would record. Polls every 15 s while open.
+- Public (no login): `GET /api/share` and `POST /api/share/feedback`
+  (`{draft_id, kind: "heart"|"reject"|"approve"|"changes", note?: str<=500}`, `note`
+  required for `changes`), both with header `x-share-token: <token>`. A missing header,
+  unknown token or revoked link reads 404; an expired link reads 410. Feedback returns
+  `{ok: true, shortlist: [id]}`; over 30 writes per token per hour returns 429.
+- GET returns `{business_name, drafts: [{id, url, title, liked}], shortlist: [id],
+  decided: null | {draft_id, kind}}` (sent drafts only; `liked` mirrors the shortlist).
+
 ## Mapping to PRD section 6
 PRD names (`/api/looks {selected, skip}`, `/api/confirm {accept, edits}`, `DELETE /api/documents/{docId}`,
 `/api/staff/consults/{id}/decision`, `confirm.fields[{key,label,value}]`, `looks.options[{id,url,title}]`,

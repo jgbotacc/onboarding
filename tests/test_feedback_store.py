@@ -42,8 +42,8 @@ def test_approve_and_changes_audit(tmp_path):
     did = sent(st, "c1")
     st.record_feedback("c1", did, "approve", None, "client:share")
     st.record_feedback("c1", did, "changes", "warmer red please", "client:share")
-    rows = st.feedback_for("c1")
-    assert rows[1]["note"] == "warmer red please"
+    rows = {r["kind"]: r for r in st.feedback_for("c1")}  # same-second rows tie on created_at; order by id is random
+    assert rows["changes"]["note"] == "warmer red please"
     acts = {a["action"]: a for a in st.audit_log("c1")}
     assert acts["feedback_approve"]["actor"] == "client:share"
     assert acts["feedback_changes"]["details"] == {"draft_id": did, "note": "warmer red please"}
