@@ -1,16 +1,22 @@
 """Staff review API. Primary: /api/staff/clients*. Aliases: /api/clients*, /api/admin/clients*.
-Every route needs the staff passcode (x-staff-key header, see shared/security.py)."""
+Staff routes need the STAFF_PASSCODE; the designer handoff (list, images zip,
+final-images) and the role lookup also accept DESIGNER_PASSCODE
+(x-staff-key header, see shared/security.py)."""
+import io
 import json
+import re
 import secrets
 import threading
 import time
 import uuid
+import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from src.features.chat import agent
@@ -19,7 +25,7 @@ from src.features.looks.brief import design_context
 from src.features.staff import email, metrics
 from src.shared import guard
 from src.shared.config import LABELS, MEDIA_DIR, PUBLIC_BASE_URL
-from src.shared.security import require_staff
+from src.shared.security import MAX_FILE_BYTES, caller_role, clean_image, require_staff, require_staff_or_designer
 
 STATUS = {"approve": "approved", "reject": "rejected", "more_info": "needs_info"}
 
@@ -36,7 +42,7 @@ class ConsultDecisionIn(BaseModel):
 
 
 def actor(request: Request) -> str:
-    return "staff:" + (request.headers.get("x-staff-name") or "staff")[:40]
+    return (caller_role(request) or "staff") + ":" + (request.headers.get("x-staff-name") or "staff")[:40]
 
 
 def _summary(s):
@@ -232,7 +238,11 @@ def _ref_paths(s) -> list[str]:
 
 
 def make_router(store, save):
-    r = APIRouter(dependencies=[Depends(require_staff)])
+    r = APIRouter()
+
+    def get_role(request: Request):
+        """Shared sign-in: which role the caller's passcode grants."""
+        return {"role": caller_role(request)}
 
     def load(cid):
         s = store.load(cid)
@@ -320,6 +330,101 @@ def make_router(store, save):
         save(s)
         store.audit(cid, actor(request), "sent_to_designers", None, {"at": ts})
         return {"ok": True, "id": cid, "sent_to_designers_at": ts}
+
+    def _chosen_look(sid):
+        """Picked look title, else shortlisted draft, else latest round's look. Plain title text."""
+        looks = [lk for lk in store.looks(sid) if lk.get("url")]
+        picked = [lk for lk in looks if lk.get("selected")]
+        if picked:
+            return picked[0].get("title") or ""
+        short_ids = set(store.shortlist_for(sid)) if hasattr(store, "shortlist_for") else set()
+        for d in store.drafts(sid):
+            if d.get("id") in short_ids and d.get("url"):
+                return d.get("style_title") or ""
+        if looks:
+            top = max(lk.get("round") or 0 for lk in looks)
+            latest = [lk for lk in looks if (lk.get("round") or 0) == top]
+            return latest[0].get("title") or ""
+        return ""
+
+    def _designer_row(s):
+        f = s.get("fields", {})
+        finals = s.get("final_images") or []
+        return {"id": s["id"], "business_name": f.get("business_name"),
+                "business_type": f.get("business_type"), "industry": f.get("industry"),
+                "design_preferences": f.get("design_preferences"),
+                "requirements_notes": f.get("requirements_notes"),
+                "brand_colours": f.get("brand_colours"),
+                "chosen_look": _chosen_look(s["id"]), "final_images": finals,
+                "final_status": "Done" if finals else "Pending final edit",
+                "sent_to_designers_at": s.get("sent_to_designers_at")}
+
+    def list_designer():
+        """One row per case sent to designers. Pending final edits sort first."""
+        rows = [_designer_row(s) for s in store.list_states() if s.get("sent_to_designers_at")]
+        rows.sort(key=lambda r: (r["final_status"] == "Done", r["sent_to_designers_at"] or ""))
+        return guard.clean(rows, [])[0]
+
+    def _case_files(sid, s):
+        """Every generated image file for the case so far (looks + studio drafts)."""
+        urls = list(s.get("images") or [])
+        urls += [lk.get("url") for lk in store.looks(sid)]
+        urls += [d.get("url") for d in store.drafts(sid)]
+        out = []
+        for u in urls:
+            name = str(u or "").rsplit("/", 1)[-1]
+            if not name:
+                continue
+            p = MEDIA_DIR / name
+            if p.is_file():
+                out.append((name, p))
+        return out
+
+    def download_images(cid: str):
+        """Zip of every generated image for the case so far. Missing files are skipped."""
+        s = load(cid)
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            seen = set()
+            for name, p in _case_files(cid, s):
+                if name in seen:
+                    stem, dot, ext = name.rpartition(".")
+                    name = f"{stem}-{len(seen)}{dot}{ext}"
+                seen.add(name)
+                z.writestr(name, p.read_bytes())
+        return Response(content=buf.getvalue(), media_type="application/zip",
+                        headers={"Content-Disposition": f'attachment; filename="case-{cid}-images.zip"'})
+
+    async def upload_finals(cid: str, request: Request):
+        """Designer-ready final images: JPG/PNG only, up to 10 files, MAX_FILE_BYTES each."""
+        s = load(cid)
+        form = await request.form()
+        files = [v for k, v in form.multi_items() if k in ("files", "files[]") and hasattr(v, "read")]
+        if not files:
+            raise HTTPException(400, "Please attach at least one image.")
+        if len(files) > 10:
+            raise HTTPException(400, "Too many files. Upload up to 10 at a time.")
+        blobs = []
+        for f in files:
+            data = await f.read(MAX_FILE_BYTES + 1)
+            if len(data) > MAX_FILE_BYTES:
+                raise HTTPException(400, f"{f.filename or 'That file'} is too big. Max 10 MB.")
+            blobs.append((f.filename, data))
+        safe = re.sub(r"[^A-Za-z0-9_-]", "", cid) or "case"
+        urls = []
+        for fname, data in blobs:
+            try:
+                img, ext = clean_image(data)
+            except HTTPException:
+                raise HTTPException(400, f"{fname or 'That file'} isn't a readable JPG or PNG.")
+            name = f"final-{safe}-{uuid.uuid4().hex}{ext}"
+            (MEDIA_DIR / name).write_bytes(img)
+            urls.append(f"/media/{name}")
+        s.setdefault("final_images", []).extend(urls)
+        save(s)
+        store.audit(cid, actor(request), "final_images_uploaded", None,
+                    {"files": urls, "count": len(urls)})
+        return {"ok": True, "id": cid, "final_images": s["final_images"]}
 
     def list_consults():
         out = []
@@ -602,32 +707,54 @@ def make_router(store, save):
         store.audit(cid, act, "shortlist_add" if body.add else "shortlist_remove", did)
         return {"drafts": _shortlist_view(store, cid)["drafts"]}
 
+    staff_only = [Depends(require_staff)]
+    either = [Depends(require_staff_or_designer)]
     for prefix in ("/api/staff/clients", "/api/clients", "/api/admin/clients"):
-        r.add_api_route(prefix, list_clients, methods=["GET"])
-        r.add_api_route(prefix + "/{cid}", get_client, methods=["GET"])
-        r.add_api_route(prefix + "/{cid}/decision", decide, methods=["POST"])
-        r.add_api_route(prefix + "/{cid}/decision/preview", preview, methods=["POST"])
-    r.add_api_route("/api/staff/clients/{cid}/rejected-looks", rejected_looks, methods=["GET"])
-    r.add_api_route("/api/staff/consults", list_consults, methods=["GET"])
-    r.add_api_route("/api/staff/consults/{cid}/decision", consult_decide, methods=["POST"])
-    r.add_api_route("/api/staff/consults/{cid}/approve", consult_approve, methods=["POST"])
-    r.add_api_route("/api/staff/clients/{cid}/studio", studio_get, methods=["GET"])
-    r.add_api_route("/api/staff/clients/{cid}/studio/drafts", studio_drafts, methods=["POST"])
-    r.add_api_route("/api/staff/clients/{cid}/studio/remix", studio_remix, methods=["POST"])
-    r.add_api_route("/api/staff/clients/{cid}/studio/drafts/{did}/star", studio_star, methods=["POST"])
-    r.add_api_route("/api/staff/clients/{cid}/studio/drafts/{did}/pin", studio_pin, methods=["POST"])
-    r.add_api_route("/api/staff/clients/{cid}/studio/drafts/{did}/send", studio_send, methods=["POST"])
-    r.add_api_route("/api/staff/clients/{cid}/studio/share", studio_share, methods=["POST"])
-    r.add_api_route("/api/staff/clients/{cid}/studio/shares", studio_shares, methods=["GET"])
+        r.add_api_route(prefix, list_clients, methods=["GET"], dependencies=staff_only)
+        r.add_api_route(prefix + "/{cid}", get_client, methods=["GET"], dependencies=staff_only)
+        r.add_api_route(prefix + "/{cid}/decision", decide, methods=["POST"], dependencies=staff_only)
+        r.add_api_route(prefix + "/{cid}/decision/preview", preview, methods=["POST"],
+                        dependencies=staff_only)
+    r.add_api_route("/api/staff/clients/{cid}/rejected-looks", rejected_looks, methods=["GET"],
+                    dependencies=staff_only)
+    r.add_api_route("/api/staff/consults", list_consults, methods=["GET"], dependencies=staff_only)
+    r.add_api_route("/api/staff/consults/{cid}/decision", consult_decide, methods=["POST"],
+                    dependencies=staff_only)
+    r.add_api_route("/api/staff/consults/{cid}/approve", consult_approve, methods=["POST"],
+                    dependencies=staff_only)
+    r.add_api_route("/api/staff/clients/{cid}/studio", studio_get, methods=["GET"],
+                    dependencies=staff_only)
+    r.add_api_route("/api/staff/clients/{cid}/studio/drafts", studio_drafts, methods=["POST"],
+                    dependencies=staff_only)
+    r.add_api_route("/api/staff/clients/{cid}/studio/remix", studio_remix, methods=["POST"],
+                    dependencies=staff_only)
+    r.add_api_route("/api/staff/clients/{cid}/studio/drafts/{did}/star", studio_star, methods=["POST"],
+                    dependencies=staff_only)
+    r.add_api_route("/api/staff/clients/{cid}/studio/drafts/{did}/pin", studio_pin, methods=["POST"],
+                    dependencies=staff_only)
+    r.add_api_route("/api/staff/clients/{cid}/studio/drafts/{did}/send", studio_send, methods=["POST"],
+                    dependencies=staff_only)
+    r.add_api_route("/api/staff/clients/{cid}/studio/share", studio_share, methods=["POST"],
+                    dependencies=staff_only)
+    r.add_api_route("/api/staff/clients/{cid}/studio/shares", studio_shares, methods=["GET"],
+                    dependencies=staff_only)
     r.add_api_route("/api/staff/clients/{cid}/studio/shares/{tid}/revoke", studio_revoke,
-                    methods=["POST"])
-    r.add_api_route("/api/staff/clients/{cid}/studio/shortlist", studio_shortlist, methods=["GET"])
+                    methods=["POST"], dependencies=staff_only)
+    r.add_api_route("/api/staff/clients/{cid}/studio/shortlist", studio_shortlist, methods=["GET"],
+                    dependencies=staff_only)
     r.add_api_route("/api/staff/clients/{cid}/studio/shortlist/{did}", studio_shortlist_set,
-                    methods=["POST"])
-    r.add_api_route("/api/staff/clients/{cid}/send-to-designers", send_to_designers, methods=["POST"])
-    r.add_api_route("/api/staff/metrics", get_metrics, methods=["GET"])
-    r.add_api_route("/api/staff/traces", get_traces, methods=["GET"])
-    r.add_api_route("/api/staff/audit", get_audit, methods=["GET"])
+                    methods=["POST"], dependencies=staff_only)
+    r.add_api_route("/api/staff/clients/{cid}/send-to-designers", send_to_designers, methods=["POST"],
+                    dependencies=staff_only)
+    r.add_api_route("/api/staff/role", get_role, methods=["GET"], dependencies=either)
+    r.add_api_route("/api/staff/designer", list_designer, methods=["GET"], dependencies=either)
+    r.add_api_route("/api/staff/clients/{cid}/images.zip", download_images, methods=["GET"],
+                    dependencies=either)
+    r.add_api_route("/api/staff/clients/{cid}/final-images", upload_finals, methods=["POST"],
+                    dependencies=either)
+    r.add_api_route("/api/staff/metrics", get_metrics, methods=["GET"], dependencies=staff_only)
+    r.add_api_route("/api/staff/traces", get_traces, methods=["GET"], dependencies=staff_only)
+    r.add_api_route("/api/staff/audit", get_audit, methods=["GET"], dependencies=staff_only)
     return r
 
 

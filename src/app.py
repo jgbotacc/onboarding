@@ -626,8 +626,8 @@ if not (WEB / "index.html").exists() and (ROOT / "web" / "legacy" / "index.html"
 if (WEB / "index.html").exists():
     from fastapi.responses import FileResponse
 
-    for _page in ("/staff", "/review", "/admin", "/share",
-                  "/staff/{rest:path}", "/review/{rest:path}"):
+    for _page in ("/staff", "/review", "/admin", "/share", "/designer",
+                  "/staff/{rest:path}", "/review/{rest:path}", "/designer/{rest:path}"):
         app.add_api_route(_page, lambda rest="": FileResponse(WEB / "index.html"), methods=["GET"], include_in_schema=False)
     app.mount("/", StaticFiles(directory=WEB, html=True), name="web")
 else:

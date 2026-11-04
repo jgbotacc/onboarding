@@ -64,6 +64,7 @@ Routes (all under `/api/staff`, staff passcode applies):
 - `POST /api/staff/clients/{cid}/studio/drafts/{did}/pin`
 - `POST /api/staff/clients/{cid}/studio/drafts/{did}/send`
 To try it without a backend, open the staff page with `?mock=1` for demo data.
+Designer handoff page at `/designer` (staff passcode, or the `DESIGNER_PASSCODE` designer passcode): one row per case sent to designers, with an image zip download, final-image upload, and Done/Pending status.
 
 ## Docs
 - [Docs/PRD.md](Docs/PRD.md)
