@@ -12,14 +12,6 @@ AI-assisted onboarding chat for small businesses. A client uploads a PDF or phon
 - Save and resume in the same browser or with a private resume link. A file can be deleted before anything is saved.
 - Every reply has a next step, so there is no dead end.
 
-## What's new in v2
-- General document upload, including ACRA business profile photos, with confirm-before-save.
-- Four languages with English stored for staff and original text kept.
-- Three looks per round, pick or skip, up to 3 rounds. Rejected looks stored with round number.
-- Consult handoff: client message plus staff consult card with submitted details and next steps. No email alert for consults.
-- Staff views for clients, consults, rejected looks, metrics, traces, audit, and an email preview before a staff decision sends it.
-- Every model step traced with timing and cost in S$. NRIC numbers are dropped at reading and masked on the way out, as is any other client's email, phone or UEN.
-
 ## How it works
 One agent runs fixed steps:
 1. Read document: text or photo in, candidate fields out. Read-only.
