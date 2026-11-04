@@ -68,10 +68,6 @@ body { font-size: 1rem; line-height: 1.5; }
 }
 .header-avatar { width: 32px; height: 32px; object-fit: contain; flex: none; }
 .header-right { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.staff-tag {
-  font-size: 0.8125rem; line-height: 1rem; padding: 2px 8px; border-radius: 999px;
-  background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; white-space: nowrap;
-}
 .badge-demo {
   font-size: 0.75rem; line-height: 1rem; padding: 2px 8px;
   border: 1px solid var(--border); border-radius: 999px; color: var(--muted); white-space: nowrap;
@@ -81,9 +77,6 @@ body { font-size: 1rem; line-height: 1.5; }
   border: 1px solid var(--border); border-radius: var(--r);
   background: var(--surface); color: var(--text); font-size: 1rem; cursor: pointer;
 }
-.staff-nav { font-size: 1rem; font-weight: 600; color: var(--accent-ink); text-decoration: none; white-space: nowrap; }
-.staff-nav:hover { text-decoration: underline; }
-
 /* Buttons: secondary default, primary, danger, disabled. All >= 44px tall. */
 .btn {
   font: inherit; font-size: 1rem; font-weight: 600;

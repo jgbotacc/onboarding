@@ -26,6 +26,17 @@ export const PHASES: { id: CasePhase; label: string }[] = [
   { id: "sent", label: "Sent to designers" },
 ];
 
+/** Queue-row approximation of {@link casePhase} from list-level fields only:
+ *  sent once handed off, onboarding while still gathering details, drafts
+ *  under review otherwise. No detail fetch; the open case resolves exactly. */
+export function rowPhase(row: { status: string; sent_to_designers_at?: string | null }): CasePhase {
+  if (row.sent_to_designers_at) return "sent";
+  if (row.status === "handed_off" || row.status === "approved") return "sent";
+  if (row.status === "need_document" || row.status === "registering" ||
+    row.status === "missing_info" || row.status === "needs_info") return "onboarding";
+  return "drafts";
+}
+
 /** Which stage the case is in: sent once handed off, onboarding before any
  *  drafts/looks exist, drafts under review otherwise. */
 export function casePhase(d: StaffDetail, studio?: StudioDraft[]): CasePhase {
