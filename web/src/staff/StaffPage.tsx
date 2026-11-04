@@ -2,30 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { connectStaff, setOnAuthFail, setStaffKey, StaffAuthError, type StaffClient } from "./api";
 import CaseView from "./CaseView";
 import ConsultList from "./ConsultCard";
+import DesignerPage from "./DesignerPage";
 import Header from "../Header";
-import RejectedLooks from "./RejectedLooks";
-import StudioPanel from "./StudioPanel";
-import { FIELDS, type FieldKey } from "./fields";
-import { statusLabel, type Decision, type DecisionResult, type EmailInfo, type StaffDetail, type StaffRow } from "./types";
+import { PasscodeGate } from "./PasscodeGate";
+import { rowPhase, type CasePhase } from "./caseView";
+import { pickStaffView } from "./route";
+import { statusLabel, type StaffRow } from "./types";
 import { formatDate } from "./format";
 import "./staff.css";
-
-const FINAL = ["approved", "rejected"];
-
-const emailText = (e?: EmailInfo | null) => {
-  if (!e || !e.status) return "";
-  const raw = String(e.status);
-  const to = e.to || e.recipient;
-  const head = raw.split(",")[0].trim();
-  if (/^sent/i.test(head)) return `Email sent${to ? ` to ${to}` : ""}${/demo/i.test(head) ? " (demo)" : ""}.`;
-  return `Email: ${head.replace(/_/g, " ")}.`;
-};
-
-const DECISION_COPY: Record<Decision, { done: string; toast: string }> = {
-  approve: { done: "Approved", toast: "approved" },
-  reject: { done: "Rejected", toast: "rejected" },
-  more_info: { done: "Asked for more info", toast: "asked for more info" },
-};
 
 function Pill({ status }: { status: string }) {
   return (
@@ -35,310 +19,29 @@ function Pill({ status }: { status: string }) {
   );
 }
 
-function ImageGrid({ urls, label, onOpen }: { urls: string[]; label: string; onOpen: (u: string) => void }) {
-  if (!urls.length) return <p className="staff-empty">None</p>;
-  return (
-    <div className="staff-imgs">
-      {urls.map((u, i) => (
-        <button type="button" key={i} className="staff-img" onClick={() => onOpen(u)} aria-label={`Enlarge ${label} ${i + 1}`}>
-          <img src={u} alt={`${label} ${i + 1}`} loading="lazy" />
-        </button>
-      ))}
-    </div>
-  );
-}
-
-interface DetailProps {
-  client: StaffClient;
-  row: StaffRow;
-  onDecided: (id: string, status: string, msg: string) => void;
-  onOpen: (u: string) => void;
-}
-
-function Detail({ client, row, onDecided, onOpen }: DetailProps) {
-  const [d, setD] = useState<StaffDetail | null>(null);
-  const [err, setErr] = useState("");
-  const [mode, setMode] = useState<"idle" | "confirm_approve" | "confirm_reject" | "more_info">("idle");
-  const [ticked, setTicked] = useState<FieldKey[]>([]);
-  const [note, setNote] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ decision: Decision; res: DecisionResult } | null>(null);
-  const [failed, setFailed] = useState("");
-  const [tab, setTab] = useState<"details" | "studio">("details");
-
-  useEffect(() => {
-    let alive = true;
-    client
-      .detail(row.id)
-      .then((x) => alive && setD(x))
-      .catch((e: Error) => alive && (console.error(e), setErr("Couldn't load this client. Please try again.")));
-    return () => {
-      alive = false;
-    };
-  }, [client, row.id]);
-
-  const decide = async (decision: Decision) => {
-    setBusy(true);
-    setFailed("");
-    try {
-      const res = await client.decide(row.id, { decision, fields: decision === "more_info" ? ticked : [], note: decision === "more_info" ? note.trim() : "" });
-      if (!res || res.ok === false) throw new Error("not saved");
-      setResult({ decision, res });
-      setMode("idle");
-      onDecided(row.id, res.status, `${row.business_name || "Client"} ${DECISION_COPY[decision].toast}. ${emailText(res.email)}`.trim());
-    } catch (e) {
-      console.error(e);
-      setFailed("That didn't go through. Please try again.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  if (err) return <div className="staff-detail"><p className="field-error">{err}</p></div>;
-  if (!d) return <div className="staff-detail"><p className="staff-empty">Loading…</p></div>;
-
-  const status = result?.res.status || row.status;
-  const canDecide = !result && !FINAL.includes(status);
-  const name = d.fields.business_name || "this client";
-
-  return (
-    <div className="staff-detail">
-      <div className="staff-tabs" role="tablist" aria-label="Client sections">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "details"}
-          aria-controls={`panel-details-${row.id}`}
-          id={`tab-details-${row.id}`}
-          className={"staff-tab" + (tab === "details" ? " on" : "")}
-          onClick={() => setTab("details")}
-        >
-          Details
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "studio"}
-          aria-controls={`panel-studio-${row.id}`}
-          id={`tab-studio-${row.id}`}
-          className={"staff-tab" + (tab === "studio" ? " on" : "")}
-          onClick={() => setTab("studio")}
-        >
-          Studio
-        </button>
-      </div>
-      {tab === "studio" ? (
-        <div id={`panel-studio-${row.id}`} role="tabpanel" aria-labelledby={`tab-studio-${row.id}`}>
-          <StudioPanel client={client} clientId={row.id} onOpen={onOpen} />
-        </div>
-      ) : (
-      <div id={`panel-details-${row.id}`} role="tabpanel" aria-labelledby={`tab-details-${row.id}`}>
-      <div className="staff-contactcard">
-        <div className="staff-cc-item">
-          <span className="staff-cc-label">Contact</span>
-          <span className="staff-cc-value">{d.fields.contact_name || "Not given"}</span>
-        </div>
-        <div className="staff-cc-item">
-          <span className="staff-cc-label">Email</span>
-          {d.fields.email ? (
-            <a className="staff-cc-value" href={`mailto:${d.fields.email}`}>
-              {d.fields.email}
-            </a>
-          ) : (
-            <span className="staff-cc-value">Not given</span>
-          )}
-        </div>
-      </div>
-
-      <div className="staff-section">
-        <h3>Business details</h3>
-        <dl className="staff-kv">
-          {FIELDS.map((f) => (
-            <div key={f.key} className="staff-kv-row">
-              <dt>{f.label}:</dt>
-              <dd>{(d.fields[f.key] || "").trim() || <span className="staff-empty">Not given</span>}</dd>
-            </div>
-          ))}
-        </dl>
-      </div>
-
-      <div className="staff-section">
-        <h3>Designs</h3>
-        <ImageGrid urls={d.images} label="Design" onOpen={onOpen} />
-      </div>
-      <div className="staff-section">
-        <h3>Reference images</h3>
-        <ImageGrid urls={d.reference_images} label="Reference image" onOpen={onOpen} />
-      </div>
-
-      <RejectedLooks client={client} clientId={row.id} onOpen={onOpen} />
-      <ConsultList client={client} clientId={row.id} />
-
-      {result && (
-        <div className="staff-result" role="status" data-decision={result.decision}>
-          <strong>{DECISION_COPY[result.decision].done}.</strong> {emailText(result.res.email)}
-          {result.res.resume_url && (
-            <div className="staff-result-sub">
-              Update link: <a href={result.res.resume_url}>{result.res.resume_url}</a>
-            </div>
-          )}
-        </div>
-      )}
-      {!result && d.outbox?.length ? (
-        <div className="staff-result">Latest: {emailText(d.outbox[d.outbox.length - 1])}</div>
-      ) : null}
-      {!canDecide && !result && <div className="staff-result">Already decided: {statusLabel(status)}.</div>}
-      {failed && <p className="field-error" role="alert">{failed}</p>}
-
-      {canDecide && mode === "more_info" && (
-        <div className="staff-panel" id={`moreInfo-${row.id}`}>
-          <fieldset className="staff-ticks">
-            <legend>What should {name} update?</legend>
-            <div className="staff-tick-grid">
-              {FIELDS.map((f) => (
-                <label key={f.key} className="staff-tick">
-                  <input
-                    type="checkbox"
-                    checked={ticked.includes(f.key)}
-                    onChange={(e) => setTicked((p) => (e.target.checked ? [...p, f.key] : p.filter((k) => k !== f.key)))}
-                  />
-                  {f.label}
-                </label>
-              ))}
-            </div>
-          </fieldset>
-          <div className="field">
-            <label htmlFor={`note-${row.id}`}>Note to the client (optional)</label>
-            <textarea id={`note-${row.id}`} rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Please share a working website link." />
-          </div>
-          <div className="staff-actions">
-            <span className="staff-hint">{ticked.length ? `${ticked.length} field${ticked.length === 1 ? "" : "s"} picked` : "Pick at least one"}</span>
-            <button type="button" className="btn" disabled={busy} onClick={() => setMode("idle")}>
-              Cancel
-            </button>
-            <button type="button" className="btn primary" disabled={busy || !ticked.length} onClick={() => decide("more_info")}>
-              Send request
-            </button>
-          </div>
-        </div>
-      )}
-
-      {canDecide && (mode === "confirm_approve" || mode === "confirm_reject") && (
-        <div className={"staff-confirm" + (mode === "confirm_reject" ? " danger" : "")} role="alertdialog" aria-label="Confirm decision">
-          <span>
-            {mode === "confirm_approve"
-              ? `Approve ${name}? We'll email them that their designs are approved.`
-              : `Reject ${name}? We'll email them and stop their onboarding.`}
-          </span>
-          <div className="staff-actions">
-            <button type="button" className="btn" disabled={busy} onClick={() => setMode("idle")}>
-              Cancel
-            </button>
-            {mode === "confirm_approve" ? (
-              <button type="button" className="btn primary" disabled={busy} onClick={() => decide("approve")}>
-                Yes, approve
-              </button>
-            ) : (
-              <button type="button" className="btn btn-danger" disabled={busy} onClick={() => decide("reject")}>
-                Yes, reject
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {canDecide && mode === "idle" && (
-        <div className="staff-actions staff-actions-main">
-          <button type="button" className="btn btn-danger-outline" onClick={() => setMode("confirm_reject")}>
-            Reject
-          </button>
-          <button type="button" className="btn" onClick={() => setMode("more_info")}>
-            Ask for more info
-          </button>
-          <button type="button" className="btn primary" onClick={() => setMode("confirm_approve")}>
-            Approve
-          </button>
-        </div>
-      )}
-      </div>
-      )}
-    </div>
-  );
-}
-
-/** The older Detail panel (approve, studio, share links), hidden behind a toggle so nothing is lost. */
-function FullDetails({ client, row, onDecided, onOpen }: DetailProps) {
-  const [show, setShow] = useState(false);
-  return (
-    <div className="cv-full">
-      <button
-        type="button"
-        className="btn cv-toggle"
-        aria-expanded={show}
-        aria-controls={`full-${row.id}`}
-        onClick={() => setShow((v) => !v)}
-      >
-        {show ? "Hide full details and studio" : "Full details and studio"}
-      </button>
-      {show && (
-        <div id={`full-${row.id}`}>
-          <Detail client={client} row={row} onDecided={onDecided} onOpen={onOpen} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-const designerHref = () => (window.location.hash.startsWith("#/") ? "#/designer" : "/designer");
-
-/** Designers sign in on the same screen but work on the designer page. */
+/** The staff address shows the designer view for designer passcodes, so this
+ * just reloads the same address instead of navigating to a designer address. */
 export function goDesigner() {
-  if (window.location.hash.startsWith("#/")) window.location.hash = "#/designer";
-  else window.location.assign(designerHref());
-}
-
-/** [staff-key] Passcode screen shown before any staff data loads, and again after a 401. */
-export function PasscodeGate({ error, onSubmit }: { error: string; onSubmit: (key: string) => void }) {
-  const [key, setKey] = useState("");
-  return (
-    <form
-      className="staff-gate"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (key.trim()) onSubmit(key.trim());
-      }}
-    >
-      <h2>Staff sign-in</h2>
-      <p className="staff-empty">Enter your staff or designer passcode to continue.</p>
-      <label htmlFor="staffKey">Passcode</label>
-      <input id="staffKey" type="password" autoComplete="current-password" autoFocus value={key} onChange={(e) => setKey(e.target.value)} />
-      {error && (
-        <p className="field-error" role="alert">
-          {error}
-        </p>
-      )}
-      <button type="submit" className="btn primary" disabled={!key.trim()}>
-        Continue
-      </button>
-    </form>
-  );
+  window.location.reload();
 }
 
 export default function StaffPage() {
   const [client, setClient] = useState<StaffClient | null>(null);
   const [rows, setRows] = useState<StaffRow[]>([]);
   const [open, setOpen] = useState<string | null>(null);
-  // Current CaseView tab per open row, so the full-details toggle only shows on drafts.
-  const [cvPhase, setCvPhase] = useState<{ id: string; phase: string } | null>(null);
+  // Tab the open row starts on; set by the queue's "Review drafts" next step.
+  const [openPhase, setOpenPhase] = useState<CasePhase | null>(null);
   const [toast, setToast] = useState("");
   const [lightbox, setLightbox] = useState<string | null>(null);
   const toastTimer = useRef<number>(0);
   const [gate, setGate] = useState<{ error: string } | null>(null);
+  // Designer passcodes stay on the staff address and see the designer view.
+  const [designerView, setDesignerView] = useState(() => pickStaffView(null, window.location.search) === "designer");
 
   const load = () =>
     connectStaff().then((r) => {
       if (!r.client && r.role === "designer") {
-        goDesigner();
+        setDesignerView(true);
         return;
       }
       if (r.client) {
@@ -378,20 +81,18 @@ export default function StaffPage() {
     toastTimer.current = window.setTimeout(() => setToast(""), 5000);
   };
 
+  if (designerView) return <DesignerPage />;
+
   return (
     <div className="staff">
       <Header
         title="Client onboarding"
-        label={<span className="staff-tag">Staff review</span>}
         right={
-          <>
-            {client?.mock && (
-              <span className="badge-demo" id="demoBadge">
-                Demo (sample data)
-              </span>
-            )}
-            <a className="staff-nav" href={window.location.hash.startsWith("#/") ? "#/designer" : "/designer"}>Designer</a>
-          </>
+          client?.mock ? (
+            <span className="badge-demo" id="demoBadge">
+              Demo (sample data)
+            </span>
+          ) : null
         }
       />
       <main className="staff-main">
@@ -413,6 +114,7 @@ export default function StaffPage() {
           <ul className="staff-list">
             {rows.map((r, i) => {
               const isOpen = open === r.id;
+              const next = rowPhase(r);
               return (
                 <li key={r.id} className={"staff-item" + (isOpen ? " open" : "")}>
                   <button
@@ -420,7 +122,7 @@ export default function StaffPage() {
                     className="staff-row"
                     aria-expanded={isOpen}
                     aria-controls={`detail-${r.id}`}
-                    onClick={() => setOpen(isOpen ? null : r.id)}
+                    onClick={() => { setOpen(isOpen ? null : r.id); setOpenPhase(null); }}
                   >
                     <span className="staff-queue-num" aria-hidden="true">{i + 1}</span>
                     <span className="staff-thumb">{r.image ? <img src={r.image} alt="" /> : null}</span>
@@ -439,19 +141,28 @@ export default function StaffPage() {
                       <path d="m4 6 4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   </button>
+                  <div className="staff-next">
+                    {next === "drafts" ? (
+                      <button type="button" className="btn staff-next-btn" onClick={() => { setOpen(r.id); setOpenPhase("drafts"); }}>
+                        Review drafts
+                      </button>
+                    ) : next === "sent" ? (
+                      <span className="staff-next-muted">With designers</span>
+                    ) : (
+                      <span className="staff-next-muted">Waiting for client</span>
+                    )}
+                  </div>
                   {isOpen && client && (
                     <div id={`detail-${r.id}`}>
                       <CaseView
+                        key={`${r.id}:${openPhase ?? "auto"}`}
                         client={client}
                         row={r}
-                        onBack={() => { setOpen(null); setCvPhase(null); }}
+                        onBack={() => { setOpen(null); setOpenPhase(null); }}
                         onOpen={setLightbox}
                         onDecided={onDecided}
                         onSent={onSent}
-                        onPhase={(p) => setCvPhase({ id: r.id, phase: p })}
-                        fullDetails={cvPhase?.id === r.id && cvPhase.phase === "drafts" ? (
-                          <FullDetails client={client} row={r} onDecided={onDecided} onOpen={setLightbox} />
-                        ) : null}
+                        initialPhase={openPhase}
                       />
                     </div>
                   )}

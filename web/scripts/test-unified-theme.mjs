@@ -34,7 +34,8 @@ for (const [name, body] of [["App", app], ["StaffPage", staffPage], ["DesignerPa
 }
 // The sign-in gate renders under the page header, never its own copy.
 pass("sign-in gate lives on a Header page", staffPage.includes("PasscodeGate") && /<Header[\s>]/.test(staffPage));
-pass("sign-in copy unchanged", /Staff sign-in/.test(staffPage) && /staff or designer passcode/.test(staffPage));
+const gatePage = readFileSync(join(src, "staff", "PasscodeGate.tsx"), "utf8");
+pass("sign-in copy unchanged", /Staff sign-in/.test(gatePage) && /staff or designer passcode/.test(gatePage));
 
 // --- One shared stylesheet, imported once in main.tsx.
 pass("theme.css imported once in main.tsx", (main.match(/theme\.css/g) || []).length === 1);
@@ -125,8 +126,8 @@ const formModal = readFileSync(join(src, "FormModal.tsx"), "utf8");
 for (const id of ["formModal", "formModalTitle", "formSubmit", "refAddBtn"]) {
   pass(`client form keeps id ${id}`, formModal.includes(`id="${id}"`));
 }
-pass("staff keeps the Designer link", />Designer<\/a>/.test(staffPage) && /#\/designer/.test(staffPage));
-pass("designer keeps the staff-only link", /role === "staff" &&/.test(designerPage));
+pass("staff header keeps no Designer link", !/>Designer<\/a>/.test(staffPage) && !/staff-nav/.test(staffPage));
+pass("designer header keeps no staff link", !/>Staff<\/a>/.test(designerPage) && !/staff-nav/.test(designerPage));
 pass("no model names on any page",
   [app, staffPage, designerPage].every((b) =>
     !/\b(gpt-?\d|claude|gemini|llama|mistral|mixtral|grok|deepseek|palm|falcon)\b/i.test(b)));

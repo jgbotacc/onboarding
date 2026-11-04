@@ -1,7 +1,7 @@
 // Shared page header (design C): logo, product name, page label and an
-// optional right-side slot (language picker on the client page, the Designer
-// link on the staff page). Used by the client, staff and designer pages; the
-// staff/designer sign-in screen renders under the page header.
+// optional right-side slot (language picker on the client page, the demo
+// badge on the staff/designer pages). Used by the client, staff and designer
+// pages; the staff/designer sign-in screen renders under the page header.
 import type { ReactNode } from "react";
 
 const ASSET = import.meta.env.BASE_URL;
@@ -9,9 +9,9 @@ const ASSET = import.meta.env.BASE_URL;
 export default function Header({ title, label, right }: {
   /** Product or page name shown in the header. */
   title: ReactNode;
-  /** Page label shown after the name (status pill, "Staff review" tag). */
+  /** Page label shown after the name (status pill on the client page). */
   label?: ReactNode;
-  /** Right-side content (language picker, demo badge, nav link). */
+  /** Right-side content (language picker, demo badge). */
   right?: ReactNode;
 }) {
   return (

@@ -12,6 +12,7 @@ let n = 0;
 const pass = (name, cond) => (n++, assert.ok(cond, name));
 
 const page = readFileSync(join(root, "src", "staff", "StaffPage.tsx"), "utf8");
+const caseView = readFileSync(join(root, "src", "staff", "CaseView.tsx"), "utf8");
 const api = readFileSync(join(root, "src", "staff", "api.ts"), "utf8");
 const types = readFileSync(join(root, "src", "staff", "types.ts"), "utf8");
 const mock = readFileSync(join(root, "src", "staff", "mock.ts"), "utf8");
@@ -36,7 +37,7 @@ pass("traces table has no cost_sgd", !/cost_sgd/.test(page));
 // The client queue and everything else are untouched.
 pass("queue kept", /Client queue/.test(page));
 pass("consult list kept", /ConsultList/.test(page));
-pass("studio kept", /StudioPanel/.test(page));
+pass("studio kept", /StudioPanel/.test(caseView));
 pass("no Step traces section", !/Step traces/.test(page));
 
 console.log(`staff-no-cost-section: ${n} checks passed`);

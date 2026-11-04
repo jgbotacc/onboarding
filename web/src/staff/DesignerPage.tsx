@@ -1,12 +1,10 @@
 import { useEffect, useState } from "react";
-import { connectDesigner, setOnAuthFail, setStaffKey, type StaffClient, type StaffRole } from "./api";
+import { connectDesigner, setOnAuthFail, setStaffKey, type StaffClient } from "./api";
 import { maskSensitive } from "./caseView";
-import { PasscodeGate } from "./StaffPage";
+import { PasscodeGate } from "./PasscodeGate";
 import Header from "../Header";
 import type { DesignerRow } from "./types";
 import "./staff.css";
-
-const staffHref = () => (window.location.hash.startsWith("#/") ? "#/staff" : "/staff");
 
 const cell = (v: string | null) => (v && v.trim() ? maskSensitive(v) : "—");
 
@@ -110,7 +108,6 @@ function DesignerRowView({ client, row, onUploaded }: {
 export default function DesignerPage() {
   const [client, setClient] = useState<StaffClient | null>(null);
   const [rows, setRows] = useState<DesignerRow[] | null>(null);
-  const [role, setRole] = useState<StaffRole | null>(null);
   const [gate, setGate] = useState<{ error: string } | null>(null);
 
   const load = () =>
@@ -118,7 +115,6 @@ export default function DesignerPage() {
       if (r.client) {
         setClient(r.client);
         setRows(r.rows);
-        setRole(r.role);
         setGate(null);
       } else {
         setClient(null);
@@ -131,7 +127,6 @@ export default function DesignerPage() {
     setOnAuthFail((e) => {
       setClient(null);
       setRows(null);
-      setRole(null);
       setGate({ error: e.status === 503 ? e.message : "You've been signed out. Enter the passcode again." });
     });
     load();
@@ -144,12 +139,8 @@ export default function DesignerPage() {
     <div className="staff">
       <Header
         title="Designer handoff"
-        label={<span className="staff-tag">Staff review</span>}
         right={
-          <>
-            {client?.mock && <span className="badge-demo" id="demoBadge">Demo (sample data)</span>}
-            {role === "staff" && <a className="staff-nav" href={staffHref()}>Staff</a>}
-          </>
+          client?.mock ? <span className="badge-demo" id="demoBadge">Demo (sample data)</span> : null
         }
       />
       <main className="staff-main">
