@@ -3,6 +3,7 @@ import { connect, HttpError, type Client } from "./api";
 import { EMPTY_FORM, type ApiResponse, type ConsultInfo, type ExtractedField, type FieldIssue, type FormFields, type Looks, type RetakeInfo, type SuggestedLook } from "./types";
 import ConfirmDetails from "./confirm/ConfirmDetails";
 import FormModal from "./FormModal";
+import Header from "./Header";
 import LooksPicker from "./looks/LooksPicker";
 import { mergeLooks, mergeSuggested } from "./looks/refresh";
 import { toFieldKeys } from "./staff/fields";
@@ -416,31 +417,36 @@ export default function App() {
 
   return (
     <div className="app" onDragEnter={onDragEnter} onDragOver={(e) => e.preventDefault()} onDragLeave={onDragLeave} onDrop={onDrop}>
-      <header className="header">
-        <img className="header-avatar" src={ASSET + "agent-64.png"} alt="" aria-hidden="true" width={24} height={24} />
-        <h1>{t(lang, "appTitle")}</h1>
-        <span className="pill" id="statusPill" data-status={status}>
-          {statusLabel(lang, status)}
-        </span>
-        <select
-          className="lang-select"
-          id="langSelect"
-          value={lang}
-          onChange={(e) => setLang(e.target.value as Lang)}
-          aria-label={t(lang, "language")}
-        >
-          {LANGS.map((l) => (
-            <option key={l.code} value={l.code}>
-              {l.name}
-            </option>
-          ))}
-        </select>
-        {client?.mock && (
-          <span className="badge-demo" id="demoBadge">
-            {t(lang, "demoBadge")}
+      <Header
+        title={t(lang, "appTitle")}
+        label={
+          <span className="pill" id="statusPill" data-status={status}>
+            {statusLabel(lang, status)}
           </span>
-        )}
-      </header>
+        }
+        right={
+          <>
+            <select
+              className="lang-select"
+              id="langSelect"
+              value={lang}
+              onChange={(e) => setLang(e.target.value as Lang)}
+              aria-label={t(lang, "language")}
+            >
+              {LANGS.map((l) => (
+                <option key={l.code} value={l.code}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
+            {client?.mock && (
+              <span className="badge-demo" id="demoBadge">
+                {t(lang, "demoBadge")}
+              </span>
+            )}
+          </>
+        }
+      />
 
       <main className="chat" id="chat" ref={chatRef} aria-live="polite">
         <div className="column">
