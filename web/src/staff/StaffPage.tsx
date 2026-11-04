@@ -451,12 +451,12 @@ export default function StaffPage() {
           {client && <MetricsPanel client={client} />}
           {client && <ConsultList client={client} />}
           <div className="staff-title">
-            <h2>Submissions</h2>
+            <h2>Client queue</h2>
             <span className="staff-count">{client ? `${rows.length} client${rows.length === 1 ? "" : "s"}` : "Loading…"}</span>
           </div>
           {client && !rows.length && <p className="staff-empty">No submissions yet.</p>}
           <ul className="staff-list">
-            {rows.map((r) => {
+            {rows.map((r, i) => {
               const isOpen = open === r.id;
               return (
                 <li key={r.id} className={"staff-item" + (isOpen ? " open" : "")}>
@@ -467,6 +467,7 @@ export default function StaffPage() {
                     aria-controls={`detail-${r.id}`}
                     onClick={() => setOpen(isOpen ? null : r.id)}
                   >
+                    <span className="staff-queue-num" aria-hidden="true">{String(i + 1).padStart(2, "0")}</span>
                     <span className="staff-thumb">{r.image ? <img src={r.image} alt="" /> : null}</span>
                     <span className="staff-who">
                       <span className="staff-name">{r.business_name || "No business name"}</span>
@@ -476,6 +477,7 @@ export default function StaffPage() {
                       </span>
                     </span>
                     <span className="staff-date">{r.updated ? fmtDate(r.updated) : ""}</span>
+                    <span className="staff-dot" data-status={r.status} aria-hidden="true" />
                     <Pill status={r.status} />
                     <svg className="staff-chev" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
                       <path d="m4 6 4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />

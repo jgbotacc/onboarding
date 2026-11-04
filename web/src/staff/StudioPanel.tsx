@@ -272,6 +272,15 @@ export default function StudioPanel({ client, clientId, onOpen }: Props) {
 
       <div className="staff-section">
         <h3>New drafts</h3>
+        <div className="staff-allow" aria-live="polite">
+          <div className="staff-allow-top">
+            <span>Draft allowance</span>
+            <span>{remaining} of {data.cap} left</span>
+          </div>
+          <div className="staff-allow-track" role="img" aria-label={`${remaining} of ${data.cap} drafts left`}>
+            <div className="staff-allow-fill" style={{ width: `${data.cap ? Math.round((remaining / data.cap) * 100) : 0}%` }} />
+          </div>
+        </div>
         <div className="field">
           <label htmlFor={`studio-prompt-${clientId}`}>Design direction (optional, up to 500 characters)</label>
           <textarea
