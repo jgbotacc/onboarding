@@ -199,14 +199,14 @@ a.staff-cc-value:hover { text-decoration: underline; }
   .staff .header h1 { font-size: 20px; line-height: 28px; }
   .staff-main { padding: 8px 12px 96px; }
   .staff-column { padding: 16px; border-radius: 16px; }
-  .staff-row { grid-template-columns: 24px 40px minmax(0, 1fr) auto 16px; grid-template-areas: "n t w w c" "n t m p c"; gap: 4px 12px; padding: 12px; }
+  .staff-row { grid-template-columns: 24px 40px minmax(0, 1fr) 16px; grid-template-areas: "n t w c" "n t m c" "n t p c"; gap: 4px 12px; padding: 12px; }
   .staff-queue-num { grid-area: n; }
   .staff-thumb { grid-area: t; width: 40px; height: 40px; }
   .staff-who { grid-area: w; }
   .staff-chev { grid-area: c; }
   .staff-dot { display: none; }
-  .staff-row .staff-date { grid-area: m; font-size: 12px; }
-  .staff-row .staff-pill { grid-area: p; justify-self: end; }
+  .staff-row .staff-date { grid-area: m; font-size: 12px; min-width: 0; }
+  .staff-row .staff-pill { grid-area: p; justify-self: start; max-width: 100%; }
   .staff-detail { padding: 4px 0 12px; }
   .staff-kv { grid-template-columns: 1fr; }
   .staff-tick-grid { grid-template-columns: 1fr 1fr; }
