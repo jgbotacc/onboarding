@@ -318,7 +318,8 @@ Gaps and workarounds:
 ### 4.8 Client feedback and share links
 
 Feature: the client hearts or rejects studio drafts, and staff send a no-login share link where
-the client approves a draft or asks for changes. Tracking card: Jira KAN-18. No code this round.
+the client approves a draft or asks for changes. Tracking card: Jira KAN-18. Built 2026-11-04
+(backend only: migration 008, both stores, staff + public routes; no web UI yet).
 Docs checked 2026-11-04.
 
 Design decisions (fixed here so build has no open questions):
@@ -400,7 +401,9 @@ sent for this session; a `heart` also inserts the shortlist row, a `reject` also
 `shortlist_for(sid)`, `issue_share_token(sid, actor, days=7) -> (id, token)` (one transaction:
 insert hash row, audit `share_issued`; the plaintext token is returned once and never stored),
 `find_share_token(token) -> row | None` (hash, then check session, expiry and `revoked_at`),
-`revoke_share_token(id, actor)`, `sweep_expired_tokens() -> int` (deletes rows past expiry).
+`revoke_share_token(id, actor)`, `mark_share_used(id, at)` (first successful public read),
+`shares_for(sid)` (staff list: id, expiry and status only, never hashes or tokens),
+`sweep_expired_tokens() -> int` (deletes rows past expiry).
 
 ##### 4.8.3.3 API routes
 Staff (existing staff router, so `require_staff` applies):
@@ -420,8 +423,10 @@ Public (no login; the token is the only secret):
 | `GET /api/share/{token}` | none | `{business_name, drafts:[{id, url, title, liked: bool}], shortlist:[id], decided: null \| {draft_id, kind}}`. 404 for unknown/revoked, 410 for expired |
 | `POST /api/share/{token}/feedback` | `{draft_id, kind: 'heart' \| 'reject' \| 'approve' \| 'changes', note?: str<=500}` | `{ok:true, shortlist:[id]}`. `note` is required for `changes` and ignored for other kinds |
 
-`approve` records the final pick and marks the draft's `looks` row selected, like a client pick.
-`changes` appends the scrubbed note to the feedback feed for the next brief round.
+`approve` records the final pick and marks the draft's `looks` row selected, like a client pick
+(when the client's session is still awaiting review and holds the look, the session is marked
+accepted too). `changes` appends the scrubbed note to the feedback feed for the next brief round.
+`decided` on the share GET is the latest `approve`, else the latest `changes`, else null.
 
 #### 4.8.4 Auth and secrets (names only)
 
@@ -442,7 +447,10 @@ Public (no login; the token is the only secret):
   audit row); the plaintext token is returned only after the commit. In Neo4j each is one Cypher
   statement, so one atomic Query API request. The per-session lock in `app.py` wraps public
   feedback writes, so two taps on one link cannot double-insert (shortlist insert is idempotent).
-- **Reconciliation:** `sweep_expired_tokens` runs on share GET and in `scripts/reconcile.py`.
+- **Reconciliation:** `sweep_expired_tokens` runs on share GET (after the token resolves, so an
+  expired link still reads 410 on that request) and in `scripts/reconcile.py`. The metrics API
+  lists a `drift` array: sent drafts with a missing media file or no matching `looks` row,
+  feedback rows pointing at deleted drafts, and shortlist rows for unsent drafts.
   Feedback rows pointing at deleted drafts, and shortlist rows for unsent drafts, are listed in the
   metrics API as drift (same pattern as sent-draft drift in 4.7.5) rather than silently dropped.
   Expired tokens read as 410 ("this link has expired, ask our team for a new one"); revoked or

@@ -230,6 +230,7 @@ def switch_lang(s, text):
 
 
 app.include_router(staff.make_router(store, _save))
+app.include_router(staff.make_share_router(store, _save, _lock_for))
 
 
 @app.get("/api/resume/{token}")
