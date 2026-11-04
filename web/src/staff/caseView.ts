@@ -1,5 +1,6 @@
 // Case view model: stages and steps derived from the client detail API only.
 // No new backend. Stages shown are the six that exist on main.
+import { stepName } from "./format";
 import type { AuditEntry, StaffDetail, StudioDraft } from "./types";
 
 export type StageId = "intake" | "reading" | "brief" | "drafts" | "approval" | "done";
@@ -27,6 +28,8 @@ export interface CaseStep {
   waiting: boolean;
   waitingOn: "staff" | "client" | null;
   status: StepStatus;
+  /** Plain-words handoff shown on the card that starts a new stage, e.g. "brand brief sent to image drafts". */
+  handoff: string | null;
 }
 
 export interface CaseStage {
@@ -88,7 +91,7 @@ export function buildCase(d: StaffDetail, studio?: StudioDraft[], nowMs = Date.n
       id: `chat-${i}`, stage: "intake",
       title: m.role === "client" ? `Client: ${short(m.text, 42) || "message"}` : `Reply: ${short(m.text, 42) || "message"}`,
       at: m.at || null, trigger: `${who} wrote in the intake chat.`, output: m.text || "—",
-      audit: auditFor(null, (a) => !!m.at && a.at === m.at), waiting: false, waitingOn: null, status: "queued",
+      audit: auditFor(null, (a) => !!m.at && a.at === m.at), waiting: false, waitingOn: null, status: "queued", handoff: null,
     });
   }
 
@@ -98,7 +101,7 @@ export function buildCase(d: StaffDetail, studio?: StudioDraft[], nowMs = Date.n
       id: `doc-${docId}`, stage: "reading",
       title: `Read ${doc.filename || docId}`,
       at: up?.at || null, trigger: "The client uploaded a file.", output: `Extracted details${d.fields.business_name ? ` for ${d.fields.business_name}` : ""}.`,
-      audit: auditFor(docId), waiting: false, waitingOn: null, status: "queued",
+      audit: auditFor(docId), waiting: false, waitingOn: null, status: "queued", handoff: null,
     });
   }
 
@@ -107,10 +110,10 @@ export function buildCase(d: StaffDetail, studio?: StudioDraft[], nowMs = Date.n
     if (!stage || stage === "drafts") continue; // drafts traces join the look/draft steps
     steps.push({
       id: `trace-${i}`, stage,
-      title: t.step.replace(/_/g, " ") + (t.ok === false ? " (retry)" : ""),
+      title: stepName(t.step) + (t.ok === false ? " (retry)" : ""),
       at: t.at || null, trigger: "Automatic step in the pipeline.",
       output: t.ok === false ? "Failed; retried." : `Finished in ${(t.ms / 1000).toFixed(1)}s.`,
-      audit: auditFor(null, (a) => !!t.at && a.at === t.at), waiting: false, waitingOn: null, status: "queued",
+      audit: auditFor(null, (a) => !!t.at && a.at === t.at), waiting: false, waitingOn: null, status: "queued", handoff: null,
     });
   }
 
@@ -121,7 +124,7 @@ export function buildCase(d: StaffDetail, studio?: StudioDraft[], nowMs = Date.n
       at: d.consult.decided_at || d.consult.created || null,
       trigger: "Design direction needed a human check.",
       output: (d.consult.next_steps || []).join("; ") || "—",
-      audit: auditFor(d.consult.id), waiting: false, waitingOn: null, status: "queued",
+      audit: auditFor(d.consult.id), waiting: false, waitingOn: null, status: "queued", handoff: null,
     });
   }
 
@@ -133,7 +136,7 @@ export function buildCase(d: StaffDetail, studio?: StudioDraft[], nowMs = Date.n
       trigger: l.selected ? "Picked by the client." : `Generated for round ${l.round ?? "—"}.`,
       output: l.brief || "—",
       audit: [...auditFor(l.id), ...auditFor(null, (a) => !!l.at && a.at === l.at && /look_selected/.test(a.action || ""))],
-      waiting: false, waitingOn: null, status: "queued",
+      waiting: false, waitingOn: null, status: "queued", handoff: null,
     });
   }
 
@@ -145,16 +148,16 @@ export function buildCase(d: StaffDetail, studio?: StudioDraft[], nowMs = Date.n
       at: s.created_at || null,
       trigger: s.author && String(s.author).startsWith("staff:") ? "Made by staff in the studio." : "Generated draft.",
       output: s.marketer_prompt || s.style_title || "—",
-      audit: auditFor(s.id), waiting: false, waitingOn: null, status: "queued",
+      audit: auditFor(s.id), waiting: false, waitingOn: null, status: "queued", handoff: null,
     });
   }
 
   for (const [i, dec] of (d.decisions || []).entries()) {
     steps.push({
       id: `decision-${i}`, stage: "approval",
-      title: `Decision: ${String(dec.decision).replace(/_/g, " ")}`,
+      title: `Decision: ${stepName(dec.decision)}`,
       at: dec.at || null, trigger: "Staff reviewed the case.", output: `Status became ${d.status}.`,
-      audit: auditFor(null, (a) => !!dec.at && a.at === dec.at), waiting: false, waitingOn: null, status: "queued",
+      audit: auditFor(null, (a) => !!dec.at && a.at === dec.at), waiting: false, waitingOn: null, status: "queued", handoff: null,
     });
   }
   const picked = audit.filter((a) => a.action === "look_selected");
@@ -163,15 +166,15 @@ export function buildCase(d: StaffDetail, studio?: StudioDraft[], nowMs = Date.n
     steps.push({
       id: `pick-${i}`, stage: "approval", title: "Client picked a design",
       at: a.at || null, trigger: "The client chose from the options.", output: "Choice recorded.",
-      audit: [a], waiting: false, waitingOn: null, status: "queued",
+      audit: [a], waiting: false, waitingOn: null, status: "queued", handoff: null,
     });
   }
   if (FINAL.includes(d.status)) {
     const last = [...audit].reverse()[0]?.at || [...steps].map((s) => s.at || "").sort().pop() || null;
     steps.push({
-      id: "done", stage: "done", title: `Case ${d.status.replace(/_/g, " ")}`,
+      id: "done", stage: "done", title: `Case ${stepName(d.status)}`,
       at: last || null, trigger: "Final status reached.", output: "—", audit: [],
-      waiting: false, waitingOn: null, status: "queued",
+      waiting: false, waitingOn: null, status: "queued", handoff: null,
     });
   }
 
@@ -203,6 +206,15 @@ export function buildCase(d: StaffDetail, studio?: StudioDraft[], nowMs = Date.n
       : i === curIdx ? (latest?.waiting ? "waiting" : "current")
       : "queued";
     return { id: st.id, label: st.label, status, steps: inStage };
+  });
+
+  // Mark the card that starts each new stage with a plain-words handoff label.
+  // No team or bot names: only the stage names, lowercased.
+  stages.forEach((st, i) => {
+    if (!st.steps.length || i === 0) return;
+    const prev = [...stages.slice(0, i)].reverse().find((p) => p.steps.length);
+    if (!prev) return;
+    st.steps[0].handoff = `${prev.label.toLowerCase()} sent to ${st.label.toLowerCase()}`;
   });
 
   const end = latest?.at ? Date.parse(latest.at) : nowMs;

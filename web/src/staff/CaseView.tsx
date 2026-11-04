@@ -23,6 +23,7 @@ function StepCard({ step, active, onOpen }: { step: CaseStep; active: boolean; o
       aria-current={active ? "true" : undefined}
       onClick={() => onOpen(step)}
     >
+      {step.handoff && <span className="cv-handoff">{step.handoff}</span>}
       <span className="cv-time">{fmtTime(step.at)}</span>
       <span className="cv-title">{maskSensitive(step.title)}</span>
       <span className="cv-state">{stepLabel(step)}</span>
@@ -30,16 +31,60 @@ function StepCard({ step, active, onOpen }: { step: CaseStep; active: boolean; o
   );
 }
 
+const emailLine = (email?: { status?: string; to?: string | null } | null) => {
+  if (!email || !email.status) return "";
+  const head = String(email.status).split(",")[0].trim();
+  if (/^sent/i.test(head)) return `Email sent${email.to ? ` to ${email.to}` : ""}.`;
+  return `Email: ${head.replace(/_/g, " ")}.`;
+};
+
 const FACT_KEYS = ["business_name", "business_type", "industry", "design_preferences", "requirements_notes", "expected_annual_revenue"] as const;
 
-export default function CaseView({ client, row, onBack, onOpen }: {
+export default function CaseView({ client, row, onBack, onOpen, onDecided }: {
   client: StaffClient; row: StaffRow; onBack: () => void; onOpen: (u: string) => void;
+  onDecided: (id: string, status: string, msg: string) => void;
 }) {
   const [d, setD] = useState<StaffDetail | null>(null);
   const [drafts, setDrafts] = useState<StudioDraft[]>([]);
   const [err, setErr] = useState("");
   const [sel, setSel] = useState<CaseStep | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [decided, setDecided] = useState(false);
+  const [actErr, setActErr] = useState("");
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+
+  // Same approve call the Full details panel uses.
+  const approve = async () => {
+    setBusy(true);
+    setActErr("");
+    try {
+      const res = await client.decide(row.id, { decision: "approve", fields: [], note: "" });
+      if (!res || res.ok === false) throw new Error("not saved");
+      setDecided(true);
+      onDecided(row.id, res.status, `${row.business_name || "Client"} approved. ${emailLine(res.email)}`.trim());
+    } catch (e) {
+      console.error(e);
+      setActErr("That didn't go through. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Same share-link call the Client feedback link uses.
+  const sendToClient = async () => {
+    setBusy(true);
+    setActErr("");
+    try {
+      const res = await client.createShare(row.id);
+      setShareUrl(res.url);
+    } catch (e) {
+      console.error(e);
+      setActErr("Couldn't make a client link. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   useEffect(() => {
     let alive = true;
@@ -78,7 +123,29 @@ export default function CaseView({ client, row, onBack, onOpen }: {
         <span className="pill staff-pill" data-status={row.status}>{statusLabel(row.status)}</span>
         <span className="cv-meta">Open {openDuration(model.openMs)}</span>
         {current && <span className="cv-meta">Step {curIdx} of {model.steps.length} · {current.title}</span>}
+        <div className="cv-actions" role="group" aria-label="Case actions">
+          <button type="button" className="btn primary cv-btn" disabled={busy || decided} onClick={approve}>
+            Approve
+          </button>
+          <button
+            type="button"
+            className="btn cv-btn"
+            disabled
+            title="Pick fields in Full details and studio below"
+          >
+            Request changes
+          </button>
+          <button type="button" className="btn cv-btn" disabled={busy} onClick={sendToClient}>
+            Send to client
+          </button>
+        </div>
       </div>
+      {actErr && <p className="field-error" role="alert">{actErr}</p>}
+      {shareUrl && (
+        <p className="cv-share" role="status">
+          Client link ready: <a href={shareUrl}>{shareUrl}</a>
+        </p>
+      )}
 
       <div className="cv-body">
         <div className="cv-lanes" role="list" aria-label="Case stages">
