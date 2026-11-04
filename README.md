@@ -1,26 +1,19 @@
 # Onboarding Agent (v2)
 
 ## What it does
-AI-assisted onboarding chat for small businesses. A client uploads a PDF or phone photo with business details, the agent pulls out the fields, asks only for what is still missing, and shows three square (1080x1080) marketing looks per round for up to 3 rounds. If nothing is picked, it hands off to staff for a consult.
+AI-assisted onboarding chat for small businesses. A client uploads a PDF or phone photo with business details, the agent pulls out the fields, asks only for what is still missing, and shows marketing mockups to get a sense of client's design preferences. If nothing is picked, it hands off to staff for a consult.
 
 ## Why it is smoother for a non-tech-savvy business owner
 - Short replies, one idea per line, each can be read aloud.
-- English, Chinese, Malay, Tamil. The client picks one or it is detected.
-- PDF or phone photo upload (JPG, PNG, HEIC). Shows what was found for confirm, then asks only for missing fields.
-- A confirm card with editable values and a Listen button; a mic button for spoken answers.
-- Pick one or more looks, or skip for a new set. Plain consult message in their own language if no pick.
-- Save and resume in the same browser or with a private resume link. A file can be deleted before anything is saved.
-- Every reply has a next step, so there is no dead end.
+- English, Chinese, Malay, Tamil. Different languages catering to the various ethnics groups in Singapore The client picks their preferred.
+- PDF or phone photo upload (JPG, PNG, HEIC). Non-standard documents can be uploaded as well (such an ACRA business profile), the system then asks only for missing fields.
 
-## How it works
-One agent runs fixed steps:
+## How it works (Client)
 1. Read document: text or photo in, candidate fields out. Read-only.
-2. Find gaps: compare against field list, mandatory first.
+2. Find gaps: compare against mandatory field list
 3. Ask only missing: one short line per field.
-4. Make image brief: three briefs from confirmed fields, design direction, and rejected looks.
-5. Generate: one image per brief.
-6. Self-check: image exists, is 1080x1080, and decodes. A look that fails the check is replaced by a labelled placeholder.
-- On model failure: retry twice with backoff, then fall back to non-AI path or ask a plain question.
+4. Make image brief: three briefs from confirmed fields, design direction, and gather rejected looks.
+5. Relay: Preferences relayed to the staff
 
 ## How to run it
 Backend:
