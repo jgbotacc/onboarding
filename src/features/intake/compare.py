@@ -1,8 +1,8 @@
 """Intake-vs-document mismatch flags (PRD 4.9.3.2).
 
-Staff-only, read-only: compare the confirmed intake answers for
+Staff-only, read-only: compare the client-given intake box for
 ``business_name``, ``uen`` and ``registered_address`` against the latest
-confirmed document snapshot, normalised first (case, punctuation,
+confirmed pre-edit document snapshot, normalised first (case, punctuation,
 whitespace, company suffixes). Flags never change or block anything:
 no status change, no extra question, no write to the client record.
 """

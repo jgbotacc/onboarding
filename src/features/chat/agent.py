@@ -10,6 +10,7 @@ from src.features.chat import consult
 from src.features.imagegen.providers import PlaceholderProvider
 from src.features.imagegen.providers import generate as generate_alt
 from src.features.imagegen.providers import generate, self_check, to_post_size
+from src.features.intake.compare import COMPARED
 from src.features.intake.extract import EMAIL, extract_fields
 from src.features.intake.validate import check, fix_line, fix_message, missing_line, parse_amount
 from src.features.looks import brief as looks_brief
@@ -22,7 +23,7 @@ YES_WORDS = {"yes", "y", "ok", "okay", "correct", "right", "confirm", "yep", "su
 
 
 def new_session() -> dict:
-    return {"id": uuid.uuid4().hex[:12], "status": "need_document", "fields": {}, "refs": [],
+    return {"id": uuid.uuid4().hex[:12], "status": "need_document", "fields": {}, "intake": {}, "refs": [],
             "direction": None, "round": 0, "images": [], "feedback": None, "history": [], "refill": [],
             "lang": None, "lang_set": False, "pending": None, "transcript": [], "looks": [],
             "rejected": [], "selected_looks": [], "consult": None, "fixes": [],
@@ -71,6 +72,19 @@ def _set_fields(s, fields: dict):
         s["fields"][k] = str(v).strip()
         if k in s.get("refill", []):
             s["refill"].remove(k)
+
+
+def _track_intake(s, fields: dict):
+    """Remember what the client gave (form/chat/confirm edits), apart from document values.
+
+    Compared against the frozen document snapshot for staff mismatch flags, so a later
+    document can never overwrite it. Never blocks or changes the client flow.
+    """
+    box = s.setdefault("intake", {})
+    for k in COMPARED:
+        v = (fields or {}).get(k)
+        if isinstance(v, str) and v.strip():
+            box[k] = v.strip()
 
 
 def resp(s, reply, images=None):
@@ -171,6 +185,7 @@ def on_document(s, fields: dict, filename: str):
 def on_form(s, fields: dict):
     s["via_pdf"] = False
     _set_fields(s, fields)
+    _track_intake(s, fields)
     s["opener"] = "Got your registration form. "
     s.pop("pdf_name", None)
     return _after_fields(s)
@@ -199,6 +214,7 @@ def _fill_from_text(s, text):
             e = re.search(EMAIL, text) if m[0] == "email" else None
             got = {m[0]: (e.group(0) if e else text).strip()}
     _set_fields(s, got)
+    _track_intake(s, got)
     return list(got)
 
 
@@ -364,7 +380,7 @@ def on_extracted(s, doc_id, filename, fields, removed):
         return resp(s, f"I couldn't find business details in {filename}.\n"
                        "Please type your business name, contact name and email.")
     s["pending"] = {"docId": doc_id, "filename": filename, "fields": dict(fields),
-                    "removed": list(removed or [])}
+                    "extracted": dict(fields), "removed": list(removed or [])}
     s["status_before"] = s.get("status")
     s["status"] = "confirm_details"
     return resp(s, _confirm_text(s))
@@ -379,19 +395,24 @@ def on_confirm(s, accept: bool, edits: dict | None = None, remove: list | None =
         s["pending"] = None
         s["status"] = s.pop("status_before", None) or "need_document"
         return resp(s, "Okay, I won't use that file.\nUpload another, or type your details.")
+    said = dict(p.get("extracted") or p.get("fields", {}))  # what the document actually said
     fields = dict(p.get("fields", {}))
     for k in (remove or []):
         fields.pop(k, None)
+        s.get("intake", {}).pop(k, None)
     for k, v in (edits or {}).items():
         if k in LABELS:
             fields[k] = v
+    for k in COMPARED:  # client deltas at confirm count as client-given, never document-given
+        v = fields.get(k)
+        if isinstance(v, str) and v.strip() and v.strip() != str(said.get(k) or "").strip():
+            s.setdefault("intake", {})[k] = v.strip()
     s["pending"] = None
     s["via_pdf"] = True
     s["pdf_name"] = p.get("filename")
     doc = (s.get("docs") or {}).get(p.get("docId"))
     if isinstance(doc, dict):  # frozen snapshot for staff mismatch flags (PRD 4.9.3.2)
-        doc["fields"] = {k: fields[k] for k in ("business_name", "uen", "registered_address")
-                         if fields.get(k)}
+        doc["fields"] = {k: said[k] for k in COMPARED if said.get(k)}
         doc["confirmed_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     s["status"] = s.pop("status_before", None) or "need_document"
     s["confirmed_doc"] = {"docId": p.get("docId"), "filename": p.get("filename"), "fields": list(fields)}

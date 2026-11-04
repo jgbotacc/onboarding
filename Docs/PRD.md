@@ -345,9 +345,9 @@ Not used: no new model, no new provider, no client-facing change beyond the conf
 |---|---|---|
 | Original upload bytes | `DATA_DIR/docs/{docId}.pdf\|.jpg` (as today) plus filename and status in `s["docs"][docId]` | nothing; the file is never altered |
 | Masked text sent to the model | derived per call, never stored (PDF text and photo OCR text are masked with `scrub_private` just before `doc_read`, and before any re-parse or translation of that text) | extracted field draft |
-| Extracted field snapshot per document | `s["docs"][docId]["fields"]`, written once at confirm time from the pending draft | mismatch comparison input |
-| Intake answers | the session (`sessions.state.fields`), confirmed by form, chat or the confirm step | mismatch comparison input |
-| Mismatch flags | derived at staff-detail read time from intake answers vs the latest confirmed document snapshot; stored nowhere | `mismatch_flags` on the staff detail |
+| Extracted field snapshot per document | `s["docs"][docId]["fields"]`, written once at confirm time from the pending draft before any client edit at confirm | mismatch comparison input |
+| Intake answers | the session's intake box (`sessions.state.intake`): what the client gave through the form, chat or confirm edits, kept apart so a later document can never overwrite it | mismatch comparison input |
+| Mismatch flags | derived at staff-detail read time from the intake box vs the latest confirmed pre-edit document snapshot; stored nowhere | `mismatch_flags` on the staff detail |
 | File opens | `audit` rows (`actor = "staff:" + x-staff-name`, action `document_opened`, target `docId`, filename and time in details) | staff audit view |
 
 #### 4.9.3 Data contract and field mapping
@@ -370,7 +370,8 @@ Not used: no new model, no new provider, no client-facing change beyond the conf
 
 ##### 4.9.3.2 Normalisation and comparison (new `src/features/intake/compare.py`, decided but not built)
 
-- Compared fields only: `business_name`, `uen`, `registered_address` (document snapshot vs confirmed intake answers).
+- Compared fields only: `business_name`, `uen`, `registered_address` (pre-edit document snapshot vs the intake box).
+- The snapshot freezes what the document actually said: the extracted values before any client edit at confirm. The intake box holds only what the client gave through the form, chat or confirm edits; document values are never written into it, so a later document cannot overwrite it and the two sides can genuinely differ.
 - Normalise both sides the same way: lower case, punctuation stripped (keeping `#` and `-` in unit numbers),
   whitespace collapsed, and company suffixes canonicalised (`pte ltd`, `pte. ltd.`, `private limited` ->
   `pte ltd`; `ltd` / `limited` unified). UENs compare upper-cased without spaces.
@@ -408,7 +409,7 @@ No new secret. Masking needs no key.
   is shown as "file missing" and cannot be opened. File opens audit first, then stream: if the audit write
   fails the file is not served.
 - **Mismatch comparison fails:** flags come back empty and the detail renders as today; intake and document
-  flows are untouched. Drift (snapshot doc removed, fields edited after confirm) simply drops that flag.
+  flows are untouched. Drift (snapshot doc removed or discarded) simply drops that flag; later client answers update the intake box and recompute flags.
 - **Reconciliation:** the existing reconcile script gains two checks: records pointing at missing originals,
   and `document_opened` rows without a matching stored file.
 
