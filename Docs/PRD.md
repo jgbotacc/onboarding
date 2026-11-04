@@ -315,6 +315,158 @@ Gaps and workarounds:
 - Author identity is the self-reported `x-staff-name`. Accepted until per-staff logins exist.
 - Client picker polls every 15 s while open so sent suggestions appear; a suggestion sent during a round is replaced when the client skips to the next round.
 
+### 4.8 Client feedback and share links
+
+Feature: the client hearts or rejects studio drafts, and staff send a no-login share link where
+the client approves a draft or asks for changes. Tracking card: Jira KAN-18. No code this round.
+Docs checked 2026-11-04.
+
+Design decisions (fixed here so build has no open questions):
+- Hearts and rejections join the same steer-away-from-rejected-looks path the studio already uses:
+  `studio_prompt` builds its `avoid` list with `_avoid_list`, and `variants` drops rejected titles
+  (`src/features/imagegen/studio.py`). Client feedback rows are mapped to that `{title, brief/style}`
+  shape, so the next brief treats a rejected draft exactly like a rejected look. No new prompt logic.
+- A heart also adds the draft to the shortlist. Unhearting (or staff removal) takes it off.
+- Share tokens live 7 days by default, are scoped to one client, and resolve the visible drafts live
+  from `staff_drafts` rows with `sent_at` set. Nothing is frozen into the link, so sending another
+  draft updates what the same link shows. Revoke ends a link at once.
+- Drafts stay staff-only until sent: the public link never lists unsent drafts, and guessing a draft
+  id returns 404.
+- Approval picks one shortlisted draft; a change request must include a short note (max 500 chars,
+  guard-scrubbed). Both are audit-logged like staff actions.
+
+---
+
+#### 4.8.1 Integration inventory
+
+| System | Capability / endpoint used | Checked against | Owner |
+|---|---|---|---|
+| App store (SQLite live, Neo4j optional) | New `draft_feedback`, `shortlist`, `share_tokens` tables plus `ShareToken` / feedback node parity in `src/data/neo4j_store.py`; existing `audit`, `staff_drafts`, `looks` | `db/migrations/*.sql`, `src/data/store.py`, `src/data/neo4j_store.py` | Us |
+| Studio prompt builder | `studio_prompt(..., rejected=feedback_as_rejected)` reuses `_avoid_list` and `variants`; no new steer-away code | `src/features/imagegen/studio.py`, `src/features/looks/brief.py` (`make_briefs`, `design_context`) | Us |
+| Outbound guard | `guard.clean` scrubs client change-request notes with the client's own identifiers before staff see them | `src/shared/guard.py`, `src/shared/security.py` | Us |
+| Staff web (`web/src/staff/*`) | Send-link button, shortlist view, feedback feed; new strings follow the existing i18n check scripts | repo `web/scripts/test-i18n.mjs` | Us |
+| Public share page (new, no login) | Reads the public `GET /api/share/{token}` contract below; polls every 15 s like the client picker while open | this doc | Us |
+| Vercel relay (v1) | Not used. No Meta call is needed for this feature | `relay/README.md` | Us. **Not changed by this feature.** |
+| Daytona sandbox | No redeploy in this work; hosting stays on the existing sandbox | repo script `scripts/deploy_daytona.py` | Us |
+
+#### 4.8.2 Source of truth
+
+| Record | Owner | Derived copies |
+|---|---|---|
+| Feedback (heart / reject / approve / change request, with note) | **new `draft_feedback` table** (Neo4j `Feedback` node when live) | the `rejected` list fed to `studio_prompt` / `make_briefs`; staff feedback feed |
+| Shortlist | **new `shortlist` table** (Neo4j `SHORTLISTED` edge draft -> session when live); a heart inserts, an unheart or staff removal deletes | staff shortlist view, share page "liked" flags |
+| Share token | **new `share_tokens` table** (Neo4j `ShareToken` node when live); only the SHA-256 hash is stored, never the token | the one-time link shown to staff; expiry/revoke checks at read time |
+| Audit entry | existing `audit` table (`actor = "client:share"` for link actions, `"staff:" + x-staff-name` for sends/revokes) | staff audit view (`GET /api/staff/audit?client=<id>`) |
+| Visible set on a link | resolved live: `staff_drafts` rows with `sent_at` set, for the token's session | nothing stored on the token, so send/revoke take effect at once |
+
+#### 4.8.3 Data contract
+
+##### 4.8.3.1 New migration `db/migrations/008_client_feedback.sql`
+```sql
+CREATE TABLE IF NOT EXISTS draft_feedback (
+  id TEXT PRIMARY KEY,                 -- uuid hex
+  session_id TEXT NOT NULL,            -- client id (matches sessions.id)
+  draft_id TEXT NOT NULL,              -- staff_drafts.id (sent drafts only)
+  kind TEXT NOT NULL,                  -- 'heart' | 'reject' | 'approve' | 'changes'
+  note TEXT,                           -- change-request text, guard-scrubbed; NULL otherwise
+  actor TEXT NOT NULL,                 -- 'client:share' | 'staff:<x-staff-name>'
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS feedback_session ON draft_feedback(session_id, created_at);
+CREATE TABLE IF NOT EXISTS shortlist (
+  session_id TEXT NOT NULL,
+  draft_id TEXT NOT NULL,
+  added_by TEXT NOT NULL,              -- 'client:share' | 'staff:<x-staff-name>'
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (session_id, draft_id)
+);
+CREATE TABLE IF NOT EXISTS share_tokens (
+  id TEXT PRIMARY KEY,                 -- uuid hex, used in audit details (never the token)
+  session_id TEXT NOT NULL,            -- the one client this link opens
+  token_hash TEXT NOT NULL UNIQUE,     -- SHA-256 of the token (same helper as session secrets)
+  created_by TEXT NOT NULL,            -- 'staff:<x-staff-name>'
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  expires_at TEXT NOT NULL,            -- created + 7 days by default
+  revoked_at TEXT,                     -- set on revoke; NULL while live
+  used_at TEXT                         -- first successful public read (info only)
+);
+CREATE INDEX IF NOT EXISTS share_tokens_session ON share_tokens(session_id, created_at);
+```
+
+##### 4.8.3.2 Store methods (both `SqliteStore` and `Neo4jStore`)
+`record_feedback(sid, draft_id, kind, note, actor) -> row` (validates kind and that the draft is
+sent for this session; a `heart` also inserts the shortlist row, a `reject` also removes it),
+`feedback_for(sid)`, `shortlist_add(sid, draft_id, actor)`, `shortlist_remove(sid, draft_id)`,
+`shortlist_for(sid)`, `issue_share_token(sid, actor, days=7) -> (id, token)` (one transaction:
+insert hash row, audit `share_issued`; the plaintext token is returned once and never stored),
+`find_share_token(token) -> row | None` (hash, then check session, expiry and `revoked_at`),
+`revoke_share_token(id, actor)`, `sweep_expired_tokens() -> int` (deletes rows past expiry).
+
+##### 4.8.3.3 API routes
+Staff (existing staff router, so `require_staff` applies):
+
+| Method and path | Body | Returns |
+|---|---|---|
+| `POST /api/staff/clients/{cid}/studio/share` | `{days?: int 1..30, default 7}` | `{id, url, expires_at}`. The `url` holds the plaintext token and is shown once |
+| `GET /api/staff/clients/{cid}/studio/shares` | none | `[{id, expires_at, revoked_at, used_at, created_by}]` (no hashes, no tokens) |
+| `POST /api/staff/clients/{cid}/studio/shares/{tid}/revoke` | `{}` | `{id, revoked_at}` |
+| `GET /api/staff/clients/{cid}/studio/shortlist` | none | `{drafts:[Draft], feedback:[{draft_id, kind, note, actor, created_at}]}` |
+| `POST /api/staff/clients/{cid}/studio/shortlist/{did}` | `{add: bool}` | `{drafts:[Draft]}` |
+
+Public (no login; the token is the only secret):
+
+| Method and path | Body | Returns |
+|---|---|---|
+| `GET /api/share/{token}` | none | `{business_name, drafts:[{id, url, title, liked: bool}], shortlist:[id], decided: null \| {draft_id, kind}}`. 404 for unknown/revoked, 410 for expired |
+| `POST /api/share/{token}/feedback` | `{draft_id, kind: 'heart' \| 'reject' \| 'approve' \| 'changes', note?: str<=500}` | `{ok:true, shortlist:[id]}`. `note` is required for `changes` and ignored for other kinds |
+
+`approve` records the final pick and marks the draft's `looks` row selected, like a client pick.
+`changes` appends the scrubbed note to the feedback feed for the next brief round.
+
+#### 4.8.4 Auth and secrets (names only)
+
+| Connection | Auth | Where (env var names) |
+|---|---|---|
+| Staff share routes | shared passcode header `x-staff-key`; author from optional `x-staff-name` (self-reported, not proof) | `STAFF_PASSCODE` |
+| Share link | unguessable token (`secrets.token_urlsafe(32)`); only its SHA-256 hash is stored, compared with `hmac.compare_digest`; logged or shown nowhere except the one-time staff response | none (runtime) |
+| Client picker / session routes | unchanged: per-session secret `x-session-secret` (hash stored) | none (runtime) |
+| Tests | none; model and relay keys unset, httpx mocked | n/a |
+
+#### 4.8.5 Failure plan
+
+- **Retries:** feedback and token writes are local store writes, so no network retry is needed;
+  this feature makes no Meta calls. Brief regeneration after feedback reuses the studio retry
+  wrapper (2 retries on 429/503/timeouts, traced as `studio_image`).
+- **Partial writes:** `record_feedback` runs in one transaction (feedback row plus shortlist
+  insert/delete, then the audit row). `issue_share_token` runs in one transaction (token row plus
+  audit row); the plaintext token is returned only after the commit. In Neo4j each is one Cypher
+  statement, so one atomic Query API request. The per-session lock in `app.py` wraps public
+  feedback writes, so two taps on one link cannot double-insert (shortlist insert is idempotent).
+- **Reconciliation:** `sweep_expired_tokens` runs on share GET and in `scripts/reconcile.py`.
+  Feedback rows pointing at deleted drafts, and shortlist rows for unsent drafts, are listed in the
+  metrics API as drift (same pattern as sent-draft drift in 4.7.5) rather than silently dropped.
+  Expired tokens read as 410 ("this link has expired, ask our team for a new one"); revoked or
+  unknown tokens read as 404, so a revoked link is indistinguishable from a made-up one.
+- **Abuse guard:** public feedback is rate-limited per token (30 writes per hour; 429 over that),
+  and notes pass `guard.clean` before staff see them.
+
+#### 4.8.6 Tool reality check (actually run, 2026-11-04)
+
+- `NEO4J_*` unset, so the app falls back to SQLite: import of `src.app` prints
+  `[data] NEO4J_* env not set; FALLING BACK to SQLite at /workspace/ob-v2-feedback/var/onboarding.sqlite3`.
+- Route list from the staff router (`make_router` in `src/features/staff/routes.py`): 25 paths
+  including `/api/clients` and `/api/admin` aliases — staff clients, decisions, consults, the six
+  studio endpoints from 4.7, metrics, traces and audit. No share routes exist yet (this section
+  designs them). App-level client routes (`src/app.py`) are unchanged: session, upload, chat,
+  confirm, looks, review, resume, language, trace.
+- Migrations on disk: `db/migrations/001_init.sql` through `007_staff_studio.sql`. `008` is new here.
+- `env -u MODEL_API_KEY -u META_API_KEY -u RELAY_URL -u RELAY_SECRET python -m pytest -q tests`:
+  **219 passed** in about 14 s.
+- `npm --prefix web test`: all 7 check scripts pass (validation 87, i18n 463, api-contract 59,
+  mock-contract 27, consult-text-only 4, looks-refresh 13, studio-mock 12).
+- Relay status not re-probed this round (taken as given: Vercel relay paused, HTTP 503
+  `DEPLOYMENT_PAUSED`); no Meta call was made or needed for this feature.
+
 ## 5. Flows (backend)
 ```
 upload (PDF or photo) -> read (regex for the registration form; ACRA parser + Muse Spark for other documents)
