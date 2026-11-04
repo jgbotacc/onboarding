@@ -125,6 +125,7 @@ const DETAILS: StaffDetail[] = [
     reference_images: [art("Reference", "Competitor poster", "#E5E6EB", "#1D2129"), art("Reference", "Brand colours", "#E8F0FF", "#1664FF")],
     status: "handed_off",
     round: 3,
+    sent_to_designers_at: "2026-10-29T03:05:00Z",
     transcript: [
       { role: "assistant", text: "Welcome! Tell me about your business.", at: "2026-10-29T02:40:00Z" },
       { role: "client", text: "Forge Fitness gym, bold promo graphic.", at: "2026-10-29T02:44:12Z" },
@@ -162,23 +163,24 @@ const DETAILS: StaffDetail[] = [
   },
 ];
 
+// Mock traces carry no model ids: the staff UI never shows them.
 const TRACES: Record<string, StepTrace[]> = {
   "c-kopi01": [
-    { step: "read_document", model: "muse-spark-1.3", ok: true, ms: 1840, cost_sgd: 0.0042, at: "2026-10-31T09:02:11Z" },
-    { step: "translate", model: "muse-spark-1.3", ok: true, ms: 620, cost_sgd: 0.0011, at: "2026-10-31T09:04:02Z" },
-    { step: "image_brief", model: "muse-spark-1.3", ok: true, ms: 2310, cost_sgd: 0.0056, at: "2026-10-31T09:07:44Z" },
-    { step: "generate_image", model: "muse-image-1.0", ok: true, ms: 9420, cost_sgd: 0.0135, at: "2026-10-31T09:09:31Z" },
+    { step: "read_document", ok: true, ms: 1840, cost_sgd: 0.0042, at: "2026-10-31T09:02:11Z" },
+    { step: "translate", ok: true, ms: 620, cost_sgd: 0.0011, at: "2026-10-31T09:04:02Z" },
+    { step: "image_brief", ok: true, ms: 2310, cost_sgd: 0.0056, at: "2026-10-31T09:07:44Z" },
+    { step: "generate_image", ok: true, ms: 9420, cost_sgd: 0.0135, at: "2026-10-31T09:09:31Z" },
   ],
   "c-bloom02": [
-    { step: "read_document", model: "muse-spark-1.3", ok: true, ms: 2010, cost_sgd: 0.0048, at: "2026-10-30T14:20:11Z" },
-    { step: "image_brief", model: "muse-spark-1.3", ok: false, ms: 30500, cost_sgd: 0.0021, at: "2026-10-30T14:31:55Z" },
-    { step: "image_brief", model: "muse-spark-1.3", ok: true, ms: 2480, cost_sgd: 0.0059, at: "2026-10-30T14:33:02Z" },
-    { step: "generate_image", model: "muse-image-1.0", ok: true, ms: 8810, cost_sgd: 0.0135, at: "2026-10-30T14:36:40Z" },
+    { step: "read_document", ok: true, ms: 2010, cost_sgd: 0.0048, at: "2026-10-30T14:20:11Z" },
+    { step: "image_brief", ok: false, ms: 30500, cost_sgd: 0.0021, at: "2026-10-30T14:31:55Z" },
+    { step: "image_brief", ok: true, ms: 2480, cost_sgd: 0.0059, at: "2026-10-30T14:33:02Z" },
+    { step: "generate_image", ok: true, ms: 8810, cost_sgd: 0.0135, at: "2026-10-30T14:36:40Z" },
   ],
   "c-forge03": [
-    { step: "read_document", model: "muse-spark-1.3", ok: true, ms: 1760, cost_sgd: 0.0041, at: "2026-10-29T02:51:09Z" },
-    { step: "image_brief", model: "muse-spark-1.3", ok: true, ms: 2190, cost_sgd: 0.0054, at: "2026-10-29T02:55:37Z" },
-    { step: "generate_image", model: "muse-image-1.0", ok: true, ms: 9100, cost_sgd: 0.0135, at: "2026-10-29T02:58:12Z" },
+    { step: "read_document", ok: true, ms: 1760, cost_sgd: 0.0041, at: "2026-10-29T02:51:09Z" },
+    { step: "image_brief", ok: true, ms: 2190, cost_sgd: 0.0054, at: "2026-10-29T02:55:37Z" },
+    { step: "generate_image", ok: true, ms: 9100, cost_sgd: 0.0135, at: "2026-10-29T02:58:12Z" },
   ],
 };
 const REJECTED: Record<string, RejectedLookRound[]> = {
@@ -415,6 +417,7 @@ export function createStaffMock() {
           industry: d.fields.industry || "",
           updated: SUBMITTED[i] || SUBMITTED[0],
           image: d.images[d.images.length - 1] || null,
+          sent_to_designers_at: d.sent_to_designers_at || null,
         })),
       ),
     detail: (id: string): Promise<StaffDetail> => {
@@ -431,6 +434,12 @@ export function createStaffMock() {
         email: { status: "Sent (demo)", to: d.fields.email, subject: "Mock email", sent_at: new Date().toISOString() },
         resume_url: body.decision === "more_info" ? "./?resume=demo-token&mock=1" : null,
       });
+    },
+    sendToDesigners: (id: string): Promise<{ ok: boolean; id: string; sent_to_designers_at: string }> => {
+      const d = db.find((x) => x.id === id);
+      if (!d) return Promise.reject(new Error("HTTP 404"));
+      if (!d.sent_to_designers_at) d.sent_to_designers_at = new Date().toISOString();
+      return wait({ ok: true, id, sent_to_designers_at: d.sent_to_designers_at });
     },
     rejectedLooks: (id: string): Promise<RejectedLookRound[]> => {
       if (!db.some((x) => x.id === id)) return Promise.reject(new Error("HTTP 404"));

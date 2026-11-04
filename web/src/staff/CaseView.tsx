@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { StaffClient } from "./api";
-import { actorRole, buildCase, maskSensitive, openDuration, type CaseStep } from "./caseView";
+import { actorRole, buildCase, casePhase, chatEntries, DRAFTS_SET_LABELS, draftsInPlay, maskSensitive, openDuration, PHASES, type CasePhase, type CaseStep } from "./caseView";
+import { formatDate } from "./format";
 import { statusLabel, type StaffDetail, type StaffRow, type StudioDraft } from "./types";
 
 const fmtTime = (iso: string | null) => {
@@ -40,18 +41,23 @@ const emailLine = (email?: { status?: string; to?: string | null } | null) => {
 
 const FACT_KEYS = ["business_name", "business_type", "industry", "design_preferences", "requirements_notes", "expected_annual_revenue"] as const;
 
-export default function CaseView({ client, row, onBack, onOpen, onDecided }: {
+export default function CaseView({ client, row, onBack, onOpen, onDecided, onSent, onPhase, fullDetails }: {
   client: StaffClient; row: StaffRow; onBack: () => void; onOpen: (u: string) => void;
   onDecided: (id: string, status: string, msg: string) => void;
+  onSent?: (id: string, sentAt: string) => void;
+  onPhase?: (p: CasePhase) => void;
+  fullDetails?: ReactNode;
 }) {
   const [d, setD] = useState<StaffDetail | null>(null);
   const [drafts, setDrafts] = useState<StudioDraft[]>([]);
+  const [shortlist, setShortlist] = useState<StudioDraft[]>([]);
   const [err, setErr] = useState("");
   const [sel, setSel] = useState<CaseStep | null>(null);
   const [busy, setBusy] = useState(false);
   const [decided, setDecided] = useState(false);
   const [actErr, setActErr] = useState("");
   const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [phaseOverride, setPhaseOverride] = useState<CasePhase | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
   // Same approve call the Full details panel uses.
@@ -86,12 +92,31 @@ export default function CaseView({ client, row, onBack, onOpen, onDecided }: {
     }
   };
 
+  // Final-edit handoff: marks the case sent to designers, then shows stage 3.
+  const sendToDesigners = async () => {
+    setBusy(true);
+    setActErr("");
+    try {
+      const res = await client.sendToDesigners(row.id);
+      const ts = res.sent_to_designers_at;
+      setD((prev) => (prev ? { ...prev, sent_to_designers_at: ts } : prev));
+      setPhaseOverride(null);
+      onSent?.(row.id, ts);
+    } catch (e) {
+      console.error(e);
+      setActErr("That didn't go through. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   useEffect(() => {
     let alive = true;
     client.detail(row.id)
       .then((x) => alive && setD(x))
       .catch((e: Error) => alive && (console.error(e), setErr("Couldn't load this case. Please try again.")));
     client.studio(row.id).then((g) => alive && setDrafts(g.drafts || [])).catch(() => {});
+    client.shortlist(row.id).then((s) => alive && setShortlist(s.drafts || [])).catch(() => {});
     return () => { alive = false; };
   }, [client, row.id]);
 
@@ -106,6 +131,13 @@ export default function CaseView({ client, row, onBack, onOpen, onDecided }: {
   const model = useMemo(() => (d ? buildCase(d, drafts) : null), [d, drafts]);
   const current = model?.steps.find((s) => s.id === model.currentStepId) || null;
   const curIdx = model && current ? model.steps.indexOf(current) + 1 : 0;
+  const phase: CasePhase = phaseOverride ?? (d ? casePhase(d, drafts) : "drafts");
+  const entries = useMemo(() => (d ? chatEntries(d) : []), [d]);
+  const play = useMemo(() => (d ? draftsInPlay(d, drafts, shortlist) : { set: "none" as const, items: [] as { id: string; url: string; label: string }[] }), [d, drafts, shortlist]);
+
+  useEffect(() => {
+    onPhase?.(phase);
+  }, [phase, onPhase]);
 
   if (err) return <div className="cv"><p className="field-error">{err}</p><button type="button" className="btn" onClick={onBack}>Back to the list</button></div>;
   if (!d || !model) return <div className="cv"><p className="staff-empty">Loading case…</p></div>;
@@ -114,6 +146,7 @@ export default function CaseView({ client, row, onBack, onOpen, onDecided }: {
   const facts = FACT_KEYS.map((k) => [k, String(d.fields[k as keyof typeof d.fields] || "")] as const)
     .filter(([, v]) => v.trim());
   const docs = Object.entries(d.documents || {});
+  const sentAt = d.sent_to_designers_at || null;
 
   return (
     <div className="cv">
@@ -123,31 +156,69 @@ export default function CaseView({ client, row, onBack, onOpen, onDecided }: {
         <span className="pill staff-pill" data-status={row.status}>{statusLabel(row.status)}</span>
         <span className="cv-meta">Open {openDuration(model.openMs)}</span>
         {current && <span className="cv-meta">Step {curIdx} of {model.steps.length} · {current.title}</span>}
-        <div className="cv-actions" role="group" aria-label="Case actions">
-          <button type="button" className="btn primary cv-btn" disabled={busy || decided} onClick={approve}>
-            Approve
-          </button>
-          <button
-            type="button"
-            className="btn cv-btn"
-            disabled
-            title="Pick fields in Full details and studio below"
-          >
-            Request changes
-          </button>
-          <button type="button" className="btn cv-btn" disabled={busy} onClick={sendToClient}>
-            Send to client
-          </button>
-        </div>
       </div>
-      {actErr && <p className="field-error" role="alert">{actErr}</p>}
-      {shareUrl && (
-        <p className="cv-share" role="status">
-          Client link ready: <a href={shareUrl}>{shareUrl}</a>
-        </p>
+
+      <div className="staff-tabs cv-tabs" role="tablist" aria-label="Case stages">
+        {PHASES.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            role="tab"
+            aria-selected={phase === p.id}
+            aria-controls={`panel-${p.id}-${row.id}`}
+            id={`tab-${p.id}-${row.id}`}
+            className={"staff-tab" + (phase === p.id ? " on" : "")}
+            onClick={() => setPhaseOverride(p.id)}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+
+      {phase === "onboarding" && (
+        <div id={`panel-onboarding-${row.id}`} role="tabpanel" aria-labelledby={`tab-onboarding-${row.id}`} aria-label="Onboarding chat">
+          {entries.length === 0 && <p className="staff-empty">No messages yet.</p>}
+          <ul className="cv-chat">
+            {entries.map((m, i) => (
+              <li key={i} className={"cv-bubble" + (m.role === "client" ? " cv-client" : " cv-assistant")}>
+                <span className="cv-who">{m.role === "client" ? "Client" : "Assistant"}</span>
+                <span>{maskSensitive(m.text || "")}</span>
+                {m.at && <span className="cv-time">{fmtTime(m.at)}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
-      <div className="cv-body">
+      {phase === "drafts" && (
+        <>
+          <div className="cv-actions" role="group" aria-label="Case actions">
+            <button type="button" className="btn primary cv-btn" disabled={busy || decided} onClick={approve}>
+              Approve
+            </button>
+            <button
+              type="button"
+              className="btn cv-btn"
+              disabled
+              title="Pick fields in Full details and studio below"
+            >
+              Request changes
+            </button>
+            <button type="button" className="btn cv-btn" disabled={busy} onClick={sendToClient}>
+              Send to client
+            </button>
+            <button type="button" className="btn cv-btn" disabled={busy || decided || !!sentAt} onClick={sendToDesigners}>
+              {sentAt ? "Sent to designers" : "Send to designers"}
+            </button>
+          </div>
+          {actErr && <p className="field-error" role="alert">{actErr}</p>}
+          {shareUrl && (
+            <p className="cv-share" role="status">
+              Client link ready: <a href={shareUrl}>{shareUrl}</a>
+            </p>
+          )}
+
+          <div className="cv-body" id={`panel-drafts-${row.id}`} role="tabpanel" aria-labelledby={`tab-drafts-${row.id}`}>
         <div className="cv-lanes" role="list" aria-label="Case stages">
           {model.stages.map((st) => (
             <section key={st.id} role="listitem" className="cv-lane" data-status={st.status} aria-label={`${st.label}: ${st.status}`}>
@@ -221,7 +292,30 @@ export default function CaseView({ client, row, onBack, onOpen, onDecided }: {
             ))}
           </div>
         </aside>
-      </div>
+          </div>
+          {fullDetails}
+        </>
+      )}
+
+      {phase === "sent" && (
+        <div id={`panel-sent-${row.id}`} role="tabpanel" aria-labelledby={`tab-sent-${row.id}`} aria-label="Sent to designers">
+          <div className="cv-sent">
+            <h3>Sent to designers</h3>
+            <p className="cv-meta">{sentAt ? `Sent ${formatDate(sentAt)}.` : "Not sent yet."} Final edits happen outside this review.</p>
+            <h4>{play.set === "none" ? "Drafts" : DRAFTS_SET_LABELS[play.set]}</h4>
+            {play.items.length === 0 && <p className="staff-empty">No drafts yet.</p>}
+            {play.items.length > 0 && (
+              <div className="staff-imgs">
+                {play.items.map((l) => (
+                  <button key={l.id} type="button" className="staff-img" onClick={() => onOpen(l.url)} aria-label={`Enlarge ${l.label}`}>
+                    <img src={l.url} alt={l.label} loading="lazy" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

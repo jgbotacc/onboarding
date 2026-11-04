@@ -43,7 +43,8 @@ def _summary(s):
     f = s.get("fields", {})
     return {"id": s["id"], "business_name": f.get("business_name"), "industry": f.get("industry"),
             "contact_name": f.get("contact_name"), "email": f.get("email"), "status": s["status"],
-            "round": s.get("round", 0), "image": (s.get("images") or [None])[0], "updated": s.get("updated")}
+            "round": s.get("round", 0), "image": (s.get("images") or [None])[0], "updated": s.get("updated"),
+            "sent_to_designers_at": s.get("sent_to_designers_at")}
 
 
 def _mail(m):
@@ -122,7 +123,8 @@ def _detail(store, s):
     d = dict(base, lang=s.get("lang") or "en", transcript=s.get("transcript", []),
              looks=_all_looks(store, s["id"]), rejected_looks=rej,
              consult=_with_pins(store, _consult_for(store, s["id"])),
-             audit=store.audit_log(s["id"]), documents=docs, traces=traces)
+             audit=store.audit_log(s["id"]), documents=docs, traces=traces,
+             sent_to_designers_at=s.get("sent_to_designers_at"))
     d.pop("pending", None)  # A9: pending drafts never reach staff
     return guard.clean(d, guard.others_identifiers(store, s["id"]))[0]
 
@@ -302,6 +304,22 @@ def make_router(store, save):
         subject, text = email.compose(body.decision, s_clean, body.fields, note_clean,
                                       "<link created when you confirm>")
         return guard.clean({"subject": subject, "body": text}, others)[0]
+
+    def send_to_designers(cid: str, request: Request):
+        """Final-edit handoff: stamp the case sent, audit it, nothing else.
+
+        Idempotent: a repeat call returns the original timestamp and adds no
+        audit row. No emails, no status change, no external calls.
+        """
+        s = load(cid)
+        ts = s.get("sent_to_designers_at")
+        if ts:
+            return {"ok": True, "id": cid, "sent_to_designers_at": ts}
+        ts = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        s["sent_to_designers_at"] = ts
+        save(s)
+        store.audit(cid, actor(request), "sent_to_designers", None, {"at": ts})
+        return {"ok": True, "id": cid, "sent_to_designers_at": ts}
 
     def list_consults():
         out = []
@@ -606,6 +624,7 @@ def make_router(store, save):
     r.add_api_route("/api/staff/clients/{cid}/studio/shortlist", studio_shortlist, methods=["GET"])
     r.add_api_route("/api/staff/clients/{cid}/studio/shortlist/{did}", studio_shortlist_set,
                     methods=["POST"])
+    r.add_api_route("/api/staff/clients/{cid}/send-to-designers", send_to_designers, methods=["POST"])
     r.add_api_route("/api/staff/metrics", get_metrics, methods=["GET"])
     r.add_api_route("/api/staff/traces", get_traces, methods=["GET"])
     r.add_api_route("/api/staff/audit", get_audit, methods=["GET"])

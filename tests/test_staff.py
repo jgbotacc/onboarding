@@ -87,6 +87,37 @@ def test_rollback_invalid_decision_leaves_client_unchanged():
     assert resume(c, "bogus").status_code == 404
 
 
+def test_send_to_designers():
+    """POST /api/staff/clients/:id/send-to-designers: timestamp + audit row, idempotent, no emails."""
+    sid = _client()
+    before = c.get(f"/api/staff/clients/{sid}").json()
+    assert before.get("sent_to_designers_at") in (None, "")
+    row0 = next(r for r in c.get("/api/staff/clients").json() if r["id"] == sid)
+    assert row0.get("sent_to_designers_at") in (None, "")
+    audits0 = [a for a in before["audit"] if a.get("action") == "sent_to_designers"]
+
+    r = c.post(f"/api/staff/clients/{sid}/send-to-designers")
+    assert r.status_code == 200, r.text
+    ts = r.json()["sent_to_designers_at"]
+    assert isinstance(ts, str) and ts.strip()
+
+    d = c.get(f"/api/staff/clients/{sid}").json()
+    assert d["sent_to_designers_at"] == ts
+    row = next(x for x in c.get("/api/staff/clients").json() if x["id"] == sid)
+    assert row["sent_to_designers_at"] == ts
+    sent = [a for a in d["audit"] if a.get("action") == "sent_to_designers"]
+    assert len(sent) == len(audits0) + 1
+    assert d["outbox"] == before["outbox"] == []  # no emails
+    assert d["status"] == before["status"]  # status untouched
+
+    r2 = c.post(f"/api/staff/clients/{sid}/send-to-designers")
+    assert r2.status_code == 200 and r2.json()["sent_to_designers_at"] == ts
+    d2 = c.get(f"/api/staff/clients/{sid}").json()
+    assert len([a for a in d2["audit"] if a.get("action") == "sent_to_designers"]) == len(sent)
+
+    assert c.post("/api/staff/clients/bogus/send-to-designers").status_code == 404
+
+
 def test_case_view_contract():
     """Case view inputs: detail carries everything buildCase needs, no new endpoint."""
     sid = _client()

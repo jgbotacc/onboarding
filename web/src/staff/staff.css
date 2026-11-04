@@ -234,6 +234,15 @@ a.staff-cc-value:hover { text-decoration: underline; }
 .cv-btn { height: 32px; padding: 0 14px; }
 .cv-share { margin: 0; font-size: 12px; color: var(--text-2); overflow-wrap: anywhere; }
 .cv-share a { color: var(--accent-ink); }
+.cv-tabs { padding: 0; }
+.cv-chat { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.cv-bubble { display: flex; flex-direction: column; gap: 2px; max-width: 75%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); font-size: 14px; overflow-wrap: anywhere; }
+.cv-bubble.cv-client { align-self: flex-end; background: var(--accent-soft); border-color: var(--accent-track); }
+.cv-bubble.cv-assistant { align-self: flex-start; }
+.cv-who { font-size: 12px; font-weight: 600; color: var(--muted); }
+.cv-sent { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 12px 14px; margin-top: 12px; }
+.cv-sent h3 { margin: 0 0 4px; font-size: 15px; }
+.cv-sent h4 { margin: 12px 0 4px; font-size: 12px; color: var(--muted); }
 .cv-full { border-top: 1px solid var(--border); padding-top: 12px; min-width: 0; }
 .cv-toggle { height: 32px; padding: 0 14px; }
 .cv-name { margin: 0; font-size: 16px; line-height: 24px; font-weight: 600; letter-spacing: -0.01em; }

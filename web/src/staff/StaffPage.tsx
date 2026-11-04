@@ -6,7 +6,7 @@ import RejectedLooks from "./RejectedLooks";
 import StudioPanel from "./StudioPanel";
 import { FIELDS, type FieldKey } from "./fields";
 import { statusLabel, type Decision, type DecisionResult, type EmailInfo, type StaffDetail, type StaffRow } from "./types";
-import { formatDate, stepName } from "./format";
+import { formatDate } from "./format";
 import "./staff.css";
 
 const ASSET = import.meta.env.BASE_URL;
@@ -174,34 +174,6 @@ function Detail({ client, row, onDecided, onOpen }: DetailProps) {
       <RejectedLooks client={client} clientId={row.id} onOpen={onOpen} />
       <ConsultList client={client} clientId={row.id} />
 
-      {d.traces?.length ? (
-        <div className="staff-section">
-          <h3>Step traces</h3>
-          <div className="staff-tablewrap">
-          <table className="staff-traces">
-            <thead>
-              <tr>
-                <th scope="col">Step</th>
-                <th scope="col">Model</th>
-                <th scope="col">OK</th>
-                <th scope="col" className="num">Ms</th>
-              </tr>
-            </thead>
-            <tbody>
-              {d.traces.map((t, i) => (
-                <tr key={i} data-ok={t.ok}>
-                  <td>{stepName(t.step)}</td>
-                  <td>{t.model}</td>
-                  <td>{t.ok ? "Yes" : "No"}</td>
-                  <td className="num">{t.ms}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          </div>
-        </div>
-      ) : null}
-
       {result && (
         <div className="staff-result" role="status" data-decision={result.decision}>
           <strong>{DECISION_COPY[result.decision].done}.</strong> {emailText(result.res.email)}
@@ -348,6 +320,8 @@ export default function StaffPage() {
   const [client, setClient] = useState<StaffClient | null>(null);
   const [rows, setRows] = useState<StaffRow[]>([]);
   const [open, setOpen] = useState<string | null>(null);
+  // Current CaseView tab per open row, so the full-details toggle only shows on drafts.
+  const [cvPhase, setCvPhase] = useState<{ id: string; phase: string } | null>(null);
   const [toast, setToast] = useState("");
   const [lightbox, setLightbox] = useState<string | null>(null);
   const toastTimer = useRef<number>(0);
@@ -381,6 +355,13 @@ export default function StaffPage() {
   const onDecided = (id: string, status: string, msg: string) => {
     setRows((p) => p.map((r) => (r.id === id ? { ...r, status } : r)));
     setToast(msg);
+    window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(""), 5000);
+  };
+
+  const onSent = (id: string, sentAt: string) => {
+    setRows((p) => p.map((r) => (r.id === id ? { ...r, sent_to_designers_at: sentAt } : r)));
+    setToast("Sent to designers.");
     window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(""), 5000);
   };
@@ -432,6 +413,7 @@ export default function StaffPage() {
                       <span className="staff-contact">
                         {r.contact_name}
                         {r.email ? ` · ${r.email}` : ""}
+                        {r.sent_to_designers_at ? " · Sent to designers" : ""}
                       </span>
                     </span>
                     <span className="staff-date">{formatDate(r.updated)}</span>
@@ -443,8 +425,18 @@ export default function StaffPage() {
                   </button>
                   {isOpen && client && (
                     <div id={`detail-${r.id}`}>
-                      <CaseView client={client} row={r} onBack={() => setOpen(null)} onOpen={setLightbox} onDecided={onDecided} />
-                      <FullDetails client={client} row={r} onDecided={onDecided} onOpen={setLightbox} />
+                      <CaseView
+                        client={client}
+                        row={r}
+                        onBack={() => { setOpen(null); setCvPhase(null); }}
+                        onOpen={setLightbox}
+                        onDecided={onDecided}
+                        onSent={onSent}
+                        onPhase={(p) => setCvPhase({ id: r.id, phase: p })}
+                        fullDetails={cvPhase?.id === r.id && cvPhase.phase === "drafts" ? (
+                          <FullDetails client={client} row={r} onDecided={onDecided} onOpen={setLightbox} />
+                        ) : null}
+                      />
                     </div>
                   )}
                 </li>
