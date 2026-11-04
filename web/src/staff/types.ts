@@ -28,6 +28,37 @@ export interface StaffDetail {
   traces?: StepTrace[];
   /** Emails sent for this client so far (oldest first). */
   outbox?: EmailInfo[];
+  /** Everything the case view is built from (all present on the real API). */
+  transcript?: TranscriptMsg[];
+  audit?: AuditEntry[];
+  documents?: Record<string, { filename?: string; status?: string }>;
+  looks?: CaseLook[];
+  consult?: Consult | null;
+  decisions?: { decision: string; at?: string }[];
+}
+
+export interface TranscriptMsg {
+  role: string;
+  text: string;
+  at?: string;
+}
+
+export interface AuditEntry {
+  at?: string;
+  actor?: string;
+  action?: string;
+  target?: string | null;
+  details?: unknown;
+}
+
+export interface CaseLook {
+  id: string;
+  url: string;
+  title?: string;
+  brief?: string;
+  round?: number;
+  selected?: boolean;
+  at?: string;
 }
 
 /** GET /api/staff/clients/:id/rejected-looks -> RejectedLookRound[] (every look not picked, grouped by round) */

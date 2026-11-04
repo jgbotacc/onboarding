@@ -87,6 +87,16 @@ def test_rollback_invalid_decision_leaves_client_unchanged():
     assert resume(c, "bogus").status_code == 404
 
 
+def test_case_view_contract():
+    """Case view inputs: detail carries everything buildCase needs, no new endpoint."""
+    sid = _client()
+    d = c.get(f"/api/staff/clients/{sid}").json()
+    for key in ("transcript", "looks", "audit", "documents", "traces", "consult"):
+        assert key in d, key
+    g = c.get(f"/api/staff/clients/{sid}/studio").json()
+    assert "drafts" in g
+
+
 def test_used_resume_token_returns_410():
     sid = _client()
     tok = c.post(f"/api/staff/clients/{sid}/decision", json={"decision": "more_info",
