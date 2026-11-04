@@ -110,7 +110,8 @@ Each step gets only what it needs:
 ### 4.1 Integration inventory
 | System | Capability / endpoint used | Docs | Owner |
 |---|---|---|---|
-| Meta Model API, Muse Spark 1.3 (`muse-spark-1.3`) | `POST https://api.meta.ai/v1/chat/completions` (text, image understanding, JSON output): document reading, photo reading and quality check, translation, look briefs | https://dev.meta.ai/docs/api-reference/chat-completions , https://dev.meta.ai/docs/pricing-rate-limits | Third party (Meta); key is Jin's |
+| Meta Model API, Muse Spark 1.3 (`muse-spark-1.3`) | `POST https://api.meta.ai/v1/chat/completions` (text, image understanding, JSON output): fallback for document reading, photo reading and quality check, translation, look briefs | https://dev.meta.ai/docs/api-reference/chat-completions , https://dev.meta.ai/docs/pricing-rate-limits | Third party (Meta); key is Jin's |
+| Baseten chat, Muse Spark (`meta-models/muse-spark-open-1026`) | OpenAI-compatible `POST https://inference.baseten.co/v1/chat/completions`: document reading, photo reading and quality check, translation, look briefs. The model always reasons and only `message.content` is read | https://docs.baseten.co | Third party (Baseten) |
 | Meta Model API, Muse Image (`muse-image-1.0`) | `POST /v1/images/generations`, `POST /v1/images/edits` | https://dev.meta.ai/docs/api-reference/images | Third party (Meta) |
 | Meta model list | `GET /v1/models` (checked 2026-11-03: muse-spark-1.1/1.2/1.3, muse-image-1.0, muse-wonder-1.0, ...) | https://dev.meta.ai/docs/api-reference/models | Third party |
 | Neo4j Aura | HTTPS Query API `POST https://<host>/db/<db>/query/v2` (Bolt 7687 is blocked on the box) | https://neo4j.com/docs/query-api/current/ | Us (Jin's Aura) |
@@ -147,6 +148,7 @@ Each step gets only what it needs:
 | Connection | Auth | Secret location (names only) |
 |---|---|---|
 | Meta Model API | Bearer API key | env `MODEL_API_KEY` (box: `/home/box/.secrets/onboarding-app/meta.env`) |
+| Baseten chat | Bearer key | env `BASETEN_API_KEY` (box secret in `/home/box/.secrets/onboarding-app/baseten.env`) |
 | Neo4j | basic auth | env `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD` |
 | Resend | Bearer API key | env `RESEND_API_KEY`; recipient `ONBOARDING_NOTIFY_EMAIL` |
 | Staff routes | shared passcode | env `STAFF_PASSCODE`, header `x-staff-key`; optional `x-staff-name` for the audit log |

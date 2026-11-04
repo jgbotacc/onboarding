@@ -23,7 +23,7 @@ cd web && npm ci && npm run build && cd ..
 uvicorn src.app:app --port 8000
 ```
 
-Env vars, by name only (see .env.example): STAFF_PASSCODE, DESIGNER_PASSCODE, MODEL_API_KEY, RESEND_API_KEY, ONBOARDING_NOTIFY_EMAIL, EMAIL_FROM, PUBLIC_BASE_URL, RELAY_URL, RELAY_SECRET, NEO4J_URI, NEO4J_USERNAME, NEO4J_PASSWORD.
+Env vars, by name only (see .env.example): STAFF_PASSCODE, DESIGNER_PASSCODE, MODEL_API_KEY, CHAT_PROVIDER, BASETEN_API_KEY, BASETEN_BASE_URL, BASETEN_MODEL, RESEND_API_KEY, ONBOARDING_NOTIFY_EMAIL, EMAIL_FROM, PUBLIC_BASE_URL, RELAY_URL, RELAY_SECRET, NEO4J_URI, NEO4J_USERNAME, NEO4J_PASSWORD.
 
 ## AI
 
@@ -35,6 +35,8 @@ Text and vision go through Baseten (meta-models/muse-spark-open-1026) with Meta 
 - Vercel: relay folder, `vercel deploy`; paused by default.
 
 ## Tests
+
+Tests never call a model, so leave MODEL_API_KEY, BASETEN_API_KEY and CHAT_PROVIDER unset.
 
 ```
 pytest -q
