@@ -2,7 +2,6 @@ import { useState } from "react";
 import type { Client } from "../api";
 import { t, type Lang } from "../i18n";
 import type { ApiResponse, Looks } from "../types";
-import ListenButton from "../speech/ListenButton";
 import { canUsePicked, hasLookOptions, isPicked, roundInfo, togglePicked } from "./picker";
 
 interface LooksPickerProps {
@@ -11,7 +10,6 @@ interface LooksPickerProps {
   client: Client;
   /** True while an older round or another request owns the chat. */
   disabled?: boolean;
-  trace?: (ok: boolean, ms: number) => void | Promise<void>;
   onReply: (r: ApiResponse) => void;
   onError: (e: unknown) => void;
   idPrefix?: string;
@@ -22,7 +20,7 @@ interface LooksPickerProps {
  * Each card wraps a native checkbox (checkbox semantics, keyboard operable
  * with visible focus), so the client can pick one or more looks.
  */
-export default function LooksPicker({ looks, lang, client, disabled, trace, onReply, onError, idPrefix = "looks" }: LooksPickerProps) {
+export default function LooksPicker({ looks, lang, client, disabled, onReply, onError, idPrefix = "looks" }: LooksPickerProps) {
   const [picked, setPicked] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
 
@@ -31,7 +29,6 @@ export default function LooksPicker({ looks, lang, client, disabled, trace, onRe
   const { round, max } = roundInfo(looks);
   const locked = !!disabled || busy;
   const prompt = t(lang, "looks.prompt");
-  const labelId = `${idPrefix}-prompt`;
 
   const choose = async (ids: string[]) => {
     if (locked || !canUsePicked(ids)) return;
@@ -58,11 +55,7 @@ export default function LooksPicker({ looks, lang, client, disabled, trace, onRe
   };
 
   return (
-    <section className={"looks" + (locked ? " is-disabled" : "")} aria-labelledby={labelId}>
-      <p className="looks-prompt" id={labelId}>
-        {prompt}
-      </p>
-      <ListenButton id={`${idPrefix}-listen`} text={prompt} lang={lang} trace={trace} />
+    <section className={"looks" + (locked ? " is-disabled" : "")} aria-label={prompt}>
       <p className="looks-round">{t(lang, "looks.round", { round, max })}</p>
       <div className="look-grid" role="group" aria-label={prompt}>
         {looks.options.map((o, i) => {

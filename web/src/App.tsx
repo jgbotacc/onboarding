@@ -537,7 +537,6 @@ export default function App() {
                     lang={lang}
                     client={client}
                     disabled={busy || handedOff || m.id !== lastLooksId}
-                    trace={traceListen}
                     onReply={render}
                     onError={replyError}
                     idPrefix={"looks-" + m.id}
