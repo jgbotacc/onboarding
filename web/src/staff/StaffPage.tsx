@@ -320,6 +320,8 @@ export default function StaffPage() {
   const [client, setClient] = useState<StaffClient | null>(null);
   const [rows, setRows] = useState<StaffRow[]>([]);
   const [open, setOpen] = useState<string | null>(null);
+  // Current CaseView tab per open row, so the full-details toggle only shows on drafts.
+  const [cvPhase, setCvPhase] = useState<{ id: string; phase: string } | null>(null);
   const [toast, setToast] = useState("");
   const [lightbox, setLightbox] = useState<string | null>(null);
   const toastTimer = useRef<number>(0);
@@ -423,8 +425,18 @@ export default function StaffPage() {
                   </button>
                   {isOpen && client && (
                     <div id={`detail-${r.id}`}>
-                      <CaseView client={client} row={r} onBack={() => setOpen(null)} onOpen={setLightbox} onDecided={onDecided} onSent={onSent} />
-                      <FullDetails client={client} row={r} onDecided={onDecided} onOpen={setLightbox} />
+                      <CaseView
+                        client={client}
+                        row={r}
+                        onBack={() => { setOpen(null); setCvPhase(null); }}
+                        onOpen={setLightbox}
+                        onDecided={onDecided}
+                        onSent={onSent}
+                        onPhase={(p) => setCvPhase({ id: r.id, phase: p })}
+                        fullDetails={cvPhase?.id === r.id && cvPhase.phase === "drafts" ? (
+                          <FullDetails client={client} row={r} onDecided={onDecided} onOpen={setLightbox} />
+                        ) : null}
+                      />
                     </div>
                   )}
                 </li>

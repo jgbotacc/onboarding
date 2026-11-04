@@ -37,6 +37,6 @@ pass("traces table has no cost_sgd", !/cost_sgd/.test(page));
 pass("queue kept", /Client queue/.test(page));
 pass("consult list kept", /ConsultList/.test(page));
 pass("studio kept", /StudioPanel/.test(page));
-pass("step traces kept", /Step traces/.test(page));
+pass("no Step traces section", !/Step traces/.test(page));
 
 console.log(`staff-no-cost-section: ${n} checks passed`);

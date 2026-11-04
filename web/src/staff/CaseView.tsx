@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { StaffClient } from "./api";
-import { actorRole, buildCase, casePhase, maskSensitive, openDuration, orderedTranscript, PHASES, type CasePhase, type CaseStep } from "./caseView";
+import { actorRole, buildCase, casePhase, chatEntries, DRAFTS_SET_LABELS, draftsInPlay, maskSensitive, openDuration, PHASES, type CasePhase, type CaseStep } from "./caseView";
 import { formatDate } from "./format";
 import { statusLabel, type StaffDetail, type StaffRow, type StudioDraft } from "./types";
 
@@ -41,13 +41,16 @@ const emailLine = (email?: { status?: string; to?: string | null } | null) => {
 
 const FACT_KEYS = ["business_name", "business_type", "industry", "design_preferences", "requirements_notes", "expected_annual_revenue"] as const;
 
-export default function CaseView({ client, row, onBack, onOpen, onDecided, onSent }: {
+export default function CaseView({ client, row, onBack, onOpen, onDecided, onSent, onPhase, fullDetails }: {
   client: StaffClient; row: StaffRow; onBack: () => void; onOpen: (u: string) => void;
   onDecided: (id: string, status: string, msg: string) => void;
   onSent?: (id: string, sentAt: string) => void;
+  onPhase?: (p: CasePhase) => void;
+  fullDetails?: ReactNode;
 }) {
   const [d, setD] = useState<StaffDetail | null>(null);
   const [drafts, setDrafts] = useState<StudioDraft[]>([]);
+  const [shortlist, setShortlist] = useState<StudioDraft[]>([]);
   const [err, setErr] = useState("");
   const [sel, setSel] = useState<CaseStep | null>(null);
   const [busy, setBusy] = useState(false);
@@ -113,6 +116,7 @@ export default function CaseView({ client, row, onBack, onOpen, onDecided, onSen
       .then((x) => alive && setD(x))
       .catch((e: Error) => alive && (console.error(e), setErr("Couldn't load this case. Please try again.")));
     client.studio(row.id).then((g) => alive && setDrafts(g.drafts || [])).catch(() => {});
+    client.shortlist(row.id).then((s) => alive && setShortlist(s.drafts || [])).catch(() => {});
     return () => { alive = false; };
   }, [client, row.id]);
 
@@ -128,8 +132,12 @@ export default function CaseView({ client, row, onBack, onOpen, onDecided, onSen
   const current = model?.steps.find((s) => s.id === model.currentStepId) || null;
   const curIdx = model && current ? model.steps.indexOf(current) + 1 : 0;
   const phase: CasePhase = phaseOverride ?? (d ? casePhase(d, drafts) : "drafts");
-  const transcript = useMemo(() => (d ? orderedTranscript(d) : []), [d]);
-  const picked = useMemo(() => (d?.looks || []).filter((l) => l.selected), [d]);
+  const entries = useMemo(() => (d ? chatEntries(d) : []), [d]);
+  const play = useMemo(() => (d ? draftsInPlay(d, drafts, shortlist) : { set: "none" as const, items: [] as { id: string; url: string; label: string }[] }), [d, drafts, shortlist]);
+
+  useEffect(() => {
+    onPhase?.(phase);
+  }, [phase, onPhase]);
 
   if (err) return <div className="cv"><p className="field-error">{err}</p><button type="button" className="btn" onClick={onBack}>Back to the list</button></div>;
   if (!d || !model) return <div className="cv"><p className="staff-empty">Loading case…</p></div>;
@@ -169,9 +177,9 @@ export default function CaseView({ client, row, onBack, onOpen, onDecided, onSen
 
       {phase === "onboarding" && (
         <div id={`panel-onboarding-${row.id}`} role="tabpanel" aria-labelledby={`tab-onboarding-${row.id}`} aria-label="Onboarding chat">
-          {transcript.length === 0 && <p className="staff-empty">No messages yet.</p>}
+          {entries.length === 0 && <p className="staff-empty">No messages yet.</p>}
           <ul className="cv-chat">
-            {transcript.map((m, i) => (
+            {entries.map((m, i) => (
               <li key={i} className={"cv-bubble" + (m.role === "client" ? " cv-client" : " cv-assistant")}>
                 <span className="cv-who">{m.role === "client" ? "Client" : "Assistant"}</span>
                 <span>{maskSensitive(m.text || "")}</span>
@@ -285,6 +293,7 @@ export default function CaseView({ client, row, onBack, onOpen, onDecided, onSen
           </div>
         </aside>
           </div>
+          {fullDetails}
         </>
       )}
 
@@ -293,13 +302,13 @@ export default function CaseView({ client, row, onBack, onOpen, onDecided, onSen
           <div className="cv-sent">
             <h3>Sent to designers</h3>
             <p className="cv-meta">{sentAt ? `Sent ${formatDate(sentAt)}.` : "Not sent yet."} Final edits happen outside this review.</p>
-            <h4>Picked drafts</h4>
-            {picked.length === 0 && <p className="staff-empty">No picked drafts yet.</p>}
-            {picked.length > 0 && (
+            <h4>{play.set === "none" ? "Drafts" : DRAFTS_SET_LABELS[play.set]}</h4>
+            {play.items.length === 0 && <p className="staff-empty">No drafts yet.</p>}
+            {play.items.length > 0 && (
               <div className="staff-imgs">
-                {picked.filter((l) => l.url).map((l) => (
-                  <button key={l.id} type="button" className="staff-img" onClick={() => onOpen(l.url)} aria-label={`Enlarge ${l.title || "Picked draft"}`}>
-                    <img src={l.url} alt={l.title || "Picked draft"} loading="lazy" />
+                {play.items.map((l) => (
+                  <button key={l.id} type="button" className="staff-img" onClick={() => onOpen(l.url)} aria-label={`Enlarge ${l.label}`}>
+                    <img src={l.url} alt={l.label} loading="lazy" />
                   </button>
                 ))}
               </div>

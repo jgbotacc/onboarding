@@ -25,7 +25,7 @@ export interface StaffDetail {
   reference_images: string[];
   status: string;
   round: number;
-  /** Step traces, when available; the UI hides the table when absent. */
+  /** Step traces feed the case lanes; the UI never shows a traces table or cost. */
   traces?: StepTrace[];
   /** Emails sent for this client so far (oldest first). */
   outbox?: EmailInfo[];
