@@ -60,6 +60,8 @@ export type TraceKind = "listen" | "mic";
 /** UI ↔ API contract (`Docs/UI-API-CONTRACT.md`): every client reply shape. */
 export interface ChatReply {
   reply: string;
+  /** True only on the reference-images step (need_direction with refs pending). */
+  refsStep?: boolean;
   lang?: Lang | string;
   /** English source of `reply`; POST /api/translate re-translates it on language switch. */
   source?: string;

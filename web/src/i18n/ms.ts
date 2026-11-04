@@ -94,7 +94,7 @@ const ms: typeof en = {
   "mock.consultHandoff": "Terima kasih. Pasukan kami akan hubungi anda untuk mengatur sesi consult.",
   "mock.removed": "Muat naik anda dibuang.\nAnda boleh muat naik semula atau isi borang.",
   "mock.needPdf": "Sila muat naik PDF, JPG atau PNG.",
-  "mock.gotRefs": "Dapat {n} gambar rujukan.\nBeritahu saya arah rekaan anda, atau taip \"skip\".",
+  "mock.gotRefs": "Dapat {n} gambar rujukan.\nBeritahu saya arah rekaan anda, atau tekan anak panah untuk skip.",
   "mock.lookPrompt": "Rekaan mana yang anda suka?",
   "mock.alt1": "Hangat, perang dan krim",
   "mock.alt2": "Berani dan berwarna-warni",

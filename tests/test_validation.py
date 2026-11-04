@@ -177,4 +177,4 @@ def test_resume_welcome_and_pdf_valid_reply_read_naturally():
                               "email": "jin@slice.sg", "design_preferences": "Warm and rustic"}, "x.pdf")
     assert r["reply"] == ("Thanks, I've read x.pdf and registered Slice & Stone Pizzeria Pte Ltd.\n\n"
                           "I'll go with your design preferences: Warm and rustic\n\n"
-                          'Want to add reference images (JPG or PNG)? Upload them now, or type "skip" to start.'), r["reply"]
+                          'Want to add reference images (JPG or PNG)? Upload them now, or press the arrow to skip.'), r["reply"]

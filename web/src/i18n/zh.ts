@@ -94,7 +94,7 @@ const zh: typeof en = {
   "mock.consultHandoff": "谢谢。我们的团队会联系你安排咨询。",
   "mock.removed": "已删除你上传的文件。\n你可以重新上传或填写表格。",
   "mock.needPdf": "请上传 PDF、JPG 或 PNG 文件。",
-  "mock.gotRefs": "收到 {n} 张参考图片。\n现在告诉我你喜欢的设计方向,或输入“跳过”。",
+  "mock.gotRefs": "收到 {n} 张参考图片。\n现在告诉我你喜欢的设计方向,或按箭头跳过。",
   "mock.lookPrompt": "你更喜欢哪一款?",
   "mock.alt1": "暖色,咖啡色和米色",
   "mock.alt2": "大胆多彩",

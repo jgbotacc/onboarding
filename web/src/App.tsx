@@ -15,7 +15,7 @@ import { isMicSupported, startListening } from "./speech/mic";
 
 type Msg =
   | { id: number; role: "user"; text: string; files: string[] }
-  | { id: number; role: "assistant"; text: string; images: string[]; status: string; round: number; choices?: boolean; looks?: Looks | null; suggested_looks?: SuggestedLook[] | null; extracted?: ExtractedField[] | null; retake?: RetakeInfo | null; consult?: ConsultInfo | null; source?: string; i18nKey?: "greeting" | "welcomeBack" }
+  | { id: number; role: "assistant"; text: string; images: string[]; status: string; round: number; choices?: boolean; refsStep?: boolean; looks?: Looks | null; suggested_looks?: SuggestedLook[] | null; extracted?: ExtractedField[] | null; retake?: RetakeInfo | null; consult?: ConsultInfo | null; source?: string; i18nKey?: "greeting" | "welcomeBack" }
   | { id: number; role: "error"; text: string };
 
 type NewMsg = Msg extends infer T ? (T extends Msg ? Omit<T, "id"> : never) : never;
@@ -198,7 +198,7 @@ export default function App() {
       const source = r.source ?? r.reply ?? "";
       const creationLang: Lang = r.lang === "en" || r.lang === "zh" || r.lang === "ms" || r.lang === "ta" ? r.lang : lang;
       if (source) seedTranslation(transCache.current, source, creationLang, r.reply || "");
-      push({ role: "assistant", text: r.reply || "", images: r.consult ? [] : r.images || [], status: r.status || "", round: r.round || 0, looks: r.consult ? null : r.looks ?? null, suggested_looks: r.suggested_looks ?? null, extracted: r.extracted ?? null, retake: r.retake ?? null, consult: r.consult ?? null, source: source || undefined });
+      push({ role: "assistant", text: r.reply || "", images: r.consult ? [] : r.images || [], status: r.status || "", round: r.round || 0, refsStep: r.refsStep === true, looks: r.consult ? null : r.looks ?? null, suggested_looks: r.suggested_looks ?? null, extracted: r.extracted ?? null, retake: r.retake ?? null, consult: r.consult ?? null, source: source || undefined });
       if (r.status) setStatus(r.status);
       setMissing(r.missing || []);
     },
@@ -258,6 +258,11 @@ export default function App() {
   // Keep the start choices (upload / form) until the client is registered, so sending a
   // reference image first no longer hides "Fill in a new form".
   const started = messages.some((m) => m.role === "user") && !["registering", "need_document"].includes(status);
+  // [refs-step] The reference-images step has no text box: upload image(s), or send
+  // empty to skip. Keyed on the reply flag, not status alone: the plain
+  // need_direction step that asks for a design direction keeps its text input.
+  const lastBot = [...messages].reverse().find((m) => m.role === "assistant");
+  const refsStep = status === "need_direction" && !!lastBot && lastBot.role === "assistant" && lastBot.refsStep === true;
 
   // Form path: reference images (optional) go to /api/upload first so the session holds them
   // as style refs, then /api/form registers the client and starts round 1 with those refs.
@@ -328,7 +333,13 @@ export default function App() {
     if (!client || busy || client.linkClosed) return;
     const t = text.trim();
     const fs = files.slice();
-    if (!t && !fs.length) return;
+    if (!t && !fs.length) {
+      // [refs-step] Empty send on the reference-images step skips, exactly like typing "skip".
+      if (!refsStep) return;
+      push({ role: "user", text: "skip", files: [] });
+      await run(() => client.chat("skip"));
+      return;
+    }
     setText("");
     setFiles([]);
     push({ role: "user", text: t, files: fs.map((f) => f.name) });
@@ -654,21 +665,23 @@ export default function App() {
             <button type="button" className="btn-icon" id="attachBtn" title={t(lang, "attachTitle")} aria-label={t(lang, "attachLabel")} disabled={closed} onClick={() => fileRef.current?.click()}>
               <PaperclipIcon />
             </button>
-            <textarea
-              ref={inputRef}
-              id="textInput"
-              rows={1}
-              value={text}
-              placeholder={closed ? t(lang, "linkClosed") : feedbackMode ? t(lang, "feedbackPrompt") : t(lang, "typeMessage")}
-              disabled={closed}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={onKeyDown}
-            />
+            {!refsStep && (
+              <textarea
+                ref={inputRef}
+                id="textInput"
+                rows={1}
+                value={text}
+                placeholder={closed ? t(lang, "linkClosed") : feedbackMode ? t(lang, "feedbackPrompt") : t(lang, "typeMessage")}
+                disabled={closed}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={onKeyDown}
+              />
+            )}
             <button
               type="button"
               className="btn-icon mic-btn"
               id="micBtn"
-              hidden={!micSupported}
+              hidden={!micSupported || refsStep}
               title={micTitle}
               aria-label={micLabel}
               aria-pressed={micOn}

@@ -76,6 +76,8 @@ def _set_fields(s, fields: dict):
 def resp(s, reply, images=None):
     out = {"reply": reply, "images": images or [], "status": s.get("status"), "missing": missing(s),
            "round": s.get("round", 0), "invalid": invalid(s)}
+    # [refs-step] True only on the reference-images step (need_direction with refs_pending set).
+    out["refsStep"] = bool(s.get("status") == "need_direction" and s.get("refs_pending"))
     out["lines"] = [ln.strip() for ln in str(reply).splitlines() if ln.strip()]
     out["lang"] = s.get("lang") or "en"
     out["retake"] = False
@@ -144,7 +146,7 @@ def _after_fields(s, prefix="", touched=None):
             s["status"] = "need_direction"
             s["refs_pending"] = True
             return resp(s, prefix + f"{thanks}\n\nI'll go with your design preferences: {s['direction']}\n\n"
-                        "Want to add reference images (JPG or PNG)? Upload them now, or type \"skip\" to start.")
+                        "Want to add reference images (JPG or PNG)? Upload them now, or press the arrow to skip.")
         out = run_round(s)
         out["reply"] = prefix + f"{thanks}\n\n" + out["reply"]
         out["lines"] = [ln.strip() for ln in out["reply"].splitlines() if ln.strip()]

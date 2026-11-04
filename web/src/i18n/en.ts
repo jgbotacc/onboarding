@@ -93,7 +93,7 @@ const en = {
   "mock.consultHandoff": "Thanks. Our team will contact you to set up a consult.",
   "mock.removed": "Removed your upload.\nYou can upload again or fill in the form.",
   "mock.needPdf": "Please upload a PDF, JPG or PNG.",
-  "mock.gotRefs": "Got {n} reference image(s).\nNow tell me your design direction, or type \"skip\".",
+  "mock.gotRefs": "Got {n} reference image(s).\nNow tell me your design direction, or press the arrow to skip.",
   "mock.lookPrompt": "Which look do you prefer?",
   "mock.alt1": "Warm, brown and cream",
   "mock.alt2": "Bold and colourful",
