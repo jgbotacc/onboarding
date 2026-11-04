@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { connectStaff, setOnAuthFail, setStaffKey, StaffAuthError, type StaffClient } from "./api";
+import CaseView from "./CaseView";
 import ConsultList from "./ConsultCard";
 import RejectedLooks from "./RejectedLooks";
 import StudioPanel from "./StudioPanel";
@@ -421,6 +422,7 @@ export default function StaffPage() {
                   </button>
                   {isOpen && client && (
                     <div id={`detail-${r.id}`}>
+                      <CaseView client={client} row={r} onBack={() => setOpen(null)} onOpen={setLightbox} />
                       <Detail client={client} row={r} onDecided={onDecided} onOpen={setLightbox} />
                     </div>
                   )}

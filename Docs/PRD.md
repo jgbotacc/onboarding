@@ -315,6 +315,26 @@ Gaps and workarounds:
 - Author identity is the self-reported `x-staff-name`. Accepted until per-staff logins exist.
 - Client picker polls every 15 s while open so sent suggestions appear; a suggestion sent during a round is replaced when the client skips to the next round.
 
+### 4.9 Staff case view
+
+Feature: clicking a client in the staff list opens a case view (timeline of stages, step cards with a side
+panel, case file panel). Branch `staff-case-view`. Frontend only; no new backend, no new auth.
+
+#### 4.9.1 Integration inventory (six points)
+
+| # | System / input | New? |
+|---|---|---|
+| 1 | Staff client detail `GET /api/staff/clients/{id}` — `audit`, `traces`, `documents`, `looks`, `consult`, `transcript`, `decisions`, `outbox` | None new; already returned |
+| 2 | Studio drafts `GET /api/staff/clients/{id}/studio` — drafts shown in the case file | None new; existing route |
+| 3 | Staff auth (`x-staff-key`, existing `require_staff`) | None new |
+| 4 | Masking (`guard.clean` server-side; client-side NRIC-pattern mask as belt-and-braces) | None new |
+| 5 | Mock data (`?mock=1` staff mock: transcript, audit, documents, looks, consult) | Extended the mock only |
+| 6 | Stage/step derivation (`web/src/staff/caseView.ts`, pure function of the detail payload) | New, frontend only |
+
+Stages shown are the six that exist on main (intake chat, document and photo reading, brand brief, image
+drafts, client approval, done). No brand board or share link stage. Actor names are rendered as roles
+(Staff / Client / System); no team names.
+
 ## 5. Flows (backend)
 ```
 upload (PDF or photo) -> read (regex for the registration form; ACRA parser + Muse Spark for other documents)

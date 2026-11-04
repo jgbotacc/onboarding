@@ -36,6 +36,20 @@ const DETAILS: StaffDetail[] = [
     reference_images: [art("Reference", "Old shopfront", "#EDE3D6", "#7A5A3A")],
     status: "accepted",
     round: 1,
+    transcript: [
+      { role: "assistant", text: "Welcome! Tell me about your business.", at: "2026-10-31T09:00:02Z" },
+      { role: "client", text: "Kopi Corner, Tiong Bahru branch opening next month.", at: "2026-10-31T09:01:20Z" },
+    ],
+    documents: { "doc-acra": { filename: "ACRA-profile.pdf", status: "confirmed" } },
+    looks: [{ id: "lk-k1", url: art("Kopi Corner", "Final post", "#F3E6D3", "#6B3F1F"), title: "Warm retro kopitiam post", brief: "Brown and cream storefront", round: 1, selected: true, at: "2026-10-31T09:09:31Z" }],
+    consult: null,
+    decisions: [{ decision: "approve", at: "2026-10-31T09:11:00Z" }],
+    outbox: [{ status: "Sent (demo)", to: "mei@kopicorner.example", subject: "Approved", sent_at: "2026-10-31T09:11:05Z" }],
+    audit: [
+      { at: "2026-10-31T09:02:11Z", actor: "system", action: "document_uploaded", target: "doc-acra" },
+      { at: "2026-10-31T09:09:31Z", actor: "client", action: "look_selected", target: "lk-k1" },
+      { at: "2026-10-31T09:11:00Z", actor: "staff:demo", action: "decision_approve", target: "lk-k1" },
+    ],
   },
   {
     id: "c-bloom02",
@@ -59,6 +73,38 @@ const DETAILS: StaffDetail[] = [
     reference_images: [],
     status: "awaiting_review",
     round: 2,
+    transcript: [
+      { role: "assistant", text: "Welcome! Tell me about your business.", at: "2026-10-30T14:10:02Z" },
+      { role: "client", text: "Bloom & Stem florist, Mother's Day banner.", at: "2026-10-30T14:12:40Z" },
+      { role: "assistant", text: "Got it — soft pastel, lots of white space?", at: "2026-10-30T14:13:05Z" },
+    ],
+    documents: {
+      "doc-acra": { filename: "ACRA-profile.pdf", status: "confirmed" },
+      "doc-shop": { filename: "shopfront.jpg", status: "confirmed" },
+    },
+    looks: [
+      { id: "r1-a", url: art("Bloom & Stem", "Round 1 · A", "#F6E8EE", "#8A3B5C"), title: "Round 1 · A", brief: "Soft pink storefront banner", round: 1, selected: false, at: "2026-10-30T14:36:40Z" },
+      { id: "r1-b", url: art("Bloom & Stem", "Round 1 · B", "#EAF2EA", "#2F6B45"), title: "Round 1 · B", brief: "Green botanical poster", round: 1, selected: false, at: "2026-10-30T14:36:41Z" },
+      { id: "r2-a", url: art("Bloom & Stem", "Round 2 · A", "#FFF3E0", "#9C6B2F"), title: "Round 2 · A", brief: "Warm cream Mother's Day card", round: 2, selected: false, at: "2026-10-30T14:38:02Z" },
+    ],
+    consult: {
+      id: "consult-01",
+      client_id: "c-bloom02",
+      business_name: "Bloom & Stem (demo)",
+      status: "pending_approval",
+      submitted: { "Design preferences": "Soft pastel, minimal, lots of white space" },
+      next_steps: ["Agree a style direction", "Confirm the banner size"],
+      created: "2026-10-30T15:02:00Z",
+    },
+    decisions: [],
+    outbox: [],
+    audit: [
+      { at: "2026-10-30T14:20:11Z", actor: "system", action: "document_uploaded", target: "doc-acra" },
+      { at: "2026-10-30T14:22:03Z", actor: "system", action: "document_uploaded", target: "doc-shop" },
+      { at: "2026-10-30T14:31:55Z", actor: "system", action: "image_brief_failed", target: null },
+      { at: "2026-10-30T14:33:02Z", actor: "system", action: "image_brief_ok", target: null },
+      { at: "2026-10-30T15:02:00Z", actor: "system", action: "consult_handoff_created", target: "consult-01" },
+    ],
   },
   {
     id: "c-forge03",
@@ -79,6 +125,20 @@ const DETAILS: StaffDetail[] = [
     reference_images: [art("Reference", "Competitor poster", "#E5E6EB", "#1D2129"), art("Reference", "Brand colours", "#E8F0FF", "#1664FF")],
     status: "handed_off",
     round: 3,
+    transcript: [
+      { role: "assistant", text: "Welcome! Tell me about your business.", at: "2026-10-29T02:40:00Z" },
+      { role: "client", text: "Forge Fitness gym, bold promo graphic.", at: "2026-10-29T02:44:12Z" },
+    ],
+    documents: { "doc-acra": { filename: "ACRA-profile.pdf", status: "confirmed" } },
+    looks: [{ id: "r1-a", url: art("Forge Fitness", "Final poster", "#1D2129", "#E8F0FF"), title: "Dark gym poster", brief: "High contrast headline", round: 2, selected: true, at: "2026-10-29T02:58:12Z" }],
+    consult: null,
+    decisions: [{ decision: "approve", at: "2026-10-29T03:04:00Z" }],
+    outbox: [{ status: "Sent (demo)", to: "daniel@forgefit.example", subject: "With a designer", sent_at: "2026-10-29T03:04:05Z" }],
+    audit: [
+      { at: "2026-10-29T02:51:09Z", actor: "system", action: "document_uploaded", target: "doc-acra" },
+      { at: "2026-10-29T02:58:12Z", actor: "client", action: "look_selected", target: "r1-a" },
+      { at: "2026-10-29T03:04:00Z", actor: "staff:demo", action: "decision_approve", target: "r1-a" },
+    ],
   },
 ];
 
