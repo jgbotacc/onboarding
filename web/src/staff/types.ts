@@ -70,30 +70,6 @@ export interface StepTrace {
   at?: string;
 }
 
-/** GET /api/staff/metrics */
-export interface StaffMetrics {
-  outcomes: {
-    sessions: number;
-    completed: number;
-    completion_rate: number;
-    avg_minutes_to_finish: number;
-    avg_fields_needing_fixes: number;
-    avg_rounds_to_pick: number;
-    consult_rate: number;
-  };
-  steps: {
-    step: string;
-    model: string;
-    calls: number;
-    ok_rate: number;
-    avg_latency_ms: number;
-    cost_sgd: number;
-  }[];
-  total_cost_sgd: number;
-  errors?: StepTrace[];
-  evals?: { doc_extraction_accuracy: number; image_fit: number; n: number; at: string } | null;
-}
-
 export interface EmailInfo {
   /** "Sent" | "Sent (demo)" | "Sent (demo), <provider> failed: ..." (also tolerates "sent" / "sent_demo"). */
   status: string;

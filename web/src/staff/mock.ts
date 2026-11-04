@@ -1,5 +1,5 @@
 // Mock staff API (demo data only). Used on ?mock=1 or when /api/staff/* is unreachable.
-import type { Consult, DecisionBody, DecisionResult, RejectedLookRound, StaffDetail, StaffMetrics, StaffRow, StepTrace, StudioDraft, StudioDraftsBody, StudioGet, StudioRemixBody, StudioRunResult, StudioSizePreset } from "./types";
+import type { Consult, DecisionBody, DecisionResult, RejectedLookRound, StaffDetail, StaffRow, StepTrace, StudioDraft, StudioDraftsBody, StudioGet, StudioRemixBody, StudioRunResult, StudioSizePreset } from "./types";
 
 function art(title: string, sub: string, bg: string, fg: string): string {
   const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
@@ -166,25 +166,6 @@ const CONSULTS: Consult[] = [
     decided_at: "2026-10-29T06:40:00Z",
   },
 ];
-const METRICS: StaffMetrics = {
-  outcomes: {
-    sessions: 3,
-    completed: 2,
-    completion_rate: 0.67,
-    avg_minutes_to_finish: 18.5,
-    avg_fields_needing_fixes: 1.3,
-    avg_rounds_to_pick: 1.5,
-    consult_rate: 0.33,
-  },
-  steps: [
-    { step: "read_document", model: "muse-spark-1.3", calls: 3, ok_rate: 1, avg_latency_ms: 1870, cost_sgd: 0.0131 },
-    { step: "image_brief", model: "muse-spark-1.3", calls: 4, ok_rate: 0.75, avg_latency_ms: 9295, cost_sgd: 0.019 },
-    { step: "generate_image", model: "muse-image-1.0", calls: 3, ok_rate: 1, avg_latency_ms: 9110, cost_sgd: 0.0405 },
-  ],
-  total_cost_sgd: 0.0726,
-  errors: [{ step: "image_brief", model: "muse-spark-1.3", ok: false, ms: 30500, cost_sgd: 0.0021, at: "2026-10-30T14:31:55Z" }],
-  evals: { doc_extraction_accuracy: 0.92, image_fit: 0.85, n: 12, at: "2026-10-28T00:00:00Z" },
-};
 const SUBMITTED = ["2026-10-31T09:12:00Z", "2026-10-30T14:40:00Z", "2026-10-29T03:05:00Z"];
 
 const STATUS_AFTER: Record<string, string> = { approve: "approved", reject: "rejected", more_info: "needs_info" };
@@ -343,7 +324,6 @@ export function createStaffMock() {
       c.decided_at = new Date().toISOString();
       return wait(c);
     },
-    metrics: (): Promise<StaffMetrics> => wait(METRICS),
     studio: (cid: string): Promise<StudioGet> => {
       if (!db.some((x) => x.id === cid)) return Promise.reject(new Error("HTTP 404"));
       const { list, used, remaining } = usage(cid);
