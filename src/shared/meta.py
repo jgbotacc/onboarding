@@ -13,6 +13,10 @@ same request is retried once on Meta. Image generation stays on Meta
   (default muse-spark-1.3).
 - Without BASETEN_API_KEY the request goes straight to Meta (with the
   long-standing retry policy). Without either key chat is disabled (None).
+- Relay mode: when RELAY_URL and RELAY_SECRET are set, chat() calls the
+  relay's POST /api/chat (Meta first, Baseten backup inside the relay)
+  and never calls either provider directly. The x-relay-provider reply
+  header selects the traced model id and cost rates.
 
 The Baseten model always reasons: only choices[0].message.content is read;
 reasoning_content and any reasoning field are ignored, and empty or missing
@@ -36,7 +40,7 @@ from pathlib import Path
 
 import httpx
 
-from src.shared import trace
+from src.shared import relay, trace
 
 BASE = os.getenv("META_API_BASE", "https://api.meta.ai/v1")
 MODEL = os.getenv("META_CHAT_MODEL", "muse-spark-1.3")
@@ -49,12 +53,15 @@ BASETEN_TIMEOUT = 25
 BASETEN_IN_USD_PER_1M = 1.25
 BASETEN_OUT_USD_PER_1M = 4.25
 
+RELAY_CHAT_PATH = "/api/chat"
+RELAY_CHAT_TIMEOUT = 50
+
 _sleep = time.sleep
 
 
 def enabled() -> bool:
-    """True when chat can run: either provider key is set (read at call time)."""
-    return bool(os.getenv("BASETEN_API_KEY") or os.getenv("MODEL_API_KEY"))
+    """True when chat can run: relay set, or either provider key is set (read at call time)."""
+    return bool(relay.enabled() or os.getenv("BASETEN_API_KEY") or os.getenv("MODEL_API_KEY"))
 
 
 def _usd_per_1m(name: str, default: float) -> float:
@@ -114,11 +121,76 @@ def _body(model: str, messages: list, json_mode: bool, temperature: float) -> di
     return body
 
 
+def _relay_model_rates(provider: str) -> tuple[str, float, float]:
+    """Model id and cost rates for a relay x-relay-provider value."""
+    if provider == "baseten":
+        return (os.getenv("BASETEN_MODEL", BASETEN_MODEL),
+                _usd_per_1m("BASETEN_IN_USD_PER_1M", BASETEN_IN_USD_PER_1M),
+                _usd_per_1m("BASETEN_OUT_USD_PER_1M", BASETEN_OUT_USD_PER_1M))
+    return os.getenv("META_CHAT_MODEL", MODEL), IN_USD_PER_1M, OUT_USD_PER_1M
+
+
+def _relay_chat(step: str, messages: list, *, session_id: str | None,
+                json_mode: bool, temperature: float) -> str | None:
+    """One relay POST /api/chat (Meta first, Baseten backup inside the relay).
+
+    Retries once after 1s on transport error or 429/5xx. Traces with the
+    model id and cost rates for the x-relay-provider reply header.
+    """
+    model = os.getenv("META_CHAT_MODEL", MODEL)
+    body = _body(model, messages, json_mode, temperature)
+    for i in range(2):
+        t0 = time.perf_counter()
+        try:
+            r = relay.post(RELAY_CHAT_PATH, json=body, timeout=RELAY_CHAT_TIMEOUT)
+        except (httpx.TimeoutException, httpx.TransportError) as e:
+            ms = int((time.perf_counter() - t0) * 1000)
+            trace.record(step, model, False, ms, 0.0, session_id, type(e).__name__)
+            if i == 0:
+                _sleep(1)
+                continue
+            return None
+        except Exception as e:
+            ms = int((time.perf_counter() - t0) * 1000)
+            trace.record(step, model, False, ms, 0.0, session_id, f"{type(e).__name__}: {e}")
+            return None
+        ms = int((time.perf_counter() - t0) * 1000)
+        provider = (r.headers.get("x-relay-provider") or "").lower()
+        trace_model, in_rate, out_rate = _relay_model_rates(provider)
+        if r.status_code == 429 or r.status_code >= 500:
+            trace.record(step, trace_model, False, ms, 0.0, session_id, f"HTTP {r.status_code}")
+            if i == 0:
+                _sleep(1)
+                continue
+            return None
+        if r.status_code >= 400:
+            trace.record(step, trace_model, False, ms, 0.0, session_id, f"HTTP {r.status_code}")
+            return None
+        try:
+            data = r.json()
+            content = data["choices"][0]["message"]["content"]
+        except Exception as e:
+            trace.record(step, trace_model, False, ms, 0.0, session_id, f"bad response: {e}")
+            return None
+        if not content or (isinstance(content, str) and not content.strip()):
+            trace.record(step, trace_model, False, ms, 0.0, session_id, "empty content")
+            return None
+        u = data.get("usage") or {}
+        usd = (u.get("prompt_tokens", 0) * in_rate
+               + u.get("completion_tokens", 0) * out_rate) / 1e6
+        trace.record(step, trace_model, True, ms, trace.usd_to_sgd(usd), session_id)
+        return content
+    return None
+
+
 def chat(step: str, messages: list, *, session_id: str | None = None, json_mode: bool = False,
          timeout: float = 60, temperature: float = 0.2) -> str | None:
     """POST chat/completions on Baseten, falling back to Meta once.
 
-    When BASETEN_API_KEY is set, one Baseten attempt (25s timeout) runs
+    When RELAY_URL and RELAY_SECRET are set, one relay POST /api/chat
+    (50s timeout) runs instead and no direct provider call is made; it
+    retries once after 1s on transport error or 429/5xx. Otherwise, when
+    BASETEN_API_KEY is set, one Baseten attempt (25s timeout) runs
     first; any failure (error, timeout, HTTP error, bad response, empty
     content) retries the same request once on Meta if MODEL_API_KEY is set.
     Without BASETEN_API_KEY the request goes straight to Meta, retrying
@@ -126,6 +198,9 @@ def chat(step: str, messages: list, *, session_id: str | None = None, json_mode:
     None when disabled or every attempt fails. Never raises, never logs
     the key.
     """
+    if relay.enabled():
+        return _relay_chat(step, messages, session_id=session_id,
+                           json_mode=json_mode, temperature=temperature)
     baseten_key = os.getenv("BASETEN_API_KEY")
     meta_key = os.getenv("MODEL_API_KEY")
     if baseten_key:

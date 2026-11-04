@@ -21,7 +21,7 @@ def _png_b64(size=(8, 8)):
 def _relay_env(monkeypatch):
     monkeypatch.setenv("RELAY_URL", "https://relay.example.vercel.app")
     monkeypatch.setenv("RELAY_SECRET", "test-secret")
-    for k in ("MODEL_API_KEY", "RESEND_API_KEY", "NEO4J_URI"):
+    for k in ("MODEL_API_KEY", "BASETEN_API_KEY", "RESEND_API_KEY", "NEO4J_URI"):
         monkeypatch.delenv(k, raising=False)
 
 
@@ -119,3 +119,68 @@ def test_no_notify_email_skips_send(monkeypatch):
     m = email.send("approve", {"fields": {"business_name": "A"}}, [], None, None)
     assert sent == [] and m["to"] == "" and m["provider"] == "outbox"
     assert m["status"].startswith("Not sent (demo)") and "ONBOARDING_NOTIFY_EMAIL" in m["status"]
+
+
+def _chat_ok(content, provider):
+    return httpx.Response(200, headers={"x-relay-provider": provider},
+                           json={"choices": [{"message": {"content": content}}],
+                                 "usage": {"prompt_tokens": 100, "completion_tokens": 50}})
+
+
+def test_chat_via_relay(monkeypatch):
+    _relay_env(monkeypatch)
+    from src.shared import meta, trace
+    assert meta.enabled() is True
+    calls = []
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        calls.append({"url": url, "headers": headers, "json": json, "timeout": timeout})
+        assert "api.meta.ai" not in url and "baseten" not in url
+        return _chat_ok("hello", "meta")
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    rows = []
+    trace.set_sink(rows.append)
+    try:
+        assert meta.chat("t", [{"role": "user", "content": "hi"}]) == "hello"
+    finally:
+        trace.set_sink(None)
+    assert len(calls) == 1
+    assert calls[0]["url"] == "https://relay.example.vercel.app/api/chat"
+    assert calls[0]["headers"]["x-relay-secret"] == "test-secret"
+    assert "authorization" not in {k.lower() for k in calls[0]["headers"]}
+    assert calls[0]["json"]["model"] == "muse-spark-1.3"
+    assert calls[0]["timeout"] == 50
+    assert rows[-1]["ok"] is True and rows[-1]["model"] == "muse-spark-1.3"
+
+
+def test_chat_relay_provider_trace(monkeypatch):
+    _relay_env(monkeypatch)
+    from src.shared import meta, trace
+    monkeypatch.setattr(httpx, "post", lambda *a, **k: _chat_ok("hi", "baseten"))
+    rows = []
+    trace.set_sink(rows.append)
+    try:
+        assert meta.chat("t", [{"role": "user", "content": "hi"}]) == "hi"
+        assert rows[-1]["ok"] is True
+        assert rows[-1]["model"] == "meta-models/muse-spark-open-1026"
+    finally:
+        trace.set_sink(None)
+
+
+def test_chat_relay_retry(monkeypatch):
+    _relay_env(monkeypatch)
+    from src.shared import meta
+    sleeps = []
+    monkeypatch.setattr(meta, "_sleep", sleeps.append)
+    calls = []
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        calls.append(url)
+        if len(calls) == 1:
+            return httpx.Response(503, headers={"x-relay-provider": "none"}, json={})
+        return _chat_ok("hello", "meta")
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    assert meta.chat("t", [{"role": "user", "content": "hi"}]) == "hello"
+    assert len(calls) == 2 and sleeps == [1]

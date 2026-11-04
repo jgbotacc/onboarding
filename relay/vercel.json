@@ -1,5 +1,6 @@
 {
   "functions": {
+    "api/chat.js": { "maxDuration": 60 },
     "api/muse.js": { "maxDuration": 60 },
     "api/neo4j.js": { "maxDuration": 20 },
     "api/resend.js": { "maxDuration": 20 }
