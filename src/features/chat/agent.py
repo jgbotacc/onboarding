@@ -388,6 +388,11 @@ def on_confirm(s, accept: bool, edits: dict | None = None, remove: list | None =
     s["pending"] = None
     s["via_pdf"] = True
     s["pdf_name"] = p.get("filename")
+    doc = (s.get("docs") or {}).get(p.get("docId"))
+    if isinstance(doc, dict):  # frozen snapshot for staff mismatch flags (PRD 4.9.3.2)
+        doc["fields"] = {k: fields[k] for k in ("business_name", "uen", "registered_address")
+                         if fields.get(k)}
+        doc["confirmed_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     s["status"] = s.pop("status_before", None) or "need_document"
     s["confirmed_doc"] = {"docId": p.get("docId"), "filename": p.get("filename"), "fields": list(fields)}
     _set_fields(s, fields)

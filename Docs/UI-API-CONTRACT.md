@@ -54,7 +54,8 @@ All client paths are under `/api`, send `x-session-secret`, and include the lang
 | `GET /api/staff/consults` | `[{ id, client_id, business_name, status: "pending_approval"\|"approved", submitted: {label: value}, next_steps: [str], created }]` |
 | `POST /api/staff/consults/{id}/approve` | the updated consult (`status: "approved"`, `approved_by`, `decided_at`) |
 | `GET /api/staff/clients/{id}/rejected-looks` | `[{ round, options: [{id, url, alt}] }]` (every look not picked, grouped by round) |
-| `GET /api/staff/clients/{id}` | v1 detail + optional `traces: [{step, model, ok, ms, cost_sgd, at}]`; the UI hides the table when absent |
+| `GET /api/staff/clients/{id}` | v1 detail + optional `traces: [{step, model, ok, ms, cost_sgd, at}]` (the UI hides the table when absent) + `mismatch_flags: [{field, intake, document, source}]` (intake-vs-document differences after normalisation, derived at read time, staff only; absent or `[]` = none) + `documents: {docId: {filename, status, openable}}` (`status` reads `"file missing"` when the original is gone) |
+| `GET /api/staff/clients/{cid}/documents/{docId}` | streams the kept original with its stored content type (needs `x-staff-key`; every open is audit-logged) |
 | `GET /api/staff/metrics` | `{outcomes: {sessions, completed, completion_rate, avg_minutes_to_finish, avg_fields_needing_fixes, avg_rounds_to_pick, consult_rate}, steps: [{step, model, calls, ok_rate, avg_latency_ms, cost_sgd}], total_cost_sgd, errors?: [trace], evals?: {doc_extraction_accuracy, image_fit, n, at} \| null}` (PRD 3.1/3.5). Section hidden if the call fails |
 
 ## Mapping to PRD section 6

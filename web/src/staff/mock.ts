@@ -31,11 +31,20 @@ const DETAILS: StaffDetail[] = [
       design_preferences: "Warm retro kopitiam, brown and cream",
       expected_annual_revenue: "SGD 400k",
       requirements_notes: "Opening post for the Tiong Bahru branch.",
+      uen: "201900001A (demo)",
+      registered_address: "1 Demo Street (demo)",
     },
     images: [art("Kopi Corner", "Tiong Bahru opening", "#F3E6D3", "#6B3F1F")],
     reference_images: [art("Reference", "Old shopfront", "#EDE3D6", "#7A5A3A")],
     status: "accepted",
     round: 1,
+    mismatch_flags: [
+      { field: "uen", intake: "201900001A (demo)", document: "201900002B (demo)", source: "acra-profile-demo.pdf" },
+      { field: "registered_address", intake: "1 Demo Street (demo)", document: "2 Sample Road (demo)", source: "acra-profile-demo.pdf" },
+    ],
+    documents: {
+      "doc-demo-1": { filename: "acra-profile-demo.pdf", status: "confirmed", openable: true },
+    },
   },
   {
     id: "c-bloom02",
@@ -59,6 +68,8 @@ const DETAILS: StaffDetail[] = [
     reference_images: [],
     status: "awaiting_review",
     round: 2,
+    mismatch_flags: [],
+    documents: {},
   },
   {
     id: "c-forge03",
@@ -79,6 +90,10 @@ const DETAILS: StaffDetail[] = [
     reference_images: [art("Reference", "Competitor poster", "#E5E6EB", "#1D2129"), art("Reference", "Brand colours", "#E8F0FF", "#1664FF")],
     status: "handed_off",
     round: 3,
+    mismatch_flags: [],
+    documents: {
+      "doc-demo-2": { filename: "registration-form-demo.pdf", status: "file missing", openable: false },
+    },
   },
 ];
 

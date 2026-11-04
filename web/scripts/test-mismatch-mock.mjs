@@ -1,0 +1,55 @@
+// Mismatch flags + document list (?mock=1, PRD 4.9.3.3). Run: npm test
+import assert from "node:assert/strict";
+import { createServer } from "vite";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+
+const here = dirname(fileURLToPath(import.meta.url));
+const root = join(here, "..");
+
+const server = await createServer({ configFile: false, logLevel: "error", server: { middlewareMode: true }, appType: "custom" });
+let n = 0;
+const pass = (name, cond) => (n++, assert.ok(cond, name));
+try {
+  const { createStaffMock } = await server.ssrLoadModule("/src/staff/mock.ts");
+  pass("createStaffMock exported", typeof createStaffMock === "function");
+
+  const m = createStaffMock();
+  const d = await m.detail("c-kopi01");
+  pass("flags array", Array.isArray(d.mismatch_flags));
+  pass("at least two flags", d.mismatch_flags.length >= 2);
+  pass(
+    "flag shape",
+    d.mismatch_flags.every(
+      (f) => typeof f.field === "string" && f.field && typeof f.intake === "string" && f.intake &&
+        typeof f.document === "string" && f.document && typeof f.source === "string" && f.source,
+    ),
+  );
+  pass("flags clearly fake", d.mismatch_flags.every((f) => /demo/i.test(f.intake + f.document + f.source)));
+  pass("documents map", d.documents && typeof d.documents === "object" && Object.keys(d.documents).length > 0);
+  pass(
+    "document shape",
+    Object.values(d.documents).every(
+      (x) => typeof x.filename === "string" && x.filename && typeof x.status === "string" && typeof x.openable === "boolean",
+    ),
+  );
+  pass("an openable document", Object.values(d.documents).some((x) => x.openable));
+
+  const types = readFileSync(join(root, "src", "staff", "types.ts"), "utf8");
+  pass("types declare MismatchFlag", /interface MismatchFlag/.test(types));
+  pass("detail has mismatch_flags", /mismatch_flags:\s*MismatchFlag\[\]/.test(types));
+  pass("detail has documents", /documents:\s*Record<string,\s*StaffDocument>/.test(types));
+
+  const page = readFileSync(join(root, "src", "staff", "StaffPage.tsx"), "utf8");
+  pass("page renders flag tags", /mismatch_flags/.test(page) && /Differs from/.test(page));
+  pass("page lists documents", /d\.documents/.test(page) && /Open original/.test(page));
+  pass(
+    "open link uses staff route",
+    /\/api\/staff\/clients\//.test(page) && /\/documents\//.test(page),
+  );
+
+  console.log(`mismatch-mock: ${n} checks passed`);
+} finally {
+  await server.close();
+}

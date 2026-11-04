@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { connectStaff, setOnAuthFail, setStaffKey, StaffAuthError, type StaffClient } from "./api";
+import { connectStaff, getStaffKey, setOnAuthFail, setStaffKey, StaffAuthError, type StaffClient } from "./api";
 import ConsultList from "./ConsultCard";
 import RejectedLooks from "./RejectedLooks";
 import StudioPanel from "./StudioPanel";
 import { FIELDS, type FieldKey } from "./fields";
-import { statusLabel, type Decision, type DecisionResult, type EmailInfo, type StaffDetail, type StaffMetrics, type StaffRow } from "./types";
+import { statusLabel, type Decision, type DecisionResult, type EmailInfo, type MismatchFlag, type StaffDetail, type StaffMetrics, type StaffRow } from "./types";
 import "./staff.css";
 
 const ASSET = import.meta.env.BASE_URL;
@@ -26,11 +26,34 @@ const emailText = (e?: EmailInfo | null) => {
   return `Email: ${head.replace(/_/g, " ")}.`;
 };
 
+/** Open a kept original in a new tab. The staff route needs x-staff-key, so a plain
+ * link won't do: fetch with the passcode and open the bytes as a blob URL. */
+async function openDoc(clientId: string, docId: string, e: React.MouseEvent) {
+  e.preventDefault();
+  const url = `/api/staff/clients/${encodeURIComponent(clientId)}/documents/${encodeURIComponent(docId)}`;
+  try {
+    const r = await fetch(url, { headers: { "x-staff-key": getStaffKey() } });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const blob = await r.blob();
+    window.open(URL.createObjectURL(blob), "_blank", "noopener");
+  } catch (err) {
+    console.error(err);
+  }
+}
+
 const DECISION_COPY: Record<Decision, { done: string; toast: string }> = {
   approve: { done: "Approved", toast: "approved" },
   reject: { done: "Rejected", toast: "rejected" },
   more_info: { done: "Asked for more info", toast: "asked for more info" },
 };
+
+function FlagTag({ flag }: { flag: MismatchFlag }) {
+  return (
+    <span className="staff-tag" title={`Document says: ${flag.document}`}>
+      Differs from {flag.source}: {flag.document}
+    </span>
+  );
+}
 
 function Pill({ status }: { status: string }) {
   return (
@@ -158,14 +181,77 @@ function Detail({ client, row, onDecided, onOpen }: DetailProps) {
       <div className="staff-section">
         <h3>Business details</h3>
         <dl className="staff-kv">
-          {FIELDS.map((f) => (
-            <div key={f.key} className="staff-kv-row">
-              <dt>{f.label}:</dt>
-              <dd>{(d.fields[f.key] || "").trim() || <span className="staff-empty">Not given</span>}</dd>
-            </div>
-          ))}
+          {FIELDS.map((f) => {
+            const flag = (d.mismatch_flags || []).find((x) => x.field === f.key);
+            return (
+              <div key={f.key} className="staff-kv-row">
+                <dt>{f.label}:</dt>
+                <dd>
+                  {(d.fields[f.key] || "").trim() || <span className="staff-empty">Not given</span>}
+                  {flag && (
+                    <>
+                      {" "}
+                      <FlagTag flag={flag} />
+                    </>
+                  )}
+                </dd>
+              </div>
+            );
+          })}
+          {(
+            [
+              ["uen", "UEN"],
+              ["registered_address", "Registered address"],
+            ] as [keyof typeof d.fields, string][]
+          ).map(([key, label]) => {
+            const value = (d.fields[key] || "").trim();
+            const flag = (d.mismatch_flags || []).find((x) => x.field === key);
+            if (!value && !flag) return null;
+            return (
+              <div key={key} className="staff-kv-row">
+                <dt>{label}:</dt>
+                <dd>
+                  {value || <span className="staff-empty">Not given</span>}
+                  {flag && (
+                    <>
+                      {" "}
+                      <FlagTag flag={flag} />
+                    </>
+                  )}
+                </dd>
+              </div>
+            );
+          })}
         </dl>
       </div>
+
+      {d.documents && Object.keys(d.documents).length > 0 && (
+        <div className="staff-section">
+          <h3>Documents</h3>
+          <dl className="staff-kv">
+            {Object.entries(d.documents).map(([docId, doc]) => (
+              <div key={docId} className="staff-kv-row">
+                <dt>{doc.filename || docId}:</dt>
+                <dd>
+                  {doc.status}
+                  {doc.openable && (
+                    <>
+                      {" "}
+                      <a
+                        className="staff-doc-link"
+                        href={`/api/staff/clients/${encodeURIComponent(row.id)}/documents/${encodeURIComponent(docId)}`}
+                        onClick={(e) => void openDoc(row.id, docId, e)}
+                      >
+                        Open original
+                      </a>
+                    </>
+                  )}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
 
       <div className="staff-section">
         <h3>Designs</h3>

@@ -16,14 +16,34 @@ export interface StaffRow {
   image: string | null; // latest generated image URL
 }
 
+/** One intake-vs-document difference (PRD 4.9.3.2). `source` is the document filename. */
+export interface MismatchFlag {
+  field: string;
+  intake: string;
+  document: string;
+  source: string;
+}
+
+/** One uploaded document on the staff client detail. */
+export interface StaffDocument {
+  filename: string;
+  status: string;
+  openable: boolean;
+}
+
 /** GET /api/staff/clients/:id */
 export interface StaffDetail {
   id: string;
-  fields: Partial<FormFields>;
+  /** Intake answers; UEN and registered address are document-only answers (PRD 4.9). */
+  fields: Partial<FormFields> & { uen?: string; registered_address?: string };
   images: string[];
   reference_images: string[];
   status: string;
   round: number;
+  /** Intake-vs-document differences, derived at read time (staff only). */
+  mismatch_flags: MismatchFlag[];
+  /** Uploaded documents keyed by doc id; open each via GET /api/staff/clients/:id/documents/:docId. */
+  documents: Record<string, StaffDocument>;
   /** Step traces, when available; the UI hides the table when absent. */
   traces?: StepTrace[];
   /** Emails sent for this client so far (oldest first). */

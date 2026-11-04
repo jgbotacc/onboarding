@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from src.features.chat import agent
 from src.features.imagegen import studio
+from src.features.intake import compare
 from src.features.looks.brief import design_context
 from src.features.staff import email, metrics
 from src.shared import guard
@@ -100,13 +101,18 @@ def _detail(store, s):
         ok = Path(v.get("path") or "").is_file()
         docs[k] = {"filename": v.get("filename"), "status": v.get("status") if ok else "file missing",
                    "openable": ok}
+    try:  # flags are derived at read time and stored nowhere; a bad snapshot means no flags
+        flags = compare.mismatch_flags(s.get("fields", {}), s.get("docs", {}))
+    except Exception:
+        flags = []
     traces = [{"step": t.get("step"), "model": t.get("model"), "ok": t.get("ok"),
                "ms": t.get("latency_ms"), "cost_sgd": t.get("cost_sgd"), "at": t.get("at")}
               for t in store.traces(s["id"])]
     d = dict(base, lang=s.get("lang") or "en", transcript=s.get("transcript", []),
              looks=_all_looks(store, s["id"]), rejected_looks=rej,
              consult=_with_pins(store, _consult_for(store, s["id"])),
-             audit=store.audit_log(s["id"]), documents=docs, traces=traces)
+             audit=store.audit_log(s["id"]), documents=docs, mismatch_flags=flags,
+             traces=traces)
     d.pop("pending", None)  # A9: pending drafts never reach staff
     return guard.clean(d, guard.others_identifiers(store, s["id"]))[0]
 

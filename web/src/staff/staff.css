@@ -67,6 +67,7 @@
 .staff-result[data-decision="more_info"] { background: var(--warn-soft); }
 .staff-result-sub { margin-top: 2px; color: var(--text-2); overflow-wrap: anywhere; }
 .staff-result a { color: var(--accent); }
+.staff-doc-link { color: var(--accent); }
 
 .staff-toast {
   position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 20; max-width: calc(100% - 32px);
