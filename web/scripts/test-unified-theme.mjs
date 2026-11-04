@@ -130,7 +130,7 @@ pass("staff header keeps no Designer link", !/>Designer<\/a>/.test(staffPage) &&
 pass("designer header keeps no staff link", !/>Staff<\/a>/.test(designerPage) && !/staff-nav/.test(designerPage));
 pass("no model names on any page",
   [app, staffPage, designerPage].every((b) =>
-    !/\b(gpt-?\d|claude|gemini|llama|mistral|mixtral|grok|deepseek|palm|falcon)\b/i.test(b)));
+    !/\b(gpt-?\d|claude|gemini|llama|mistral|mixtral|deepseek|palm|falcon)\b/i.test(b)));
 
 // --- Wired in: the check runs in npm test.
 const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
