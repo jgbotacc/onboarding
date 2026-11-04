@@ -315,6 +315,184 @@ Gaps and workarounds:
 - Author identity is the self-reported `x-staff-name`. Accepted until per-staff logins exist.
 - Client picker polls every 15 s while open so sent suggestions appear; a suggestion sent during a round is replaced when the client skips to the next round.
 
+### 4.8 Brand board
+
+Feature: client "show us your style" uploads (shop photos or screenshots of old posts, up to 6 images).
+Muse Spark reads them and returns a brand board: a few colours as hex, tone words, style words and a short
+plain summary. Staff see the board on the client page, can edit it, approve it or reject it.
+Only an approved board feeds into the studio brief and the client looks brief. v1 is uploads only:
+no pasted links, no scraping services, nothing outside Meta's models.
+Docs checked 2026-11-04 (docs and code only; nothing was called).
+
+---
+
+#### 4.8.1 Integration inventory
+
+| System | Endpoint / capability used | Checked against | Owner |
+|---|---|---|---|
+| Meta Muse Spark `muse-spark-1.3` (board read) | `POST https://api.meta.ai/v1/chat/completions` (JSON: `model, messages:[{role, content:[{type:"text",text},{type:"image_url",image_url:{url:"data:image/jpeg;base64,..."}}]}], response_format:{"type":"json_object"}, temperature`) | https://dev.meta.ai/docs/api-reference/chat-completions ; repo `meta.chat_json` + `meta.image_part` in `src/shared/meta.py` | Third party (Meta), Jin's key |
+| Photo quality check (reuse, no model call) | `photo.load_image` + `photo.quality` (`src/features/intake/photo.py`): HEIC handling, min-side 600 px, edge-variance blur gate (`BLUR_MIN`) | repo code only | Us |
+| App store (SQLite live, Neo4j optional) | New `brand_boards` table plus `BrandBoard` node parity in `src/data/neo4j_store.py`; existing `audit`, `traces` | `db/migrations/*.sql`, `src/data/store.py`, `src/data/neo4j_store.py` | Us |
+| Outbound guard (reuse) | `guard.scrub_nric` + `guard.clean` with the client's own identifiers as the mask set (same pattern as `studio_prompt`'s `own_ids`) | `src/shared/guard.py`, `src/features/imagegen/studio.py` | Us |
+| Media storage | `var/media/brand-<uuid>.jpg` on the app host (`MEDIA_DIR`) | `src/shared/config.py` | Us |
+| Brief builders (reuse) | `design_context` in `src/features/looks/brief.py` (gains an optional approved-board merge) and `studio_prompt` in `src/features/imagegen/studio.py` | repo code | Us |
+| Staff web (`web/src/staff/*`) and client uploader (`web/src`) | New board card on the existing client detail; new "show us your style" step in the client flow | repo | Us |
+
+Not used: pasted links, URL fetching, scraping services, the Responses API (`/v1/responses`), Jev grading,
+Muse Image. The board is look-and-feel only; faces and text in the photos are never stored in the board.
+
+#### 4.8.2 Source of truth
+
+| Record | Owner | Derived copies |
+|---|---|---|
+| Brand board (colours, tone/style words, summary, photo urls, status, version) | **new `brand_boards` table** (Neo4j `BrandBoard` node when live), one row per client, updated in place with a version counter | staff detail view, audit rows |
+| Uploaded style photos (max 6 per client) | `var/media/brand-*.jpg` on the app host | `brand_boards.photos` (JSON list of `/media/...` urls) |
+| Board edit history | `audit` table (`action = "brand_board_*", actor = "staff:" + x-staff-name` or `"client"` for uploads) | staff audit view |
+| Board read cost | `traces` rows `step='brand_board'` (cost_sgd) | metrics API |
+| Who approved | `brand_boards.approved_by` (+ `decided_at`) | staff board card |
+| Design input for briefs | the session (`sessions.state.fields`) plus the **approved** board merged at read time, never written back into fields | studio prefill, look briefs |
+
+Rejected boards are kept as `status='rejected'` rows (visible history), not deleted. A re-upload after
+rejection starts a new read and overwrites the row with `status='pending_review'` and `version + 1`.
+
+#### 4.8.3 Data contract
+
+##### 4.8.3.1 New migration `db/migrations/008_brand_board.sql`
+```sql
+CREATE TABLE IF NOT EXISTS brand_boards (
+  session_id TEXT PRIMARY KEY,         -- client id (matches sessions.id), one board per client
+  version INTEGER NOT NULL DEFAULT 1,  -- +1 on every new model read
+  colours TEXT NOT NULL DEFAULT '[]',  -- JSON list of hex strings, e.g. ["#A63D2F","#F3E6D3"]
+  tone_words TEXT NOT NULL DEFAULT '[]',   -- JSON list of short strings, max 6
+  style_words TEXT NOT NULL DEFAULT '[]',   -- JSON list of short strings, max 6
+  summary TEXT NOT NULL DEFAULT '',    -- one short plain-English paragraph, max 300 chars
+  photos TEXT NOT NULL DEFAULT '[]',   -- JSON list of /media/brand-*.jpg urls, max 6
+  status TEXT NOT NULL DEFAULT 'pending_review',  -- 'pending_review' | 'approved' | 'rejected'
+  approved_by TEXT, decided_at TEXT,
+  note TEXT,                           -- staff reject/edit note
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+```
+(No `ALTER TABLE` needed: new table only, so the guarded-migration pattern from 4.7.3.1 does not apply.)
+
+Board JSON from the model: `{colours: [hex x3-6], tone_words: [str x2-6], style_words: [str x2-6], summary: str}`.
+Validation on the way in: 3-6 colours matching `^#[0-9A-Fa-f]{6}$`, 2-6 tone words, 2-6 style words
+(each 1-3 plain words, max 30 chars), summary non-empty max 300 chars. Anything else = junk (see 4.8.5).
+
+##### 4.8.3.2 Store methods (both `SqliteStore` and `Neo4jStore`)
+`save_brand_board(sid, board) -> board` (upsert, sets `updated_at`),
+`get_brand_board(sid) -> board | None`. Neo4j: one Cypher statement
+(`MERGE (b:BrandBoard {session_id:$sid}) SET ...`), same atomicity rule as 4.5. No other methods:
+edits go through `save_brand_board`, status changes are just saves with a different `status`.
+
+##### 4.8.3.3 API routes (client routes need the per-session secret; staff routes need `x-staff-key`)
+| Method and path | Body | Returns |
+|---|---|---|
+| `POST /api/brand-board/photos` | multipart `sessionId`, `files[]` (1-6 images; total stored per client max 6) | `{board, photos:[urls], status}` — triggers one model read when at least 1 photo passes the quality gate |
+| `GET /api/brand-board` | query `sessionId` (+ secret) | `{board}` (`board: null` when none yet) |
+| `GET /api/staff/clients/{cid}/brand-board` | none | `{board, photos:[urls], audit:[rows for this board]}` |
+| `POST /api/staff/clients/{cid}/brand-board` | `{colours?, tone_words?, style_words?, summary?}` (each validated as in 4.8.3.1) | updated `{board}` (status unchanged); 400 on bad shape |
+| `POST /api/staff/clients/{cid}/brand-board/decision` | `{decision: 'approve'\|'reject', note?}` | updated `{board}`; 409 unless `status` is `pending_review` (re-deciding an approved board needs a fresh client upload) |
+
+`board = {version, colours, tone_words, style_words, summary, photos, status, approved_by, decided_at, note, updated_at}`.
+The model `prompt` is never returned; staff see the same board the client will get.
+
+Client uploader strings come from `web/src/i18n` in all four languages (`brandboard.*` keys).
+
+##### 4.8.3.4 How the approved board reaches `design_context`
+- `design_context(fields, direction, feedback)` gains an optional fourth argument `brand_board: dict | None`.
+  Callers pass `store.get_brand_board(sid)` only when `board.status == 'approved'`; any other status (or no
+  board) passes `None` and the brief is exactly as today. **Approve gates the brief: pending or rejected
+  boards never reach the model.**
+- When set, the context gains one key: `brand_board: {colours:[hex], tone:[...], style:[...], summary:"..."}`.
+  `build_prompt` renders it as one line ("Brand board: colours #A.., #B..; tone: warm, honest; style: retro,
+  minimal. <summary>") and `studio_prompt` picks it up through the same `ctx` (it already forwards the
+  whole `design_context` dict). Hex values pass through unmasked (they are not identifiers).
+- The approved board is read at brief time (not copied into `fields`), so a later staff edit of an approved
+  board applies to the next brief with no migration.
+
+##### 4.8.3.5 Model request built for the board read
+- One `meta.chat_json("brand_board", messages, session_id=sid, timeout=90)` call with up to 6
+  `meta.image_part` parts (JPEG data URLs, `max_side=1024` to stay under the relay's 4.5 MB body limit).
+- Instruction text (English, fixed): "Describe only the look and feel shared across these photos
+  (colours, mood, style). Return JSON {colours:[3-6 hex like \"#A63D2F\"], tone_words:[2-6 single words],
+  style_words:[2-6 single words], summary:\"one short plain sentence, max 300 chars\"}.
+  Never include names, contact details, ID numbers, business names, prices or readable text from the photos."
+- The instruction plus `guard.clean` on the way out (client's own email/phone/UEN/name + `scrub_nric`)
+  enforce the prompt/board hygiene rule: **the board prompt and the stored board never contain contact
+  details or ID numbers; faces and photo text are not kept, only look and feel.**
+
+#### 4.8.4 Auth and secrets (names only)
+
+| Connection | Auth | Where (env var names) |
+|---|---|---|
+| Meta chat (direct) | Bearer [REDACTED] key | `MODEL_API_KEY` (box: `/home/box/.secrets/onboarding-app/meta.env`). Optional `META_API_BASE`, `MUSE_MODEL` |
+| Client board routes | per-session secret (hash stored) | header `x-session-secret` |
+| Staff board routes | shared passcode header `x-staff-key`; author from optional `x-staff-name` (self-reported, not proof) | `STAFF_PASSCODE` |
+| Tests | none; `MODEL_API_KEY` unset, httpx mocked (as A24) | n/a |
+
+No new secrets. No relay use (client uploads ride the existing app upload path; the board read uses
+the direct Meta path like `photo_read`).
+
+#### 4.8.5 Failure plan
+
+- **Retries:** same wrapper as `meta.chat` (2 retries on 429/5xx/timeouts with 1 s, 2 s backoff), `timeout=90`
+  like `photo_read`. Every attempt is traced as `brand_board`. After the last failure the photos stay stored,
+  the board row keeps `status='pending_review'` with empty fields, and staff see "reading failed, retry"
+  (a retry is just a re-POST of the staff edit route with no body, or a fresh client upload).
+- **Partial writes:** photo files are written before the model call; the board row is written once
+  (one SQLite transaction / one Cypher statement). If the process dies mid-read, the row keeps the photos
+  and empty fields — the next GET shows "not ready yet", never half a board.
+- **Bad or blurry photos:** each file goes through `photo.load_image` + `photo.quality` first.
+  Unreadable/blurry files are skipped with a per-file reason; the read runs on the survivors.
+  Zero survivors = no model call, client gets the plain-language retake reply ("Please retake it in good
+  light, with the whole shop in view."). Max 6 stored per client; a 7th upload returns 400 naming the limit.
+- **Model returns junk:** shape validation (4.8.3.1) rejects it; one immediate retry with the same photos,
+  then the row stays empty-board `pending_review` with error "could not read" and staff edit the fields by
+  hand. Junk is traced (`ok=false`) and never shown to the client.
+- **Reconciling drift:** board GET (staff + client) checks that every url in `photos` has its file on disk;
+  missing files are dropped from the row and, when none remain, the status note says "photos missing —
+  ask the client to re-upload". The approved-board merge reads the row live, so there is no second copy
+  to drift (unlike the consult pin pattern in 4.7.2).
+- **Spend guard:** one `brand_board` trace per read; at most 2 model calls per upload (initial + one junk
+  retry), counted in the existing S$120 build cap (D2).
+
+#### 4.8.6 Tool reality check (from docs and code only; nothing was called)
+
+Confirmed from docs:
+- `chat/completions` accepts a `content` list mixing `text` and `image_url` parts with `data:` URLs and
+  returns JSON with `response_format: {"type":"json_object"}` — the same shape `photo_read` already uses.
+- No image-count limit is documented for chat vision; the 6-photo cap is ours (relay 4.5 MB body limit,
+  same as the studio's 6-reference cap in 4.7.6).
+
+Confirmed from code (reuse, no new machinery):
+- `meta.chat_json` (JSON parse + fence strip, `None` on failure), `meta.image_part` (JPEG q85 thumbnail),
+  `photo.quality` blur gate, `guard.clean` + `scrub_nric`, `studio.own_identifiers` mask set,
+  `design_context` ALLOWED allowlist, per-session `_lock_for`, `require_staff`, audit + traces sinks.
+
+Gaps and workarounds:
+- **Hex stability is best effort.** There is no palette endpoint; we ask for hex strings and validate the
+  shape. Near-duplicate or off-brand colours are fixed by staff edit (the edit route exists for this).
+- **No face/text detection endpoint.** "Don't keep faces or text" is enforced by the instruction text plus
+  shape validation (short word lists + 300-char summary leave no room for copied text), not by a filter.
+  Staff review before approval is the backstop.
+- **`image_part` defaults to `max_side=1600`;** the board read passes `1024` explicitly so 6 photos fit
+  the relay-style body budget on the direct path too.
+
+#### 4.8.7 Open questions
+
+- O1. Should the style-photo uploader live inside the existing chat flow (a new agent status like
+  `need_style_photos`) or as a standalone step outside chat? This decides whether `agent.py` or `app.py`
+  owns the upload response. **Assumed standalone step for v1** (upload route returns the board directly).
+- O2. Cap of 6 photos per client: keep, or lower to 4 to halve vision tokens? Assumed 6 (matches brief).
+- O3. Client visibility: does the client see the extracted board (colours/words/summary) or only a
+  "thanks, our team has your style" line? Assumed they see the board (GET returns it).
+- O4. Re-upload after approval: allowed (new version, needs re-approval) or locked? Assumed allowed,
+  status resets to `pending_review`.
+- O5. Live check (paid, one call): 6-photo `chat/completions` vision read with `response_format`
+  json_object on `muse-spark-1.3` — latency, token cost and hex-shape compliance. Not run (docs/code only).
+
 ## 5. Flows (backend)
 ```
 upload (PDF or photo) -> read (regex for the registration form; ACRA parser + Muse Spark for other documents)
