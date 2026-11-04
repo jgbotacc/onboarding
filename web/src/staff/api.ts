@@ -1,5 +1,5 @@
 import { createStaffMock } from "./mock";
-import type { Consult, DecisionBody, DecisionResult, RejectedLookRound, ShareCreated, ShareLink, ShortlistView, StaffDetail, StaffRow, StudioDraft, StudioDraftsBody, StudioGet, StudioRemixBody, StudioRunResult } from "./types";
+import type { Consult, DecisionBody, DecisionResult, DesignerRow, FinalUploadResult, RejectedLookRound, ShareCreated, ShareLink, ShortlistView, StaffDetail, StaffRow, StudioDraft, StudioDraftsBody, StudioGet, StudioRemixBody, StudioRunResult } from "./types";
 
 export interface StaffClient {
   mock: boolean;
@@ -21,6 +21,9 @@ export interface StaffClient {
   shortlist(id: string): Promise<ShortlistView>;
   setShortlist(id: string, draftId: string, add: boolean): Promise<{ drafts: StudioDraft[] }>;
   sendToDesigners(id: string): Promise<{ ok?: boolean; id?: string; sent_to_designers_at: string }>;
+  designer(): Promise<DesignerRow[]>;
+  downloadZip(id: string): Promise<Blob>;
+  uploadFinals(id: string, files: File[]): Promise<FinalUploadResult>;
 }
 
 // [staff-key] Staff passcode, kept for this browser tab only and sent as x-staff-key on every staff call.
@@ -53,16 +56,29 @@ export const setOnAuthFail = (f: (e: StaffAuthError) => void) => {
   onAuthFail = f;
 };
 
-async function req<T>(path: string, init?: RequestInit): Promise<T> {
-  const headers = new Headers(init?.headers);
-  headers.set("x-staff-key", getStaffKey());
-  const r = await fetch(path, { ...init, headers });
+async function guardAuth(r: Response): Promise<void> {
   if (r.status === 401 || r.status === 503) {
     const e = new StaffAuthError(r.status);
     if (r.status === 401) setStaffKey("");
     onAuthFail(e);
     throw e;
   }
+}
+
+async function reqBlob(path: string, init?: RequestInit): Promise<Blob> {
+  const headers = new Headers(init?.headers);
+  headers.set("x-staff-key", getStaffKey());
+  const r = await fetch(path, { ...init, headers });
+  await guardAuth(r);
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.blob();
+}
+
+async function req<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers);
+  headers.set("x-staff-key", getStaffKey());
+  const r = await fetch(path, { ...init, headers });
+  await guardAuth(r);
   if (!r.ok) {
     let detail = "";
     try {
@@ -140,6 +156,13 @@ const real: Omit<StaffClient, "mock"> = {
     }),
   sendToDesigners: (id) =>
     req("/api/staff/clients/" + encodeURIComponent(id) + "/send-to-designers", { method: "POST" }),
+  designer: () => req("/api/staff/designer"),
+  downloadZip: (id) => reqBlob("/api/staff/clients/" + encodeURIComponent(id) + "/images.zip"),
+  uploadFinals: (id, files) => {
+    const form = new FormData();
+    for (const f of files) form.append("files", f);
+    return req("/api/staff/clients/" + encodeURIComponent(id) + "/final-images", { method: "POST", body: form });
+  },
 };
 
 export type StaffConnect =

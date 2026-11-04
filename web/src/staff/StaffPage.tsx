@@ -290,7 +290,7 @@ function FullDetails({ client, row, onDecided, onOpen }: DetailProps) {
 }
 
 /** [staff-key] Passcode screen shown before any staff data loads, and again after a 401. */
-function PasscodeGate({ error, onSubmit }: { error: string; onSubmit: (key: string) => void }) {
+export function PasscodeGate({ error, onSubmit }: { error: string; onSubmit: (key: string) => void }) {
   const [key, setKey] = useState("");
   return (
     <form
@@ -377,6 +377,7 @@ export default function StaffPage() {
             Demo (sample data)
           </span>
         )}
+        <a className="staff-nav" href={window.location.hash.startsWith("#/") ? "#/designer" : "/designer"}>Designer</a>
       </header>
       <main className="staff-main">
         {gate ? (

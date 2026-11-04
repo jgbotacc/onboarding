@@ -98,6 +98,41 @@ try {
   pass("toggle only on drafts tab", /onPhase=\{/.test(staffPageSrc) &&
     /cvPhase\.phase === "drafts"/.test(staffPageSrc) && /fullDetails=\{/.test(staffPageSrc));
 
+  // Onboarding chat: one summary line plus a button; full messages only after the click.
+  pass("chat collapsed by default", /const \[showChat, setShowChat\] = useState\(false\)/.test(caseViewSrc));
+  pass("chat summary line", /Chat history: \{entries\.length\} message/.test(caseViewSrc) && /last at \{entries\.length \? fmtTime/.test(caseViewSrc));
+  pass("chat opens on click", /aria-expanded=\{showChat\}/.test(caseViewSrc) && /\{showChat && \(/.test(caseViewSrc));
+
+  // Action bar: approve + send to designers, no send-to-client.
+  pass("no send to client button", !/Send to client/.test(caseViewSrc));
+
+  // Designer handoff page: rows with download, upload and status; linked from staff.
+  const designerSrc = readFileSync(join(root, "src", "staff", "DesignerPage.tsx"), "utf8");
+  const mainSrc = readFileSync(join(root, "src", "main.tsx"), "utf8");
+  pass("designer page renders rows", /\.map\(\(r\) => \(/.test(designerSrc) && /Download images/.test(designerSrc) &&
+    /Upload final images/.test(designerSrc) && /final_status/.test(designerSrc));
+  pass("designer routed at /designer", /#\/designer/.test(mainSrc) && /\/designer/.test(mainSrc) && /DesignerPage/.test(mainSrc));
+  pass("designer linked from staff header", />Designer<\/a>/.test(staffPageSrc) && /#\/designer/.test(staffPageSrc));
+  pass("designer rows carry finals", /final_images/.test(designerSrc) && /chosen_look/.test(designerSrc));
+  const mockSrc = readFileSync(join(root, "src", "staff", "mock.ts"), "utf8");
+  pass("mock covers designer", /designer:/.test(mockSrc) && /downloadZip:/.test(mockSrc) && /uploadFinals:/.test(mockSrc));
+
+  // Mock designer flow: sent cases only, picked title first, upload flips status, zip parses.
+  const drows = await m.designer();
+  pass("mock designer lists sent cases", drows.some((r) => r.id === "c-forge03") && drows.every((r) => r.sent_to_designers_at));
+  const dforge = drows.find((r) => r.id === "c-forge03");
+  pass("mock chosen look is the pick", dforge.chosen_look === "Dark gym poster");
+  pass("mock pending before upload", dforge.final_status === "Pending final edit" && dforge.final_images.length === 0);
+  const up = await m.uploadFinals("c-forge03", [new File([new Uint8Array([1, 2, 3])], "a.png", { type: "image/png" })]);
+  pass("mock upload keeps urls", up.final_images.length === 1);
+  const drows2 = await m.designer();
+  const dforge2 = drows2.find((r) => r.id === "c-forge03");
+  pass("mock done after upload", dforge2.final_status === "Done" && dforge2.final_images.length === 1);
+  pass("mock done sorts after pending", drows2[drows2.length - 1].id === "c-forge03" || drows2.every((r) => r.final_status === "Done"));
+  const dzip = await m.downloadZip("c-forge03");
+  const magic = new Uint8Array(await dzip.slice(0, 2).arrayBuffer());
+  pass("mock zip parses", dzip.type === "application/zip" && dzip.size > 0 && magic[0] === 0x50 && magic[1] === 0x4b);
+
   // No assistant-brand or model id text in staff/client render paths
   // (type comments about backend-kept fields are excluded).
   const walk = (dir) => readdirSync(dir).flatMap((f) => {

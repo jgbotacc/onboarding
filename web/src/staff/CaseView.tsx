@@ -56,8 +56,8 @@ export default function CaseView({ client, row, onBack, onOpen, onDecided, onSen
   const [busy, setBusy] = useState(false);
   const [decided, setDecided] = useState(false);
   const [actErr, setActErr] = useState("");
-  const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [phaseOverride, setPhaseOverride] = useState<CasePhase | null>(null);
+  const [showChat, setShowChat] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
   // Same approve call the Full details panel uses.
@@ -72,21 +72,6 @@ export default function CaseView({ client, row, onBack, onOpen, onDecided, onSen
     } catch (e) {
       console.error(e);
       setActErr("That didn't go through. Please try again.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  // Same share-link call the Client feedback link uses.
-  const sendToClient = async () => {
-    setBusy(true);
-    setActErr("");
-    try {
-      const res = await client.createShare(row.id);
-      setShareUrl(res.url);
-    } catch (e) {
-      console.error(e);
-      setActErr("Couldn't make a client link. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -177,16 +162,24 @@ export default function CaseView({ client, row, onBack, onOpen, onDecided, onSen
 
       {phase === "onboarding" && (
         <div id={`panel-onboarding-${row.id}`} role="tabpanel" aria-labelledby={`tab-onboarding-${row.id}`} aria-label="Onboarding chat">
-          {entries.length === 0 && <p className="staff-empty">No messages yet.</p>}
-          <ul className="cv-chat">
-            {entries.map((m, i) => (
-              <li key={i} className={"cv-bubble" + (m.role === "client" ? " cv-client" : " cv-assistant")}>
-                <span className="cv-who">{m.role === "client" ? "Client" : "Assistant"}</span>
-                <span>{maskSensitive(m.text || "")}</span>
-                {m.at && <span className="cv-time">{fmtTime(m.at)}</span>}
-              </li>
-            ))}
-          </ul>
+          <p className="cv-chatline">
+            <span>Chat history: {entries.length} message{entries.length === 1 ? "" : "s"}, last at {entries.length ? fmtTime(entries[entries.length - 1].at) : "—"}</span>
+            <button type="button" className="btn cv-btn" aria-expanded={showChat} onClick={() => setShowChat((v) => !v)}>
+              {showChat ? "Hide" : "Chat history"}
+            </button>
+          </p>
+          {showChat && (
+            entries.length === 0 ? <p className="staff-empty">No messages yet.</p> :
+            <ul className="cv-chat">
+              {entries.map((m, i) => (
+                <li key={i} className={"cv-bubble" + (m.role === "client" ? " cv-client" : " cv-assistant")}>
+                  <span className="cv-who">{m.role === "client" ? "Client" : "Assistant"}</span>
+                  <span>{maskSensitive(m.text || "")}</span>
+                  {m.at && <span className="cv-time">{fmtTime(m.at)}</span>}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 
@@ -204,19 +197,11 @@ export default function CaseView({ client, row, onBack, onOpen, onDecided, onSen
             >
               Request changes
             </button>
-            <button type="button" className="btn cv-btn" disabled={busy} onClick={sendToClient}>
-              Send to client
-            </button>
             <button type="button" className="btn cv-btn" disabled={busy || decided || !!sentAt} onClick={sendToDesigners}>
               {sentAt ? "Sent to designers" : "Send to designers"}
             </button>
           </div>
           {actErr && <p className="field-error" role="alert">{actErr}</p>}
-          {shareUrl && (
-            <p className="cv-share" role="status">
-              Client link ready: <a href={shareUrl}>{shareUrl}</a>
-            </p>
-          )}
 
           <div className="cv-body" id={`panel-drafts-${row.id}`} role="tabpanel" aria-labelledby={`tab-drafts-${row.id}`}>
         <div className="cv-lanes" role="list" aria-label="Case stages">

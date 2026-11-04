@@ -255,3 +255,26 @@ export const STAFF_STATUS_LABELS: Record<string, string> = {
 };
 
 export const statusLabel = (s: string) => STAFF_STATUS_LABELS[s] || s.replace(/_/g, " ");
+
+/** GET /api/staff/designer -> DesignerRow[] (one row per case sent to designers) */
+export interface DesignerRow {
+  id: string;
+  business_name: string | null;
+  business_type: string | null;
+  industry: string | null;
+  design_preferences: string | null;
+  requirements_notes: string | null;
+  brand_colours: string | null;
+  /** Picked look title, else shortlisted draft, else latest round's look. */
+  chosen_look: string;
+  final_images: string[];
+  final_status: "Done" | "Pending final edit";
+  sent_to_designers_at: string | null;
+}
+
+/** POST /api/staff/clients/:id/final-images */
+export interface FinalUploadResult {
+  ok?: boolean;
+  id: string;
+  final_images: string[];
+}

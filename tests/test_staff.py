@@ -1,13 +1,16 @@
 """Staff review: approve, reject, more_info + resume, and a rollback case."""
+import io
 import os
 import tempfile
+import zipfile
 
 os.environ.setdefault("APP_DATA_DIR", tempfile.mkdtemp())
 from fastapi.testclient import TestClient  # noqa: E402
 
 from src.app import app  # noqa: E402
 from helpers import new_session, resume, staff_client  # noqa: E402
-from src.shared.config import notify_email_to  # noqa: E402
+from src.shared import security  # noqa: E402
+from src.shared.config import MEDIA_DIR, notify_email_to  # noqa: E402
 
 c = staff_client(app)
 BASE = {"business_name": "Acme Cafe", "contact_name": "Jo", "email": "jo@acme.example", "industry": "F&B"}
@@ -126,6 +129,106 @@ def test_case_view_contract():
         assert key in d, key
     g = c.get(f"/api/staff/clients/{sid}/studio").json()
     assert "drafts" in g
+
+
+def _png(color=(180, 40, 40)):
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (16, 16), color).save(buf, "PNG")
+    return buf.getvalue()
+
+
+def _sent(tag=None):
+    """A client handed off to designers."""
+    sid = _client({"requirements_notes": f"Designer case {tag}"} if tag else None)
+    r = c.post(f"/api/staff/clients/{sid}/send-to-designers")
+    assert r.status_code == 200, r.text
+    return sid
+
+
+def test_designer_list_rows():
+    sid = _sent("x")
+    other = _client({"business_name": "Not Sent Co"})
+    rows = c.get("/api/staff/designer").json()
+    ids = [r["id"] for r in rows]
+    assert sid in ids and other not in ids
+    row = next(r for r in rows if r["id"] == sid)
+    assert row["business_name"] == "Acme Cafe"
+    for key in ("business_type", "industry", "design_preferences", "requirements_notes",
+                "brand_colours", "chosen_look", "final_images", "final_status",
+                "sent_to_designers_at"):
+        assert key in row, key
+    assert row["final_images"] == [] and row["final_status"] == "Pending final edit"
+    assert isinstance(row["chosen_look"], str)
+
+
+def test_designer_pending_sorts_first():
+    a = _sent("a")
+    b = _sent("b")
+    c.post(f"/api/staff/clients/{a}/final-images",
+           files=[("files", ("a.png", _png(), "image/png"))])
+    rows = c.get("/api/staff/designer").json()
+    pos = {r["id"]: i for i, r in enumerate(rows)}
+    assert pos[b] < pos[a]  # pending before done
+    assert next(r for r in rows if r["id"] == a)["final_status"] == "Done"
+
+
+def test_designer_download_zip():
+    from src.app import store
+    sid = _sent("z")
+    name = f"zip-look-{sid}.png"
+    (MEDIA_DIR / name).write_bytes(_png())
+    store.add_looks(sid, 1, [{"id": "lk-zip", "url": f"/media/{name}",
+                              "title": "Zip look", "brief": "Zip brief"}])
+    store.add_looks(sid, 1, [{"id": "lk-gone", "url": "/media/no-such-file.png",
+                              "title": "Gone", "brief": "Gone"}])
+    r = c.get(f"/api/staff/clients/{sid}/images.zip")
+    assert r.status_code == 200, r.text
+    assert "zip" in r.headers["content-type"]
+    names = zipfile.ZipFile(io.BytesIO(r.content)).namelist()
+    assert name in names and "no-such-file.png" not in names
+    assert c.get("/api/staff/clients/bogus/images.zip").status_code == 404
+
+
+def test_designer_upload_finals():
+    from src.app import store
+    sid = _sent("f")
+    r = c.post(f"/api/staff/clients/{sid}/final-images",
+               files=[("files", ("a.png", _png((10, 80, 160)), "image/png")),
+                      ("files", ("b.png", _png((160, 80, 10)), "image/png"))])
+    assert r.status_code == 200, r.text
+    urls = r.json()["final_images"]
+    assert len(urls) == 2 and all(u.startswith("/media/final-") for u in urls)
+    assert all((MEDIA_DIR / u.rsplit("/", 1)[-1]).is_file() for u in urls)
+    assert store.load(sid)["final_images"] == urls
+    audits = [a for a in store.audit_log(sid) if a.get("action") == "final_images_uploaded"]
+    assert len(audits) == 1
+    row = next(r for r in c.get("/api/staff/designer").json() if r["id"] == sid)
+    assert row["final_images"] == urls and row["final_status"] == "Done"
+
+
+def test_designer_upload_rejects_bad_files():
+    sid = _sent("g")
+    r = c.post(f"/api/staff/clients/{sid}/final-images",
+               files=[("files", ("a.txt", b"not an image", "text/plain"))])
+    assert r.status_code == 400
+    big = b"\xff" * (security.MAX_FILE_BYTES + 1)
+    r = c.post(f"/api/staff/clients/{sid}/final-images",
+               files=[("files", ("big.png", big, "image/png"))])
+    assert r.status_code == 400
+    many = [("files", (f"{i}.png", _png(), "image/png")) for i in range(11)]
+    assert c.post(f"/api/staff/clients/{sid}/final-images", files=many).status_code == 400
+    assert c.post("/api/staff/clients/bogus/final-images",
+                  files=[("files", ("a.png", _png(), "image/png"))]).status_code == 404
+
+
+def test_designer_routes_require_passcode():
+    anon = TestClient(app)
+    sid = _sent("h")
+    assert anon.get("/api/staff/designer").status_code == 401
+    assert anon.get(f"/api/staff/clients/{sid}/images.zip").status_code == 401
+    assert anon.post(f"/api/staff/clients/{sid}/final-images",
+                     files=[("files", ("a.png", _png(), "image/png"))]).status_code == 401
 
 
 def test_used_resume_token_returns_410():

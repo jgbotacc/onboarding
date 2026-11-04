@@ -1,5 +1,6 @@
 // Mock staff API (demo data only). Used on ?mock=1 or when /api/staff/* is unreachable.
-import type { Consult, DecisionBody, DecisionResult, FeedbackEntry, RejectedLookRound, ShareCreated, ShareLink, ShortlistView, StaffDetail, StaffRow, StepTrace, StudioDraft, StudioDraftsBody, StudioGet, StudioRemixBody, StudioRunResult, StudioSizePreset } from "./types";
+import type { Consult, DecisionBody, DecisionResult, DesignerRow, FeedbackEntry, FinalUploadResult, RejectedLookRound, ShareCreated, ShareLink, ShortlistView, StaffDetail, StaffRow, StepTrace, StudioDraft, StudioDraftsBody, StudioGet, StudioRemixBody, StudioRunResult, StudioSizePreset } from "./types";
+import { zipStore } from "./zip";
 
 function art(title: string, sub: string, bg: string, fg: string): string {
   const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
@@ -404,6 +405,43 @@ export function createStaffMock() {
       created_at: new Date().toISOString(),
     };
   };
+  const finalsDb = new Map<string, string[]>();
+  const finalsFor = (cid: string): string[] => {
+    let list = finalsDb.get(cid);
+    if (!list) {
+      list = [];
+      finalsDb.set(cid, list);
+    }
+    return list;
+  };
+  const chosenLookFor = (cid: string): string => {
+    const d = db.find((x) => x.id === cid);
+    const looks = (d?.looks || []).filter((l) => l.url);
+    const picked = looks.find((l) => l.selected);
+    if (picked?.title) return picked.title;
+    const short = shortlistDrafts(cid).filter((x) => x.url);
+    if (short.length && short[0].style_title) return short[0].style_title;
+    if (!looks.length) return "";
+    const top = Math.max(...looks.map((l) => l.round ?? 0));
+    return looks.find((l) => (l.round ?? 0) === top)?.title || "";
+  };
+  const designerRow = (cid: string): DesignerRow => {
+    const d = db.find((x) => x.id === cid)!;
+    const finals = finalsFor(cid);
+    return {
+      id: cid,
+      business_name: d.fields.business_name || "",
+      business_type: d.fields.business_type || "",
+      industry: d.fields.industry || "",
+      design_preferences: (d.fields as Record<string, unknown>).design_preferences as string || "",
+      requirements_notes: (d.fields as Record<string, unknown>).requirements_notes as string || "",
+      brand_colours: (d.fields as Record<string, unknown>).brand_colours as string || "",
+      chosen_look: chosenLookFor(cid),
+      final_images: [...finals],
+      final_status: finals.length ? "Done" : "Pending final edit",
+      sent_to_designers_at: d.sent_to_designers_at || null,
+    };
+  };
   const api = {
     list: (): Promise<StaffRow[]> =>
       wait(
@@ -440,6 +478,40 @@ export function createStaffMock() {
       if (!d) return Promise.reject(new Error("HTTP 404"));
       if (!d.sent_to_designers_at) d.sent_to_designers_at = new Date().toISOString();
       return wait({ ok: true, id, sent_to_designers_at: d.sent_to_designers_at });
+    },
+    designer: (): Promise<DesignerRow[]> =>
+      wait(
+        db
+          .filter((d) => d.sent_to_designers_at)
+          .map((d) => designerRow(d.id))
+          .sort((a, b) => Number(a.final_status === "Done") - Number(b.final_status === "Done")),
+      ),
+    downloadZip: async (cid: string): Promise<Blob> => {
+      const d = db.find((x) => x.id === cid);
+      if (!d || !d.sent_to_designers_at) return Promise.reject(new Error("HTTP 404"));
+      const urls = [...d.images, ...(d.looks || []).map((l) => l.url), ...draftsFor(cid).map((x) => x.url)];
+      const files: { name: string; data: Uint8Array }[] = [];
+      let n = 0;
+      for (const u of urls) {
+        if (!u) continue;
+        n += 1;
+        const buf = new Uint8Array(await (await fetch(u)).arrayBuffer());
+        files.push({ name: `image-${n}.svg`, data: buf });
+      }
+      return new Blob([zipStore(files) as unknown as BlobPart], { type: "application/zip" });
+    },
+    uploadFinals: async (cid: string, files: File[]): Promise<FinalUploadResult> => {
+      if (!db.some((x) => x.id === cid)) return Promise.reject(new Error("HTTP 404"));
+      if (files.length > 10) return Promise.reject(new Error("Too many files. Upload up to 10 at a time."));
+      const urls: string[] = [];
+      for (const f of files) {
+        const bytes = new Uint8Array(await f.arrayBuffer());
+        let bin = "";
+        for (const b of bytes) bin += String.fromCharCode(b);
+        urls.push(`data:${f.type || "image/png"};base64,${btoa(bin)}`);
+      }
+      finalsFor(cid).push(...urls);
+      return wait({ ok: true, id: cid, final_images: [...finalsFor(cid)] });
     },
     rejectedLooks: (id: string): Promise<RejectedLookRound[]> => {
       if (!db.some((x) => x.id === id)) return Promise.reject(new Error("HTTP 404"));
