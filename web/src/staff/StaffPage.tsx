@@ -289,6 +289,14 @@ function FullDetails({ client, row, onDecided, onOpen }: DetailProps) {
   );
 }
 
+const designerHref = () => (window.location.hash.startsWith("#/") ? "#/designer" : "/designer");
+
+/** Designers sign in on the same screen but work on the designer page. */
+export function goDesigner() {
+  if (window.location.hash.startsWith("#/")) window.location.hash = "#/designer";
+  else window.location.assign(designerHref());
+}
+
 /** [staff-key] Passcode screen shown before any staff data loads, and again after a 401. */
 export function PasscodeGate({ error, onSubmit }: { error: string; onSubmit: (key: string) => void }) {
   const [key, setKey] = useState("");
@@ -301,7 +309,7 @@ export function PasscodeGate({ error, onSubmit }: { error: string; onSubmit: (ke
       }}
     >
       <h2>Staff sign-in</h2>
-      <p className="staff-empty">Enter the staff passcode to see submissions.</p>
+      <p className="staff-empty">Enter your staff or designer passcode to continue.</p>
       <label htmlFor="staffKey">Passcode</label>
       <input id="staffKey" type="password" autoComplete="current-password" autoFocus value={key} onChange={(e) => setKey(e.target.value)} />
       {error && (
@@ -329,6 +337,10 @@ export default function StaffPage() {
 
   const load = () =>
     connectStaff().then((r) => {
+      if (!r.client && r.role === "designer") {
+        goDesigner();
+        return;
+      }
       if (r.client) {
         setClient(r.client);
         setRows(r.rows);

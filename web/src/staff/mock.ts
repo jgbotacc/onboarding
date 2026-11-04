@@ -443,6 +443,7 @@ export function createStaffMock() {
     };
   };
   const api = {
+    role: (): Promise<{ role: "staff" | "designer" }> => wait({ role: "staff" as const }),
     list: (): Promise<StaffRow[]> =>
       wait(
         db.map((d, i) => ({

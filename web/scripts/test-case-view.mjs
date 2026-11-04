@@ -117,6 +117,14 @@ try {
   const mockSrc = readFileSync(join(root, "src", "staff", "mock.ts"), "utf8");
   pass("mock covers designer", /designer:/.test(mockSrc) && /downloadZip:/.test(mockSrc) && /uploadFinals:/.test(mockSrc));
 
+  // Role-based access: one sign-in, staff vs designer gates.
+  const apiSrc = readFileSync(join(root, "src", "staff", "api.ts"), "utf8");
+  pass("sign-in asks for either passcode", /staff or designer passcode/.test(staffPageSrc));
+  pass("role lookup returns the caller role", /\/api\/staff\/role/.test(apiSrc) && /connectDesigner/.test(apiSrc));
+  pass("staff page sends designers to the designer page", /goDesigner/.test(staffPageSrc) && /r\.role === "designer"/.test(staffPageSrc));
+  pass("designer header hides the staff link for designers", /role === "staff" &&/.test(designerSrc));
+  pass("mock reports a role", /role:/.test(mockSrc));
+
   // Mock designer flow: sent cases only, picked title first, upload flips status, zip parses.
   const drows = await m.designer();
   pass("mock designer lists sent cases", drows.some((r) => r.id === "c-forge03") && drows.every((r) => r.sent_to_designers_at));

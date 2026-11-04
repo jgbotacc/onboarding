@@ -1,8 +1,11 @@
 import { createStaffMock } from "./mock";
 import type { Consult, DecisionBody, DecisionResult, DesignerRow, FinalUploadResult, RejectedLookRound, ShareCreated, ShareLink, ShortlistView, StaffDetail, StaffRow, StudioDraft, StudioDraftsBody, StudioGet, StudioRemixBody, StudioRunResult } from "./types";
 
+export type StaffRole = "staff" | "designer";
+
 export interface StaffClient {
   mock: boolean;
+  role(): Promise<{ role: StaffRole }>;
   list(): Promise<StaffRow[]>;
   detail(id: string): Promise<StaffDetail>;
   decide(id: string, body: DecisionBody): Promise<DecisionResult>;
@@ -93,6 +96,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 const real: Omit<StaffClient, "mock"> = {
+  role: () => req("/api/staff/role"),
   list: () => req("/api/staff/clients"),
   detail: (id) => req("/api/staff/clients/" + encodeURIComponent(id)),
   decide: (id, body) =>
@@ -166,22 +170,60 @@ const real: Omit<StaffClient, "mock"> = {
 };
 
 export type StaffConnect =
-  | { client: StaffClient; rows: StaffRow[]; auth?: undefined }
-  | { client?: undefined; rows?: undefined; auth: StaffAuthError | null };
+  | { client: StaffClient; rows: StaffRow[]; auth?: undefined; role: StaffRole }
+  | { client?: undefined; rows?: undefined; auth?: undefined; role: StaffRole }
+  | { client?: undefined; rows?: undefined; auth: StaffAuthError | null; role?: undefined };
+
+export type DesignerConnect =
+  | { client: StaffClient; rows: DesignerRow[]; auth?: undefined; role: StaffRole }
+  | { client?: undefined; rows?: undefined; auth: StaffAuthError | null; role?: undefined };
+
+/** Which role the saved passcode grants, without touching any data route. */
+async function connectRole(): Promise<{ role: StaffRole } | { auth: StaffAuthError }> {
+  try {
+    const r = await real.role();
+    if (r && (r.role === "staff" || r.role === "designer")) return { role: r.role };
+  } catch (e) {
+    if (e instanceof StaffAuthError) return { auth: e };
+  }
+  return { auth: new StaffAuthError(401) };
+}
 
 /** Real API (needs the passcode) unless ?mock=1 or the server can't be reached, then demo data.
- * Returns { auth } when the passcode is missing or wrong, so the page can ask for it. */
+ * Returns { auth } when the passcode is missing or wrong, so the page can ask for it,
+ * and { role: "designer" } with no client so the staff page can send designers on. */
 export async function connectStaff(): Promise<StaffConnect> {
   if (!/(^|[?&])mock=1(&|$)/.test(window.location.search)) {
     if (!getStaffKey()) return { auth: null };
+    const who = await connectRole();
+    if ("auth" in who) return { auth: who.auth };
+    if (who.role === "designer") return { role: "designer" };
     try {
       const rows = await real.list();
-      if (Array.isArray(rows)) return { client: { mock: false, ...real }, rows };
+      if (Array.isArray(rows)) return { client: { mock: false, ...real }, rows, role: "staff" };
     } catch (e) {
       if (e instanceof StaffAuthError) return { auth: e };
       /* network failure: fall through to mock */
     }
   }
   const m = createStaffMock();
-  return { client: { mock: true, ...m }, rows: await m.list() };
+  return { client: { mock: true, ...m }, rows: await m.list(), role: "staff" };
+}
+
+/** Designer handoff for either role: staff land here from the staff header, designers sign in here. */
+export async function connectDesigner(): Promise<DesignerConnect> {
+  if (!/(^|[?&])mock=1(&|$)/.test(window.location.search)) {
+    if (!getStaffKey()) return { auth: null };
+    const who = await connectRole();
+    if ("auth" in who) return { auth: who.auth };
+    try {
+      const rows = await real.designer();
+      if (Array.isArray(rows)) return { client: { mock: false, ...real }, rows, role: who.role };
+    } catch (e) {
+      if (e instanceof StaffAuthError) return { auth: e };
+      /* network failure: fall through to mock */
+    }
+  }
+  const m = createStaffMock();
+  return { client: { mock: true, ...m }, rows: await m.designer(), role: "staff" };
 }

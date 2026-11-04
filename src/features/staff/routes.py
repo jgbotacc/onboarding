@@ -1,5 +1,7 @@
 """Staff review API. Primary: /api/staff/clients*. Aliases: /api/clients*, /api/admin/clients*.
-Every route needs the staff passcode (x-staff-key header, see shared/security.py)."""
+Staff routes need the STAFF_PASSCODE; the designer handoff (list, images zip,
+final-images) and the role lookup also accept DESIGNER_PASSCODE
+(x-staff-key header, see shared/security.py)."""
 import io
 import json
 import re
@@ -23,7 +25,7 @@ from src.features.looks.brief import design_context
 from src.features.staff import email, metrics
 from src.shared import guard
 from src.shared.config import LABELS, MEDIA_DIR, PUBLIC_BASE_URL
-from src.shared.security import MAX_FILE_BYTES, clean_image, require_staff
+from src.shared.security import MAX_FILE_BYTES, caller_role, clean_image, require_staff, require_staff_or_designer
 
 STATUS = {"approve": "approved", "reject": "rejected", "more_info": "needs_info"}
 
@@ -40,7 +42,7 @@ class ConsultDecisionIn(BaseModel):
 
 
 def actor(request: Request) -> str:
-    return "staff:" + (request.headers.get("x-staff-name") or "staff")[:40]
+    return (caller_role(request) or "staff") + ":" + (request.headers.get("x-staff-name") or "staff")[:40]
 
 
 def _summary(s):
@@ -236,7 +238,11 @@ def _ref_paths(s) -> list[str]:
 
 
 def make_router(store, save):
-    r = APIRouter(dependencies=[Depends(require_staff)])
+    r = APIRouter()
+
+    def get_role(request: Request):
+        """Shared sign-in: which role the caller's passcode grants."""
+        return {"role": caller_role(request)}
 
     def load(cid):
         s = store.load(cid)
@@ -701,35 +707,54 @@ def make_router(store, save):
         store.audit(cid, act, "shortlist_add" if body.add else "shortlist_remove", did)
         return {"drafts": _shortlist_view(store, cid)["drafts"]}
 
+    staff_only = [Depends(require_staff)]
+    either = [Depends(require_staff_or_designer)]
     for prefix in ("/api/staff/clients", "/api/clients", "/api/admin/clients"):
-        r.add_api_route(prefix, list_clients, methods=["GET"])
-        r.add_api_route(prefix + "/{cid}", get_client, methods=["GET"])
-        r.add_api_route(prefix + "/{cid}/decision", decide, methods=["POST"])
-        r.add_api_route(prefix + "/{cid}/decision/preview", preview, methods=["POST"])
-    r.add_api_route("/api/staff/clients/{cid}/rejected-looks", rejected_looks, methods=["GET"])
-    r.add_api_route("/api/staff/consults", list_consults, methods=["GET"])
-    r.add_api_route("/api/staff/consults/{cid}/decision", consult_decide, methods=["POST"])
-    r.add_api_route("/api/staff/consults/{cid}/approve", consult_approve, methods=["POST"])
-    r.add_api_route("/api/staff/clients/{cid}/studio", studio_get, methods=["GET"])
-    r.add_api_route("/api/staff/clients/{cid}/studio/drafts", studio_drafts, methods=["POST"])
-    r.add_api_route("/api/staff/clients/{cid}/studio/remix", studio_remix, methods=["POST"])
-    r.add_api_route("/api/staff/clients/{cid}/studio/drafts/{did}/star", studio_star, methods=["POST"])
-    r.add_api_route("/api/staff/clients/{cid}/studio/drafts/{did}/pin", studio_pin, methods=["POST"])
-    r.add_api_route("/api/staff/clients/{cid}/studio/drafts/{did}/send", studio_send, methods=["POST"])
-    r.add_api_route("/api/staff/clients/{cid}/studio/share", studio_share, methods=["POST"])
-    r.add_api_route("/api/staff/clients/{cid}/studio/shares", studio_shares, methods=["GET"])
+        r.add_api_route(prefix, list_clients, methods=["GET"], dependencies=staff_only)
+        r.add_api_route(prefix + "/{cid}", get_client, methods=["GET"], dependencies=staff_only)
+        r.add_api_route(prefix + "/{cid}/decision", decide, methods=["POST"], dependencies=staff_only)
+        r.add_api_route(prefix + "/{cid}/decision/preview", preview, methods=["POST"],
+                        dependencies=staff_only)
+    r.add_api_route("/api/staff/clients/{cid}/rejected-looks", rejected_looks, methods=["GET"],
+                    dependencies=staff_only)
+    r.add_api_route("/api/staff/consults", list_consults, methods=["GET"], dependencies=staff_only)
+    r.add_api_route("/api/staff/consults/{cid}/decision", consult_decide, methods=["POST"],
+                    dependencies=staff_only)
+    r.add_api_route("/api/staff/consults/{cid}/approve", consult_approve, methods=["POST"],
+                    dependencies=staff_only)
+    r.add_api_route("/api/staff/clients/{cid}/studio", studio_get, methods=["GET"],
+                    dependencies=staff_only)
+    r.add_api_route("/api/staff/clients/{cid}/studio/drafts", studio_drafts, methods=["POST"],
+                    dependencies=staff_only)
+    r.add_api_route("/api/staff/clients/{cid}/studio/remix", studio_remix, methods=["POST"],
+                    dependencies=staff_only)
+    r.add_api_route("/api/staff/clients/{cid}/studio/drafts/{did}/star", studio_star, methods=["POST"],
+                    dependencies=staff_only)
+    r.add_api_route("/api/staff/clients/{cid}/studio/drafts/{did}/pin", studio_pin, methods=["POST"],
+                    dependencies=staff_only)
+    r.add_api_route("/api/staff/clients/{cid}/studio/drafts/{did}/send", studio_send, methods=["POST"],
+                    dependencies=staff_only)
+    r.add_api_route("/api/staff/clients/{cid}/studio/share", studio_share, methods=["POST"],
+                    dependencies=staff_only)
+    r.add_api_route("/api/staff/clients/{cid}/studio/shares", studio_shares, methods=["GET"],
+                    dependencies=staff_only)
     r.add_api_route("/api/staff/clients/{cid}/studio/shares/{tid}/revoke", studio_revoke,
-                    methods=["POST"])
-    r.add_api_route("/api/staff/clients/{cid}/studio/shortlist", studio_shortlist, methods=["GET"])
+                    methods=["POST"], dependencies=staff_only)
+    r.add_api_route("/api/staff/clients/{cid}/studio/shortlist", studio_shortlist, methods=["GET"],
+                    dependencies=staff_only)
     r.add_api_route("/api/staff/clients/{cid}/studio/shortlist/{did}", studio_shortlist_set,
-                    methods=["POST"])
-    r.add_api_route("/api/staff/clients/{cid}/send-to-designers", send_to_designers, methods=["POST"])
-    r.add_api_route("/api/staff/designer", list_designer, methods=["GET"])
-    r.add_api_route("/api/staff/clients/{cid}/images.zip", download_images, methods=["GET"])
-    r.add_api_route("/api/staff/clients/{cid}/final-images", upload_finals, methods=["POST"])
-    r.add_api_route("/api/staff/metrics", get_metrics, methods=["GET"])
-    r.add_api_route("/api/staff/traces", get_traces, methods=["GET"])
-    r.add_api_route("/api/staff/audit", get_audit, methods=["GET"])
+                    methods=["POST"], dependencies=staff_only)
+    r.add_api_route("/api/staff/clients/{cid}/send-to-designers", send_to_designers, methods=["POST"],
+                    dependencies=staff_only)
+    r.add_api_route("/api/staff/role", get_role, methods=["GET"], dependencies=either)
+    r.add_api_route("/api/staff/designer", list_designer, methods=["GET"], dependencies=either)
+    r.add_api_route("/api/staff/clients/{cid}/images.zip", download_images, methods=["GET"],
+                    dependencies=either)
+    r.add_api_route("/api/staff/clients/{cid}/final-images", upload_finals, methods=["POST"],
+                    dependencies=either)
+    r.add_api_route("/api/staff/metrics", get_metrics, methods=["GET"], dependencies=staff_only)
+    r.add_api_route("/api/staff/traces", get_traces, methods=["GET"], dependencies=staff_only)
+    r.add_api_route("/api/staff/audit", get_audit, methods=["GET"], dependencies=staff_only)
     return r
 
 

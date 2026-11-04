@@ -231,6 +231,68 @@ def test_designer_routes_require_passcode():
                      files=[("files", ("a.png", _png(), "image/png"))]).status_code == 401
 
 
+DESIGNER_KEY = "test-designer-key"
+anon = TestClient(app)
+
+
+def _designer_client():
+    from fastapi.testclient import TestClient  # local import keeps module import order stable
+    return TestClient(app, headers={"x-staff-key": DESIGNER_KEY})
+
+
+def test_role_route_returns_role(monkeypatch):
+    monkeypatch.setenv("DESIGNER_PASSCODE", DESIGNER_KEY)
+    assert c.get("/api/staff/role").json() == {"role": "staff"}
+    assert _designer_client().get("/api/staff/role").json() == {"role": "designer"}
+    assert anon.get("/api/staff/role").status_code == 401
+    assert anon.get("/api/staff/role", headers={"x-staff-key": "wrong"}).status_code == 401
+
+
+def test_designer_reaches_designer_routes(monkeypatch):
+    monkeypatch.setenv("DESIGNER_PASSCODE", DESIGNER_KEY)
+    d = _designer_client()
+    sid = _sent("roles-ok")
+    rows = d.get("/api/staff/designer")
+    assert rows.status_code == 200, rows.text
+    assert any(r["id"] == sid for r in rows.json())
+    assert d.get(f"/api/staff/clients/{sid}/images.zip").status_code == 200
+    r = d.post(f"/api/staff/clients/{sid}/final-images",
+               files=[("files", ("a.png", _png(), "image/png"))])
+    assert r.status_code == 200, r.text
+
+
+def test_designer_refused_on_staff_routes(monkeypatch):
+    monkeypatch.setenv("DESIGNER_PASSCODE", DESIGNER_KEY)
+    d = _designer_client()
+    sid = _sent("roles-no")
+    assert d.get("/api/staff/clients").status_code == 403
+    assert d.get(f"/api/staff/clients/{sid}").status_code == 403
+    assert d.post(f"/api/staff/clients/{sid}/decision",
+                 json={"decision": "approve"}).status_code == 403
+    assert d.post(f"/api/staff/clients/{sid}/send-to-designers").status_code == 403
+
+
+def test_wrong_key_rejected_on_role_and_designer_routes():
+    bad = TestClient(app, headers={"x-staff-key": "wrong"})
+    assert bad.get("/api/staff/role").status_code == 401
+    assert bad.get("/api/staff/designer").status_code == 401
+    assert bad.get("/api/staff/clients").status_code == 401
+
+
+def test_designer_key_fails_without_designer_passcode(monkeypatch):
+    monkeypatch.delenv("DESIGNER_PASSCODE", raising=False)
+    d = _designer_client()
+    assert d.get("/api/staff/role").status_code == 401
+    assert d.get("/api/staff/designer").status_code == 401
+
+
+def test_role_and_designer_fail_closed_without_passcodes(monkeypatch):
+    monkeypatch.delenv("STAFF_PASSCODE", raising=False)
+    monkeypatch.delenv("DESIGNER_PASSCODE", raising=False)
+    assert c.get("/api/staff/role").status_code == 503
+    assert c.get("/api/staff/designer").status_code == 503
+
+
 def test_used_resume_token_returns_410():
     sid = _client()
     tok = c.post(f"/api/staff/clients/{sid}/decision", json={"decision": "more_info",

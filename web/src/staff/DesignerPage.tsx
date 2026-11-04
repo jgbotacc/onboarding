@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { connectStaff, setOnAuthFail, setStaffKey, type StaffClient } from "./api";
+import { connectDesigner, setOnAuthFail, setStaffKey, type StaffClient, type StaffRole } from "./api";
 import { maskSensitive } from "./caseView";
 import { PasscodeGate } from "./StaffPage";
 import type { DesignerRow } from "./types";
@@ -109,19 +109,16 @@ function DesignerRowView({ client, row, onUploaded }: {
 export default function DesignerPage() {
   const [client, setClient] = useState<StaffClient | null>(null);
   const [rows, setRows] = useState<DesignerRow[] | null>(null);
+  const [role, setRole] = useState<StaffRole | null>(null);
   const [gate, setGate] = useState<{ error: string } | null>(null);
 
   const load = () =>
-    connectStaff().then(async (r) => {
+    connectDesigner().then(async (r) => {
       if (r.client) {
         setClient(r.client);
+        setRows(r.rows);
+        setRole(r.role);
         setGate(null);
-        try {
-          setRows(await r.client.designer());
-        } catch (e) {
-          console.error(e);
-          setRows([]);
-        }
       } else {
         setClient(null);
         setGate({ error: !r.auth ? "" : r.auth.status === 503 ? r.auth.message : "That passcode didn't work. Try again." });
@@ -133,6 +130,7 @@ export default function DesignerPage() {
     setOnAuthFail((e) => {
       setClient(null);
       setRows(null);
+      setRole(null);
       setGate({ error: e.status === 503 ? e.message : "You've been signed out. Enter the passcode again." });
     });
     load();
@@ -147,7 +145,7 @@ export default function DesignerPage() {
         <h1>Designer handoff</h1>
         <span className="staff-tag">Staff review</span>
         {client?.mock && <span className="badge-demo" id="demoBadge">Demo (sample data)</span>}
-        <a className="staff-nav" href={staffHref()}>Staff</a>
+        {role === "staff" && <a className="staff-nav" href={staffHref()}>Staff</a>}
       </header>
       <main className="staff-main">
         {gate ? (
