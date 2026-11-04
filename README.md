@@ -42,7 +42,7 @@ cd web
 npm install
 npm run build
 ```
-Tests (they never call Meta; leave `MODEL_API_KEY` unset):
+Tests (they never call Meta; leave `MODEL_API_KEY`, `BASETEN_API_KEY` and `CHAT_PROVIDER` unset):
 ```
 pytest -q tests
 cd web
@@ -50,6 +50,7 @@ npm test
 ```
 Env vars, by name only:
 - `MODEL_API_KEY` (Meta Model API: Muse Spark and Muse Image; without it the app uses regex reading, English only and placeholder images)
+- `CHAT_PROVIDER`, `BASETEN_API_KEY`, `BASETEN_BASE_URL`, `BASETEN_MODEL` (Baseten chat path; chat, translation, document and photo reading and image briefs use Baseten (meta-models/muse-spark-open-1026) when `BASETEN_API_KEY` is set or `CHAT_PROVIDER=baseten`, else Meta; image generation stays on Meta with `MODEL_API_KEY`)
 - `STAFF_PASSCODE` (staff pages and API at `/staff`)
 - `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD` optional, SQLite fallback in `var/` if not set
 - `ONBOARDING_NOTIFY_EMAIL`, `RESEND_API_KEY` optional

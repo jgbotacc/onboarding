@@ -3,7 +3,7 @@
 Decisions were made by Jin. Assumptions are ours; Jin can override any of them.
 
 ## Decisions (Jin)
-- D1. Only Meta models in the app (Muse Spark for chat, document reading, translation; Muse Image for graphics). Jev for checks. No other AI provider.
+- D1. Only Meta models in the app (Muse Spark for chat, document reading, translation, served by Meta or by Baseten under the same Muse Spark family; Muse Image for graphics). Jev for checks. No other AI provider.
 - D2. Meta spend limit for the build: S$120 in total.
 - D3. Client messages are short lines. Existing replies are tightened too, keeping the per-field bullet style. Text comes back as separate lines so each can be read aloud.
 - D4. Uploads accept PDFs and phone photos (JPG, PNG, HEIC) of documents. Photos are read with the Meta vision model. Blurry, cropped or unreadable photos get a short "retake" reply plus a flag; we never guess.
@@ -59,3 +59,4 @@ Decisions were made by Jin. Assumptions are ours; Jin can override any of them.
 - A32. Cap of 9 studio drafts per client, counted over reserved and ok drafts.
 - A33. Partial-name masking in studio prompts may over-mask ordinary words that match a part of the client's name (for example "tan colours"). Accepted trade-off for now.
 - A34. A staff suggestion sent during a round disappears if the client skips to the next round. Accepted for the demo.
+- A35. Baseten cost in traces is a high estimate at the Meta list rates until Baseten pricing for this model is confirmed (`BASETEN_IN_USD_PER_1M`, `BASETEN_OUT_USD_PER_1M`).
