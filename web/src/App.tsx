@@ -59,6 +59,8 @@ export default function App() {
   const [files, setFiles] = useState<File[]>([]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  // Language switch: true while earlier replies re-translate.
+  const [translating, setTranslating] = useState(false);
   const [micOn, setMicOn] = useState(false);
   const [micSupported] = useState(() => isMicSupported());
   const micStopRef = useRef<(() => void) | null>(null);
@@ -164,21 +166,29 @@ export default function App() {
   // Language switch: built-in lines re-render from i18n; server lines show the cached
   // translation for the new language at once, else one client.translate call for all
   // uncached sources swaps the text in place. A failed call keeps the text on screen.
+  // While the call runs, a small note shows in the target language.
   useEffect(() => {
     const renderBuiltin = (key: string) => t(lang, key as I18nKey);
     setMessages((prev) => swapMessages(prev, lang, transCache.current, new Map(), renderBuiltin));
     const needed = pendingSources(messagesRef.current, lang, transCache.current);
-    if (!client || needed.length === 0) return;
+    if (!client || needed.length === 0) {
+      setTranslating(false);
+      return;
+    }
     let alive = true;
+    setTranslating(true);
     client
       .translate(needed, lang)
       .then((res) => {
         if (!alive) return;
         const fetched = new Map(needed.map((s, i) => [s, res.texts[i] ?? s] as [string, string]));
         setMessages((prev) => swapMessages(prev, lang, transCache.current, fetched, renderBuiltin));
+        setTranslating(false);
       })
       .catch(() => {
         /* keep the text on screen */
+        if (!alive) return;
+        setTranslating(false);
       });
     return () => {
       alive = false;
@@ -614,6 +624,11 @@ export default function App() {
                 <span />
                 <span />
               </div>
+            </div>
+          )}
+          {translating && (
+            <div className="hint" role="status" aria-live="polite">
+              {t(lang, "translating")}
             </div>
           )}
         </div>

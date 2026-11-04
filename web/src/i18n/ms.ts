@@ -17,6 +17,7 @@ const ms: typeof en = {
   generatedImage: "Gambar rekaan {n}",
   askChanges: "Minta perubahan",
   waitingReply: "Menunggu balasan",
+  translating: "Menterjemah…",
   stillNeeded: "Masih perlu",
   removeFile: "Buang {name}",
   attachTitle: "Lampirkan PDF atau gambar",

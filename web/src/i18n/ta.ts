@@ -17,6 +17,7 @@ const ta: typeof en = {
   generatedImage: "உருவாக்கிய படம் {n}",
   askChanges: "மாற்றம் கேள்",
   waitingReply: "பதிலுக்கு காத்திருக்கிறது",
+  translating: "மொழிபெயர்க்கிறது…",
   stillNeeded: "இன்னும் தேவை",
   removeFile: "{name}-ஐ நீக்கு",
   attachTitle: "PDF அல்லது படத்தை இணையுங்கள்",

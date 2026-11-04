@@ -44,6 +44,16 @@ try {
   pass("built-ins re-render from i18n", /i18nKey/.test(appSrc) && /renderBuiltin/.test(appSrc));
   pass("uncached only, one call", /pendingSources\(messagesRef\.current,\s*lang,\s*transCache\.current\)/.test(appSrc));
   pass("failure keeps text", /\.catch\(\(\) => \{\s*\/\* keep the text on screen \*\//.test(appSrc));
+  // Translating note: shown while a language switch re-translates history.
+  pass("translating state", /const \[translating, setTranslating\] = useState\(false\)/.test(appSrc));
+  pass("note shows on start", /setTranslating\(true\)[\s\S]*?\.translate\(needed,\s*lang\)/.test(appSrc));
+  pass("note hides on success", /\.then\(\(res\) => \{[\s\S]*?setTranslating\(false\)/.test(appSrc));
+  pass("note hides on failure", /\.catch\(\(\) => \{[\s\S]*?setTranslating\(false\)/.test(appSrc));
+  pass("note renders in target language", /translating && \([\s\S]*?t\(lang, "translating"\)/.test(appSrc));
+  pass("note is polite live region", /translating && \([\s\S]*?aria-live="polite"[\s\S]*?t\(lang, "translating"\)/.test(appSrc));
+  pass("note reuses existing style", /translating && \([\s\S]*?className="hint"/.test(appSrc));
+  for (const l of ["en", "zh", "ms", "ta"]) pass(`translating string (${l})`, typeof t(l, "translating") === "string" && t(l, "translating").trim() !== "" && t(l, "translating") !== "translating");
+  pass("translating string per language", new Set(["en", "zh", "ms", "ta"].map((l) => t(l, "translating"))).size === 4);
   // Listen reads the shown (translated) text: both buttons pass the message text.
   const listenUses = [...appSrc.matchAll(/<ListenButton[^>]*text=\{([^}]+)\}/g)].map((m) => m[1].trim());
   pass("ListenButton reads message text", listenUses.length >= 2 && listenUses.every((t0) => t0 === "m.text"));

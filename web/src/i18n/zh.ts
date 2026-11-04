@@ -17,6 +17,7 @@ const zh: typeof en = {
   generatedImage: "生成的图片 {n}",
   askChanges: "要求修改",
   waitingReply: "等候回复",
+  translating: "翻译中…",
   stillNeeded: "还需要",
   removeFile: "删除 {name}",
   attachTitle: "附上 PDF 或图片",

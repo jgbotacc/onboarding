@@ -16,6 +16,7 @@ const en = {
   generatedImage: "Generated image {n}",
   askChanges: "Ask for changes",
   waitingReply: "Waiting for reply",
+  translating: "Translating…",
   stillNeeded: "Still needed",
   removeFile: "Remove {name}",
   attachTitle: "Attach a PDF or image",
