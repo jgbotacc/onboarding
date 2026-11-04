@@ -1,13 +1,23 @@
 """Data layer: Neo4j when NEO4J_* env set, else durable SQLite fallback."""
 import contextlib
 import json
+import secrets
 import sqlite3
 import threading
+import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from src.shared.config import SQLITE_PATH, neo4j_env
+from src.shared.security import token_hash
 
 _UNSET = object()
+
+FEEDBACK_KINDS = ("heart", "reject", "approve", "changes")
+
+
+def _utcnow() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 class SqliteStore:
@@ -244,6 +254,150 @@ class SqliteStore:
                 "SELECT {} FROM brand_boards WHERE session_id=?".format(
                     ", ".join(self._BOARD_COLS)), (sid,)).fetchone()
             return self._board_row(row) if row else None
+
+    _FEEDBACK_COLS = ("id", "session_id", "draft_id", "kind", "note", "actor", "created_at")
+
+    @staticmethod
+    def _feedback_row(row) -> dict:
+        return dict(zip(SqliteStore._FEEDBACK_COLS, row))
+
+    def record_feedback(self, sid, draft_id, kind, note, actor) -> dict:
+        """One transaction: feedback row, shortlist insert/delete, then the audit row.
+
+        Validates kind and that the draft is sent for this session. A heart also
+        inserts the shortlist row; a reject also removes it. Raises ValueError.
+        """
+        if kind not in FEEDBACK_KINDS:
+            raise ValueError(f"Unknown feedback kind: {kind!r}.")
+        text = (note or "").strip()
+        if kind == "changes":
+            if not text:
+                raise ValueError("A short note is required for a change request.")
+            if len(text) > 500:
+                raise ValueError("Note is too long (max 500 chars).")
+            note = text
+        else:
+            note = None
+        fid, now = uuid.uuid4().hex, _utcnow()
+        with self._txn():
+            row = self.db.execute("SELECT session_id, sent_at FROM staff_drafts WHERE id=?",
+                                  (draft_id,)).fetchone()
+            if not row or row[0] != sid or not row[1]:
+                raise ValueError("Draft not found.")
+            self.db.execute("INSERT INTO draft_feedback(id, session_id, draft_id, kind, note, actor,"
+                            " created_at) VALUES(?,?,?,?,?,?,?)",
+                            (fid, sid, draft_id, kind, note, actor, now))
+            if kind == "heart":
+                self.db.execute("INSERT OR IGNORE INTO shortlist(session_id, draft_id, added_by,"
+                                " created_at) VALUES(?,?,?,?)", (sid, draft_id, actor, now))
+            elif kind == "reject":
+                self.db.execute("DELETE FROM shortlist WHERE session_id=? AND draft_id=?",
+                                (sid, draft_id))
+            details = {"draft_id": draft_id}
+            if note is not None:
+                details["note"] = note
+            self.db.execute("INSERT INTO audit(session_id, actor, action, target, details)"
+                            " VALUES(?,?,?,?,?)",
+                            (sid, actor, "feedback_" + kind, fid, json.dumps(details)))
+        return {"id": fid, "session_id": sid, "draft_id": draft_id, "kind": kind,
+                "note": note, "actor": actor, "created_at": now}
+
+    def feedback_for(self, sid) -> list[dict]:
+        with self.lock:
+            return [self._feedback_row(r) for r in self.db.execute(
+                "SELECT {} FROM draft_feedback WHERE session_id=? ORDER BY created_at, id".format(
+                    ", ".join(self._FEEDBACK_COLS)), (sid,)).fetchall()]
+
+    def shortlist_add(self, sid, draft_id, actor) -> list[str]:
+        with self._txn():
+            self.db.execute("INSERT OR IGNORE INTO shortlist(session_id, draft_id, added_by,"
+                            " created_at) VALUES(?,?,?,?)", (sid, draft_id, actor, _utcnow()))
+        return self.shortlist_for(sid)
+
+    def shortlist_remove(self, sid, draft_id) -> list[str]:
+        with self._txn():
+            self.db.execute("DELETE FROM shortlist WHERE session_id=? AND draft_id=?",
+                            (sid, draft_id))
+        return self.shortlist_for(sid)
+
+    def shortlist_for(self, sid) -> list[str]:
+        with self.lock:
+            return [r[0] for r in self.db.execute(
+                "SELECT draft_id FROM shortlist WHERE session_id=? ORDER BY created_at, draft_id",
+                (sid,)).fetchall()]
+
+    def issue_share_token(self, sid, actor, days=7) -> tuple[str, str]:
+        """One transaction: token hash row plus the audit row.
+
+        Returns (id, token). The plaintext token is returned once and never
+        stored; the audit row holds only the id and expiry, never token or hash.
+        """
+        token, tid = secrets.token_urlsafe(32), uuid.uuid4().hex
+        now = _utcnow()
+        expires = (datetime.now(timezone.utc) + timedelta(days=int(days))).isoformat(timespec="seconds")
+        with self._txn():
+            self.db.execute("INSERT INTO share_tokens(id, session_id, token_hash, created_by,"
+                            " created_at, expires_at, revoked_at, used_at)"
+                            " VALUES(?,?,?,?,?,?,?,?)",
+                            (tid, sid, token_hash(token), actor, now, expires, None, None))
+            self.db.execute("INSERT INTO audit(session_id, actor, action, target, details)"
+                            " VALUES(?,?,?,?,?)",
+                            (sid, actor, "share_issued", tid, json.dumps({"expires_at": expires})))
+        return tid, token
+
+    def find_share_token(self, token: str) -> dict | None:
+        """Hash the token, then check session, expiry and revoked_at. None when
+        unknown or revoked (so a revoked link reads exactly like a made-up one)."""
+        with self.lock:
+            row = self.db.execute(
+                "SELECT id, session_id, created_by, created_at, expires_at, revoked_at, used_at"
+                " FROM share_tokens WHERE token_hash=?", (token_hash(token),)).fetchone()
+        if not row:
+            return None
+        d = dict(zip(("id", "session_id", "created_by", "created_at",
+                      "expires_at", "revoked_at", "used_at"), row))
+        if d["revoked_at"]:
+            return None
+        return d
+
+    def mark_share_used(self, tid, at=None) -> None:
+        with self._txn():
+            self.db.execute("UPDATE share_tokens SET used_at=coalesce(used_at, ?) WHERE id=?",
+                            (at or _utcnow(), tid))
+
+    def revoke_share_token(self, tid, actor) -> dict | None:
+        with self._txn():
+            row = self.db.execute("SELECT session_id FROM share_tokens WHERE id=?", (tid,)).fetchone()
+            if not row:
+                return None
+            now = _utcnow()
+            self.db.execute("UPDATE share_tokens SET revoked_at=? WHERE id=? AND revoked_at IS NULL",
+                            (now, tid))
+            row2 = self.db.execute(
+                "SELECT id, session_id, created_by, created_at, expires_at, revoked_at, used_at"
+                " FROM share_tokens WHERE id=?", (tid,)).fetchone()
+            d = dict(zip(("id", "session_id", "created_by", "created_at",
+                          "expires_at", "revoked_at", "used_at"), row2))
+            self.db.execute("INSERT INTO audit(session_id, actor, action, target, details)"
+                            " VALUES(?,?,?,?,?)",
+                            (row[0], actor, "share_revoked", tid, json.dumps({"revoked_at": now})))
+            return d
+
+    def shares_for(self, sid) -> list[dict]:
+        """Token id, expiry and status per session; never hashes or tokens."""
+        with self.lock:
+            return [dict(zip(("id", "session_id", "created_by", "created_at",
+                               "expires_at", "revoked_at", "used_at"), r))
+                    for r in self.db.execute(
+                        "SELECT id, session_id, created_by, created_at, expires_at, revoked_at, used_at"
+                        " FROM share_tokens WHERE session_id=? ORDER BY created_at, id",
+                        (sid,)).fetchall()]
+
+    def sweep_expired_tokens(self) -> int:
+        """Delete rows past expiry. Returns the count removed."""
+        with self._txn():
+            cur = self.db.execute("DELETE FROM share_tokens WHERE expires_at <= ?", (_utcnow(),))
+            return cur.rowcount
 
     def sweep_stale_drafts(self, sid, older_than_s=600) -> int:
         """Mark 'reserved' rows older than the limit as failed ('timed out'),

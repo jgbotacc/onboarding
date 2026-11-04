@@ -1,11 +1,14 @@
 """Neo4j store using the graph model (neo4j/schema.cypher, queries.cypher)."""
 import json
 import os
+import secrets
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import httpx
 
 from src.shared import relay
+from src.shared.security import token_hash
 
 _UNSET = object()
 
@@ -63,6 +66,45 @@ DRAFT_RET = ("d.id AS id, d.session_id AS session_id, d.run_id AS run_id, d.pare
              "d.author AS author, d.starred AS starred, d.pinned_to AS pinned_to, "
              "d.pinned_consult_id AS pinned_consult_id, d.sent_at AS sent_at, d.sent_by AS sent_by, "
              "toString(d.created_at) AS created_at")
+FEEDBACK_KINDS = ("heart", "reject", "approve", "changes")
+FEEDBACK_RET = ("f.id AS id, f.session_id AS session_id, f.draft_id AS draft_id, f.kind AS kind, "
+                "f.note AS note, f.actor AS actor, toString(f.created_at) AS created_at")
+RECORD_FEEDBACK_Q = f"""
+MATCH (d:Draft {{id:$did, session_id:$sid}}) WHERE d.sent_at IS NOT NULL
+CREATE (f:Feedback {{id:randomUUID(), session_id:$sid, draft_id:$did, kind:$kind, note:$note,
+  actor:$actor, created_at:datetime()}})
+MERGE (c:Client {{id:$sid}}) MERGE (c)-[:GAVE_FEEDBACK]->(f)
+FOREACH (_ IN CASE WHEN $kind = 'heart' THEN [1] ELSE [] END |
+  MERGE (c)-[:SHORTLISTED]->(d))
+WITH c, d, f
+OPTIONAL MATCH (c)-[sl:SHORTLISTED]->(d) WHERE $kind = 'reject'
+DELETE sl
+WITH c, f
+CREATE (a:Audit {{id:randomUUID(), sessionId:$sid, actor:$actor, action:'feedback_' + $kind,
+  target:f.id, details:$details, at:datetime()}})
+MERGE (c)-[:AUDITED]->(a)
+RETURN {FEEDBACK_RET}"""
+SHARE_RET = ("t.id AS id, t.session_id AS session_id, t.created_by AS created_by, "
+             "toString(t.created_at) AS created_at, toString(t.expires_at) AS expires_at, "
+             "toString(t.revoked_at) AS revoked_at, toString(t.used_at) AS used_at")
+ISSUE_SHARE_Q = f"""
+MERGE (c:Client {{id:$sid}})
+CREATE (t:ShareToken {{id:$tid, session_id:$sid, token_hash:$hash, created_by:$actor,
+  created_at:datetime(), expires_at:datetime($expires), revoked_at:null, used_at:null}})
+MERGE (c)-[:HAS_SHARE]->(t)
+CREATE (a:Audit {{id:randomUUID(), sessionId:$sid, actor:$actor, action:'share_issued',
+  target:$tid, details:$details, at:datetime()}})
+MERGE (c)-[:AUDITED]->(a)
+RETURN t.id AS id, toString(t.expires_at) AS expires_at"""
+REVOKE_SHARE_Q = f"""
+MATCH (t:ShareToken {{id:$tid}})
+SET t.revoked_at = coalesce(t.revoked_at, datetime($now))
+WITH t
+MATCH (c:Client {{id:t.session_id}})
+CREATE (a:Audit {{id:randomUUID(), sessionId:t.session_id, actor:$actor, action:'share_revoked',
+  target:$tid, details:$details, at:datetime()}})
+MERGE (c)-[:AUDITED]->(a)
+RETURN {SHARE_RET}"""
 RESERVE_DRAFTS_Q = """
 MERGE (c:Client {id:$sid})
 WITH c
@@ -313,6 +355,109 @@ class Neo4jStore:
         rows = self._run(f"MATCH (b:BrandBoard {{session_id:$sid}}) RETURN {self.BOARD_RET}",
                          sid=sid)
         return self._board_row(rows[0]) if rows else None
+
+    def record_feedback(self, sid, draft_id, kind, note, actor) -> dict:
+        """One Cypher statement: feedback node, shortlist edge add/remove, audit node.
+
+        Validates kind (and the change-request note) in Python and the sent
+        draft in Cypher; empty result means the draft isn't sent for this
+        session. Raises ValueError either way.
+        """
+        if kind not in FEEDBACK_KINDS:
+            raise ValueError(f"Unknown feedback kind: {kind!r}.")
+        text = (note or "").strip()
+        if kind == "changes":
+            if not text:
+                raise ValueError("A short note is required for a change request.")
+            if len(text) > 500:
+                raise ValueError("Note is too long (max 500 chars).")
+            note = text
+        else:
+            note = None
+        details = {"draft_id": draft_id}
+        if note is not None:
+            details["note"] = note
+        rows = self._run(RECORD_FEEDBACK_Q, sid=sid, did=draft_id, kind=kind,
+                         note=note, actor=actor, details=json.dumps(details))
+        if not rows:
+            raise ValueError("Draft not found.")
+        return dict(rows[0])
+
+    def feedback_for(self, sid) -> list[dict]:
+        rows = self._run(f"MATCH (f:Feedback {{session_id:$sid}}) RETURN {FEEDBACK_RET} "
+                         "ORDER BY f.created_at, f.id", sid=sid)
+        return [dict(r) for r in rows]
+
+    def shortlist_add(self, sid, draft_id, actor) -> list[str]:
+        self._run("MERGE (c:Client {id:$sid}) WITH c MATCH (d:Draft {id:$did, session_id:$sid}) "
+                  "MERGE (c)-[sl:SHORTLISTED]->(d) ON CREATE SET sl.created_at=datetime()",
+                  sid=sid, did=draft_id)
+        return self.shortlist_for(sid)
+
+    def shortlist_remove(self, sid, draft_id) -> list[str]:
+        self._run("MATCH (:Client {id:$sid})-[sl:SHORTLISTED]->(:Draft {id:$did}) DELETE sl",
+                  sid=sid, did=draft_id)
+        return self.shortlist_for(sid)
+
+    def shortlist_for(self, sid) -> list[str]:
+        rows = self._run("MATCH (:Client {id:$sid})-[sl:SHORTLISTED]->(d:Draft) "
+                         "RETURN d.id AS id ORDER BY sl.created_at, d.id", sid=sid)
+        return [r["id"] for r in rows]
+
+    def issue_share_token(self, sid, actor, days=7) -> tuple[str, str]:
+        """One Cypher statement: token node plus the audit node.
+
+        Returns (id, token). The plaintext token is returned once and never
+        stored; the audit row holds only the id and expiry, never token or hash.
+        """
+        token, tid = secrets.token_urlsafe(32), uuid.uuid4().hex
+        expires = (datetime.now(timezone.utc) + timedelta(days=int(days))).isoformat(timespec="seconds")
+        rows = self._run(ISSUE_SHARE_Q, sid=sid, tid=tid, hash=token_hash(token),
+                         actor=actor, expires=expires,
+                         details=json.dumps({"expires_at": expires}))
+        if not rows:
+            raise RuntimeError("Share token issue failed.")
+        return tid, token
+
+    def find_share_token(self, token: str) -> dict | None:
+        """Hash the token, then check session, expiry and revoked_at. None when
+        unknown or revoked (so a revoked link reads exactly like a made-up one)."""
+        rows = self._run(f"MATCH (t:ShareToken {{token_hash:$hash}}) RETURN {SHARE_RET}",
+                         hash=token_hash(token))
+        if not rows:
+            return None
+        d = dict(rows[0])
+        if d["revoked_at"]:
+            return None
+        return d
+
+    def mark_share_used(self, tid, at=None) -> None:
+        self._run("MATCH (t:ShareToken {id:$tid}) "
+                  "SET t.used_at = coalesce(t.used_at, datetime($at))",
+                  tid=tid, at=at or datetime.now(timezone.utc).isoformat(timespec="seconds"))
+
+    def revoke_share_token(self, tid, actor) -> dict | None:
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        rows = self._run(REVOKE_SHARE_Q, tid=tid, actor=actor, now=now,
+                         details=json.dumps({"revoked_at": now}))
+        return dict(rows[0]) if rows else None
+
+    def shares_for(self, sid) -> list[dict]:
+        """Token id, expiry and status per session; never hashes or tokens."""
+        rows = self._run(f"MATCH (t:ShareToken {{session_id:$sid}}) RETURN {SHARE_RET} "
+                         "ORDER BY t.created_at, t.id", sid=sid)
+        return [dict(r) for r in rows]
+
+    def sweep_expired_tokens(self) -> int:
+        """Delete rows past expiry. Returns the count removed."""
+        rows = self._run("MATCH (t:ShareToken) WHERE t.expires_at <= datetime() "
+                         "DETACH DELETE t RETURN count(t) AS n")
+        if not rows:
+            return 0
+        try:
+            return int(rows[0]["n"])
+        except (ValueError, TypeError, KeyError):
+            return 0
 
     def save_consult(self, card: dict):
         self._run("MERGE (c:Client {id:$sid}) MERGE (k:Consult {id:$cid}) "

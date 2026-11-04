@@ -3,6 +3,7 @@ Every route needs the staff passcode (x-staff-key header, see shared/security.py
 import json
 import secrets
 import threading
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -65,6 +66,30 @@ def _rejected(store, s):
     cur, final = s.get("round", 0), s.get("status") in ("handed_off", "accepted")
     return [l for l in _all_looks(store, s["id"])
             if not l["selected"] and ((l.get("round") or 0) < cur or final)]
+
+
+def feedback_as_rejected(store, sid):
+    """Hearts, rejections and change requests mapped to the rejected-look shape.
+
+    The next brief treats a reacted draft exactly like a rejected look: the
+    studio avoid list and the variant titles both read this list. Approvals are
+    final picks, not steer-away signals, so they stay out.
+    """
+    if not all(hasattr(store, m) for m in ("drafts", "feedback_for")):
+        return []
+    by_id = {d.get("id"): d for d in store.drafts(sid)}
+    out = []
+    for f in store.feedback_for(sid):
+        if f.get("kind") not in ("heart", "reject", "changes"):
+            continue
+        d = by_id.get(f.get("draft_id"))
+        if not d or not d.get("sent_at"):
+            continue
+        out.append({"round": None, "id": d.get("id"), "url": d.get("url"),
+                    "title": d.get("style_title") or "Suggested by our team",
+                    "brief": d.get("style") or d.get("marketer_prompt"),
+                    "at": f.get("created_at")})
+    return out
 
 
 def _consult_for(store, cid):
@@ -141,6 +166,20 @@ class StarIn(BaseModel):
 
 class PinIn(BaseModel):
     target: Literal["client", "consult"] | None = None
+
+
+class ShareIn(BaseModel):
+    days: int = Field(default=7, ge=1, le=30)
+
+
+class ShortlistIn(BaseModel):
+    add: bool
+
+
+class ShareFeedbackIn(BaseModel):
+    draft_id: str
+    kind: Literal["heart", "reject", "approve", "changes"]
+    note: str | None = Field(default=None, max_length=500)
 
 
 _studio_locks_guard = threading.Lock()
@@ -332,7 +371,7 @@ def make_router(store, save):
         others = guard.others_identifiers(store, cid)
         brief = design_context(s.get("fields", {}), s.get("direction"), None)
         avoid = [{"id": l["id"], "title": l["title"], "brief": l.get("brief"), "url": l.get("url")}
-                 for l in _rejected(store, s)]
+                 for l in _rejected(store, s) + feedback_as_rejected(store, cid)]
         presets = [{"id": p["id"], "label": p["label"], "w": p["w"], "h": p["h"]}
                    for p in studio.PRESETS.values()]
         chips = [{"id": c["id"], "label": c["label"], "text": c["text"]}
@@ -350,7 +389,7 @@ def make_router(store, save):
             fields = s.get("fields", {})
             others = guard.others_identifiers(store, cid)
             own_ids = _mask_ids(fields)
-            rejected = _rejected(store, s)
+            rejected = _rejected(store, s) + feedback_as_rejected(store, cid)
             rej_titles = [l.get("title") for l in rejected if l.get("title")]
             vs = studio.variants(rej_titles, s.get("direction"))
             masked_mp, _ = guard.clean(body.marketer_prompt or "", set(own_ids))
@@ -421,7 +460,7 @@ def make_router(store, save):
             others = guard.others_identifiers(store, cid)
             own_ids = _mask_ids(fields)
             masked_note, _ = guard.clean(body.note or "", set(own_ids))
-            rejected = _rejected(store, s)
+            rejected = _rejected(store, s) + feedback_as_rejected(store, cid)
             base = studio.studio_prompt(fields, s.get("direction"), rejected, "", [],
                                         preset, style=src_style, own_ids=own_ids)
             prompt = base + " Make a close variation of this design; keep layout and colours."
@@ -576,6 +615,48 @@ def make_router(store, save):
             out = dict(_draft_json(d), look_id=look["id"])
             return guard.clean(out, guard.others_identifiers(store, cid))[0]
 
+    def studio_share(cid: str, body: "ShareIn", request: Request):
+        load(cid)
+        tid, token = store.issue_share_token(cid, actor(request), days=body.days)
+        base = PUBLIC_BASE_URL or str(request.base_url).rstrip("/")
+        exp = next((t["expires_at"] for t in store.shares_for(cid) if t["id"] == tid), None)
+        # Fragment carries the token: it never leaves the browser, so it never
+        # reaches the server (or its access log). The page reads it and sends
+        # it back in the x-share-token header.
+        return {"id": tid, "url": f"{base}/share#t={token}", "expires_at": exp}
+
+    def studio_shares(cid: str):
+        load(cid)
+        return [{"id": t["id"], "expires_at": t["expires_at"], "revoked_at": t["revoked_at"],
+                 "used_at": t["used_at"], "created_by": t["created_by"]}
+                for t in store.shares_for(cid)]
+
+    def studio_revoke(cid: str, tid: str, request: Request):
+        load(cid)
+        if not any(t["id"] == tid for t in store.shares_for(cid)):
+            raise HTTPException(404, "Share link not found.")
+        d = store.revoke_share_token(tid, actor(request))
+        if not d:
+            raise HTTPException(404, "Share link not found.")
+        return {"id": tid, "revoked_at": d["revoked_at"]}
+
+    def studio_shortlist(cid: str):
+        load(cid)
+        return _shortlist_view(store, cid)
+
+    def studio_shortlist_set(cid: str, did: str, body: "ShortlistIn", request: Request):
+        load(cid)
+        d = store.get_draft(did)
+        if not d or d.get("session_id") != cid:
+            raise HTTPException(404, "Draft not found.")
+        act = actor(request)
+        if body.add:
+            store.shortlist_add(cid, did, act)
+        else:
+            store.shortlist_remove(cid, did)
+        store.audit(cid, act, "shortlist_add" if body.add else "shortlist_remove", did)
+        return {"drafts": _shortlist_view(store, cid)["drafts"]}
+
     for prefix in ("/api/staff/clients", "/api/clients", "/api/admin/clients"):
         r.add_api_route(prefix, list_clients, methods=["GET"])
         r.add_api_route(prefix + "/{cid}", get_client, methods=["GET"])
@@ -594,9 +675,148 @@ def make_router(store, save):
     r.add_api_route("/api/staff/clients/{cid}/studio/drafts/{did}/star", studio_star, methods=["POST"])
     r.add_api_route("/api/staff/clients/{cid}/studio/drafts/{did}/pin", studio_pin, methods=["POST"])
     r.add_api_route("/api/staff/clients/{cid}/studio/drafts/{did}/send", studio_send, methods=["POST"])
+    r.add_api_route("/api/staff/clients/{cid}/studio/share", studio_share, methods=["POST"])
+    r.add_api_route("/api/staff/clients/{cid}/studio/shares", studio_shares, methods=["GET"])
+    r.add_api_route("/api/staff/clients/{cid}/studio/shares/{tid}/revoke", studio_revoke,
+                    methods=["POST"])
+    r.add_api_route("/api/staff/clients/{cid}/studio/shortlist", studio_shortlist, methods=["GET"])
+    r.add_api_route("/api/staff/clients/{cid}/studio/shortlist/{did}", studio_shortlist_set,
+                    methods=["POST"])
     r.add_api_route("/api/staff/metrics", get_metrics, methods=["GET"])
     r.add_api_route("/api/staff/traces", get_traces, methods=["GET"])
     r.add_api_route("/api/staff/audit", get_audit, methods=["GET"])
+    return r
+
+
+def _shortlist_view(store, cid):
+    """Staff shortlist view: shortlisted drafts plus the feedback feed."""
+    ids = set(store.shortlist_for(cid))
+    drafts = [_draft_json(d) for d in store.drafts(cid) if d.get("id") in ids]
+    fb = [{"draft_id": f["draft_id"], "kind": f["kind"], "note": f.get("note"),
+           "actor": f["actor"], "created_at": f.get("created_at")}
+          for f in store.feedback_for(cid)]
+    return guard.clean({"drafts": drafts, "feedback": fb},
+                       guard.others_identifiers(store, cid))[0]
+
+
+def _parse_ts(v):
+    """ISO or SQLite datetime -> aware datetime, else None."""
+    if not v:
+        return None
+    try:
+        d = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+
+
+def _share_expired(row) -> bool:
+    exp = _parse_ts(row.get("expires_at"))
+    return exp is None or exp <= datetime.now(timezone.utc)
+
+
+_share_hits: dict[str, list[float]] = {}
+_share_hits_guard = threading.Lock()
+SHARE_WRITES_PER_HOUR = 30
+
+
+def _share_limited(tid: str) -> bool:
+    """Per-token write budget: 30 writes per rolling hour. True when over."""
+    now = time.monotonic()
+    with _share_hits_guard:
+        if len(_share_hits) > 1000:  # prune dead tokens, keep memory bounded
+            for k in [k for k, v in _share_hits.items() if not [t for t in v if now - t < 3600]]:
+                del _share_hits[k]
+        hits = [t for t in _share_hits.get(tid, []) if now - t < 3600]
+        if len(hits) >= SHARE_WRITES_PER_HOUR:
+            _share_hits[tid] = hits
+            return True
+        hits.append(now)
+        _share_hits[tid] = hits
+        return False
+
+
+def _share_token_from(request: Request) -> str | None:
+    """The share token arrives in the x-share-token header only.
+
+    It is never read from the path or query string, so uvicorn's access log
+    (which records the request target) cannot capture it.
+    """
+    return request.headers.get("x-share-token")
+
+
+def make_share_router(store, save, lock_for):
+    """Public share links: no login, the token is the only secret."""
+    r = APIRouter()
+
+    def resolve(request: Request) -> dict:
+        """Hash the header token, then check session, expiry and revoked_at.
+
+        Unknown and revoked tokens both read 404, so a revoked link is
+        indistinguishable from a made-up one; expired tokens read 410.
+        """
+        token = _share_token_from(request)
+        row = store.find_share_token(token) if token else None
+        if not row:
+            raise HTTPException(404, "This link is no longer valid. Please ask our team for a new one.")
+        if _share_expired(row):
+            raise HTTPException(410, "This link has expired. Please ask our team for a new one.")
+        return row
+
+    def share_get(request: Request):
+        row = resolve(request)
+        if not row.get("used_at"):
+            store.mark_share_used(row["id"])
+        store.sweep_expired_tokens()
+        sid = row["session_id"]
+        s = store.load(sid)
+        if not s:
+            raise HTTPException(404, "This link is no longer valid. Please ask our team for a new one.")
+        liked = set(store.shortlist_for(sid))
+        drafts = [{"id": d["id"], "url": d["url"],
+                   "title": d.get("style_title") or "Suggested by our team",
+                   "liked": d["id"] in liked}
+                  for d in store.drafts(sid) if d.get("sent_at")]
+        dec = None
+        for f in store.feedback_for(sid):
+            if f.get("kind") in ("approve", "changes"):
+                dec = {"draft_id": f["draft_id"], "kind": f["kind"]}
+        out = {"business_name": (s.get("fields") or {}).get("business_name"),
+               "drafts": drafts, "shortlist": sorted(liked), "decided": dec}
+        return guard.clean(out, guard.others_identifiers(store, sid))[0]
+
+    def share_feedback(request: Request, body: ShareFeedbackIn):
+        row = resolve(request)
+        sid = row["session_id"]
+        with lock_for(sid):
+            if _share_limited(row["id"]):
+                raise HTTPException(429, "Too many tries. Please wait a while before trying again.")
+            s = store.load(sid)
+            if not s:
+                raise HTTPException(404, "This link is no longer valid. Please ask our team for a new one.")
+            if body.kind == "changes" and not (body.note or "").strip():
+                raise HTTPException(400, "Please add a short note about what to change.")
+            note = None
+            if body.kind == "changes":
+                note, _ = guard.clean(body.note.strip(), _mask_ids(s.get("fields", {})))
+            try:
+                store.record_feedback(sid, body.draft_id, body.kind, note, "client:share")
+            except ValueError:
+                raise HTTPException(404, "Draft not found.")
+            if body.kind == "approve":  # final pick: mark the look selected, like a client pick
+                store.mark_looks(sid, [body.draft_id])
+                ids = {lk.get("id") for lk in s.get("looks") or []}
+                if body.draft_id in ids and s.get("status") == "awaiting_review":
+                    s["selected_looks"] = [lk for lk in s["looks"]
+                                          if lk.get("id") == body.draft_id]
+                    s["status"] = "accepted"
+                    if s.get("history"):
+                        s["history"][-1]["accepted"] = True
+            save(s)
+            return {"ok": True, "shortlist": store.shortlist_for(sid)}
+
+    r.add_api_route("/api/share", share_get, methods=["GET"])
+    r.add_api_route("/api/share/feedback", share_feedback, methods=["POST"])
     return r
 
 

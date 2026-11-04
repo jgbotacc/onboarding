@@ -315,7 +315,27 @@ Gaps and workarounds:
 - Author identity is the self-reported `x-staff-name`. Accepted until per-staff logins exist.
 - Client picker polls every 15 s while open so sent suggestions appear; a suggestion sent during a round is replaced when the client skips to the next round.
 
-### 4.8 Brand board
+### 4.8 Client feedback and share links
+
+Feature: the client hearts or rejects studio drafts, and staff send a no-login share link where
+the client approves a draft or asks for changes. Tracking card: Jira KAN-18. Built 2026-11-04
+(backend only: migration 008, both stores, staff + public routes; no web UI yet).
+Docs checked 2026-11-04.
+
+Design decisions (fixed here so build has no open questions):
+- Hearts and rejections join the same steer-away-from-rejected-looks path the studio already uses:
+  `studio_prompt` builds its `avoid` list with `_avoid_list`, and `variants` drops rejected titles
+  (`src/features/imagegen/studio.py`). Client feedback rows are mapped to that `{title, brief/style}`
+  shape, so the next brief treats a rejected draft exactly like a rejected look. No new prompt logic.
+- A heart also adds the draft to the shortlist. Unhearting (or staff removal) takes it off.
+- Share tokens live 7 days by default, are scoped to one client, and resolve the visible drafts live
+  from `staff_drafts` rows with `sent_at` set. Nothing is frozen into the link, so sending another
+  draft updates what the same link shows. Revoke ends a link at once.
+- Drafts stay staff-only until sent: the public link never lists unsent drafts, and guessing a draft
+  id returns 404.
+- Approval picks one shortlisted draft; a change request must include a short note (max 500 chars,
+  guard-scrubbed). Both are audit-logged like staff actions.
+### 4.9 Brand board
 
 Feature: client "show us your style" uploads (shop photos or screenshots of old posts, up to 6 images).
 Muse Spark reads them and returns a brand board: a few colours as hex, tone words, style words and a short
@@ -328,6 +348,15 @@ Docs checked 2026-11-04 (docs and code only; nothing was called).
 
 #### 4.8.1 Integration inventory
 
+| System | Capability / endpoint used | Checked against | Owner |
+|---|---|---|---|
+| App store (SQLite live, Neo4j optional) | New `draft_feedback`, `shortlist`, `share_tokens` tables plus `ShareToken` / feedback node parity in `src/data/neo4j_store.py`; existing `audit`, `staff_drafts`, `looks` | `db/migrations/*.sql`, `src/data/store.py`, `src/data/neo4j_store.py` | Us |
+| Studio prompt builder | `studio_prompt(..., rejected=feedback_as_rejected)` reuses `_avoid_list` and `variants`; no new steer-away code | `src/features/imagegen/studio.py`, `src/features/looks/brief.py` (`make_briefs`, `design_context`) | Us |
+| Outbound guard | `guard.clean` scrubs client change-request notes with the client's own identifiers before staff see them | `src/shared/guard.py`, `src/shared/security.py` | Us |
+| Staff web (`web/src/staff/*`) | Send-link button, shortlist view, feedback feed; new strings follow the existing i18n check scripts | repo `web/scripts/test-i18n.mjs` | Us |
+| Public share page (new, no login) | Opens `{base}/share#t=<token>` (token in the fragment, never sent to the server); reads the public header-based share contract below; polls every 15 s like the client picker while open | this doc | Us |
+| Vercel relay (v1) | Not used. No Meta call is needed for this feature | `relay/README.md` | Us. **Not changed by this feature.** |
+| Daytona sandbox | No redeploy in this work; hosting stays on the existing sandbox | repo script `scripts/deploy_daytona.py` | Us |
 | System | Endpoint / capability used | Checked against | Owner |
 |---|---|---|---|
 | Meta Muse Spark `muse-spark-1.3` (board read) | `POST https://api.meta.ai/v1/chat/completions` (JSON: `model, messages:[{role, content:[{type:"text",text},{type:"image_url",image_url:{url:"data:image/jpeg;base64,..."}}]}], response_format:{"type":"json_object"}, temperature`) | https://dev.meta.ai/docs/api-reference/chat-completions ; repo `meta.chat_json` + `meta.image_part` in `src/shared/meta.py` | Third party (Meta), Jin's key |
@@ -345,6 +374,80 @@ Muse Image. The board is look-and-feel only; faces and text in the photos are ne
 
 | Record | Owner | Derived copies |
 |---|---|---|
+| Feedback (heart / reject / approve / change request, with note) | **new `draft_feedback` table** (Neo4j `Feedback` node when live) | the `rejected` list fed to `studio_prompt` / `make_briefs`; staff feedback feed |
+| Shortlist | **new `shortlist` table** (Neo4j `SHORTLISTED` edge draft -> session when live); a heart inserts, an unheart or staff removal deletes | staff shortlist view, share page "liked" flags |
+| Share token | **new `share_tokens` table** (Neo4j `ShareToken` node when live); only the SHA-256 hash is stored, never the token | the one-time link shown to staff; expiry/revoke checks at read time |
+| Audit entry | existing `audit` table (`actor = "client:share"` for link actions, `"staff:" + x-staff-name` for sends/revokes) | staff audit view (`GET /api/staff/audit?client=<id>`) |
+| Visible set on a link | resolved live: `staff_drafts` rows with `sent_at` set, for the token's session | nothing stored on the token, so send/revoke take effect at once |
+
+#### 4.8.3 Data contract
+
+##### 4.8.3.1 New migration `db/migrations/008_client_feedback.sql`
+```sql
+CREATE TABLE IF NOT EXISTS draft_feedback (
+  id TEXT PRIMARY KEY,                 -- uuid hex
+  session_id TEXT NOT NULL,            -- client id (matches sessions.id)
+  draft_id TEXT NOT NULL,              -- staff_drafts.id (sent drafts only)
+  kind TEXT NOT NULL,                  -- 'heart' | 'reject' | 'approve' | 'changes'
+  note TEXT,                           -- change-request text, guard-scrubbed; NULL otherwise
+  actor TEXT NOT NULL,                 -- 'client:share' | 'staff:<x-staff-name>'
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS feedback_session ON draft_feedback(session_id, created_at);
+CREATE TABLE IF NOT EXISTS shortlist (
+  session_id TEXT NOT NULL,
+  draft_id TEXT NOT NULL,
+  added_by TEXT NOT NULL,              -- 'client:share' | 'staff:<x-staff-name>'
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (session_id, draft_id)
+);
+CREATE TABLE IF NOT EXISTS share_tokens (
+  id TEXT PRIMARY KEY,                 -- uuid hex, used in audit details (never the token)
+  session_id TEXT NOT NULL,            -- the one client this link opens
+  token_hash TEXT NOT NULL UNIQUE,     -- SHA-256 of the token (same helper as session secrets)
+  created_by TEXT NOT NULL,            -- 'staff:<x-staff-name>'
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  expires_at TEXT NOT NULL,            -- created + 7 days by default
+  revoked_at TEXT,                     -- set on revoke; NULL while live
+  used_at TEXT                         -- first successful public read (info only)
+);
+CREATE INDEX IF NOT EXISTS share_tokens_session ON share_tokens(session_id, created_at);
+```
+
+##### 4.8.3.2 Store methods (both `SqliteStore` and `Neo4jStore`)
+`record_feedback(sid, draft_id, kind, note, actor) -> row` (validates kind and that the draft is
+sent for this session; a `heart` also inserts the shortlist row, a `reject` also removes it),
+`feedback_for(sid)`, `shortlist_add(sid, draft_id, actor)`, `shortlist_remove(sid, draft_id)`,
+`shortlist_for(sid)`, `issue_share_token(sid, actor, days=7) -> (id, token)` (one transaction:
+insert hash row, audit `share_issued`; the plaintext token is returned once and never stored),
+`find_share_token(token) -> row | None` (hash, then check session, expiry and `revoked_at`),
+`revoke_share_token(id, actor)`, `mark_share_used(id, at)` (first successful public read),
+`shares_for(sid)` (staff list: id, expiry and status only, never hashes or tokens),
+`sweep_expired_tokens() -> int` (deletes rows past expiry).
+
+##### 4.8.3.3 API routes
+Staff (existing staff router, so `require_staff` applies):
+
+| Method and path | Body | Returns |
+|---|---|---|
+| `POST /api/staff/clients/{cid}/studio/share` | `{days?: int 1..30, default 7}` | `{id, url, expires_at}`. The `url` is `{base}/share#t=<token>` (token in the fragment, never sent to the server) and is shown once |
+| `GET /api/staff/clients/{cid}/studio/shares` | none | `[{id, expires_at, revoked_at, used_at, created_by}]` (no hashes, no tokens) |
+| `POST /api/staff/clients/{cid}/studio/shares/{tid}/revoke` | `{}` | `{id, revoked_at}` |
+| `GET /api/staff/clients/{cid}/studio/shortlist` | none | `{drafts:[Draft], feedback:[{draft_id, kind, note, actor, created_at}]}` |
+| `POST /api/staff/clients/{cid}/studio/shortlist/{did}` | `{add: bool}` | `{drafts:[Draft]}` |
+
+Public (no login; the token is the only secret, sent in the `x-share-token` header —
+never in the path or query string, so server access logs cannot record it):
+
+| Method and path | Headers | Body | Returns |
+|---|---|---|---|
+| `GET /api/share` | `x-share-token` | none | `{business_name, drafts:[{id, url, title, liked: bool}], shortlist:[id], decided: null \| {draft_id, kind}}`. 404 for unknown/revoked/missing, 410 for expired |
+| `POST /api/share/feedback` | `x-share-token` | `{draft_id, kind: 'heart' \| 'reject' \| 'approve' \| 'changes', note?: str<=500}` | `{ok:true, shortlist:[id]}`. `note` is required for `changes` and ignored for other kinds |
+
+`approve` records the final pick and marks the draft's `looks` row selected, like a client pick
+(when the client's session is still awaiting review and holds the look, the session is marked
+accepted too). `changes` appends the scrubbed note to the feedback feed for the next brief round.
+`decided` on the share GET is the latest `approve`, else the latest `changes`, else null.
 | Brand board (colours, tone/style words, summary, photo urls, status, version) | **new `brand_boards` table** (Neo4j `BrandBoard` node when live), one row per client, updated in place with a version counter | staff detail view, audit rows |
 | Uploaded style photos (max 6 per client) | `var/media/brand-*.jpg` on the app host | `brand_boards.photos` (JSON list of `/media/...` urls) |
 | Board edit history | `audit` table (`action = "brand_board_*", actor = "staff:" + x-staff-name` or `"client"` for uploads) | staff audit view |
@@ -355,9 +458,9 @@ Muse Image. The board is look-and-feel only; faces and text in the photos are ne
 Rejected boards are kept as `status='rejected'` rows (visible history), not deleted. A re-upload after
 rejection starts a new read and overwrites the row with `status='pending_review'` and `version + 1`.
 
-#### 4.8.3 Data contract
+#### 4.9.3 Data contract
 
-##### 4.8.3.1 New migration `db/migrations/008_brand_board.sql`
+##### 4.9.3.1 New migration `db/migrations/009_brand_board.sql`
 ```sql
 CREATE TABLE IF NOT EXISTS brand_boards (
   session_id TEXT PRIMARY KEY,         -- client id (matches sessions.id), one board per client
@@ -378,21 +481,21 @@ CREATE TABLE IF NOT EXISTS brand_boards (
 
 Board JSON from the model: `{colours: [hex x3-6], tone_words: [str x2-6], style_words: [str x2-6], summary: str}`.
 Validation on the way in: 3-6 colours matching `^#[0-9A-Fa-f]{6}$`, 2-6 tone words, 2-6 style words
-(each 1-3 plain words, max 30 chars), summary non-empty max 300 chars. Anything else = junk (see 4.8.5).
+(each 1-3 plain words, max 30 chars), summary non-empty max 300 chars. Anything else = junk (see 4.9.5).
 
-##### 4.8.3.2 Store methods (both `SqliteStore` and `Neo4jStore`)
+##### 4.9.3.2 Store methods (both `SqliteStore` and `Neo4jStore`)
 `save_brand_board(sid, board) -> board` (upsert, sets `updated_at`),
 `get_brand_board(sid) -> board | None`. Neo4j: one Cypher statement
 (`MERGE (b:BrandBoard {session_id:$sid}) SET ...`), same atomicity rule as 4.5. No other methods:
 edits go through `save_brand_board`, status changes are just saves with a different `status`.
 
-##### 4.8.3.3 API routes (client routes need the per-session secret; staff routes need `x-staff-key`)
+##### 4.9.3.3 API routes (client routes need the per-session secret; staff routes need `x-staff-key`)
 | Method and path | Body | Returns |
 |---|---|---|
 | `POST /api/brand-board/photos` | multipart `sessionId`, `files[]` (1-6 images; total stored per client max 6) | `{board, photos:[urls], status}` — triggers one model read when at least 1 photo passes the quality gate |
 | `GET /api/brand-board` | query `sessionId` (+ secret) | `{board}` (`board: null` when none yet) |
 | `GET /api/staff/clients/{cid}/brand-board` | none | `{board, photos:[urls], audit:[rows for this board]}` |
-| `POST /api/staff/clients/{cid}/brand-board` | `{colours?, tone_words?, style_words?, summary?}` (each validated as in 4.8.3.1) | updated `{board}` (status unchanged); 400 on bad shape |
+| `POST /api/staff/clients/{cid}/brand-board` | `{colours?, tone_words?, style_words?, summary?}` (each validated as in 4.9.3.1) | updated `{board}` (status unchanged); 400 on bad shape |
 | `POST /api/staff/clients/{cid}/brand-board/decision` | `{decision: 'approve'\|'reject', note?}` | updated `{board}`; 409 unless `status` is `pending_review` (re-deciding an approved board needs a fresh client upload) |
 
 `board = {version, colours, tone_words, style_words, summary, photos, status, approved_by, decided_at, note, updated_at}`.
@@ -400,7 +503,7 @@ The model `prompt` is never returned; staff see the same board the client will g
 
 Client uploader strings come from `web/src/i18n` in all four languages (`brandboard.*` keys).
 
-##### 4.8.3.4 How the approved board reaches `design_context`
+##### 4.9.3.4 How the approved board reaches `design_context`
 - `design_context(fields, direction, feedback)` gains an optional fourth argument `brand_board: dict | None`.
   Callers pass `store.get_brand_board(sid)` only when `board.status == 'approved'`; any other status (or no
   board) passes `None` and the brief is exactly as today. **Approve gates the brief: pending or rejected
@@ -412,7 +515,7 @@ Client uploader strings come from `web/src/i18n` in all four languages (`brandbo
 - The approved board is read at brief time (not copied into `fields`), so a later staff edit of an approved
   board applies to the next brief with no migration.
 
-##### 4.8.3.5 Model request built for the board read
+##### 4.9.3.5 Model request built for the board read
 - One `meta.chat_json("brand_board", messages, session_id=sid, timeout=90)` call with up to 6
   `meta.image_part` parts (JPEG data URLs, `max_side=1024` to stay under the relay's 4.5 MB body limit).
 - Instruction text (English, fixed): "Describe only the look and feel shared across these photos
@@ -427,6 +530,57 @@ Client uploader strings come from `web/src/i18n` in all four languages (`brandbo
 
 | Connection | Auth | Where (env var names) |
 |---|---|---|
+| Staff share routes | shared passcode header `x-staff-key`; author from optional `x-staff-name` (self-reported, not proof) | `STAFF_PASSCODE` |
+| Share link | unguessable token (`secrets.token_urlsafe(32)`); only its SHA-256 hash is stored, compared with `hmac.compare_digest`; sent by the client in the `x-share-token` header, carried in the share page URL fragment (`/share#t=<token>`, never sent to the server); logged or shown nowhere except the one-time staff response | none (runtime) |
+| Client picker / session routes | unchanged: per-session secret `x-session-secret` (hash stored) | none (runtime) |
+| Tests | none; model and relay keys unset, httpx mocked | n/a |
+
+#### 4.8.5 Failure plan
+
+- **Retries:** feedback and token writes are local store writes, so no network retry is needed;
+  this feature makes no Meta calls. Brief regeneration after feedback reuses the studio retry
+  wrapper (2 retries on 429/503/timeouts, traced as `studio_image`).
+- **Partial writes:** `record_feedback` runs in one transaction (feedback row plus shortlist
+  insert/delete, then the audit row). `issue_share_token` runs in one transaction (token row plus
+  audit row); the plaintext token is returned only after the commit. In Neo4j each is one Cypher
+  statement, so one atomic Query API request. The per-session lock in `app.py` wraps public
+  feedback writes, so two taps on one link cannot double-insert (shortlist insert is idempotent).
+- **Reconciliation:** `sweep_expired_tokens` runs on share GET (after the token resolves, so an
+  expired link still reads 410 on that request) and in `scripts/reconcile.py`. The metrics API
+  lists a `drift` array: sent drafts with a missing media file or no matching `looks` row,
+  feedback rows pointing at deleted drafts, and shortlist rows for unsent drafts.
+  Feedback rows pointing at deleted drafts, and shortlist rows for unsent drafts, are listed in the
+  metrics API as drift (same pattern as sent-draft drift in 4.7.5) rather than silently dropped.
+  Expired tokens read as 410 ("this link has expired, ask our team for a new one"); revoked or
+  unknown tokens read as 404, so a revoked link is indistinguishable from a made-up one.
+- **Abuse guard:** public feedback is rate-limited per token (30 writes per hour; 429 over that),
+  and notes pass `guard.clean` before staff see them.
+- **Log safety:** the token never appears in a URL path or query string — the public API
+  reads it from the `x-share-token` header and the share page link keeps it in the URL
+  fragment (`/share#t=<token>`), which browsers never send. Only the SHA-256 hash is
+  stored, and audit rows hold the link id, never the token or hash. As a second layer,
+  `src/shared/redact.py` installs a logging filter on the app and uvicorn loggers
+  (access log included) that rewrites any residual `/share/<token>` or `token=` value
+  before it is emitted. Error messages stay generic (unknown/revoked read 404, expired
+  reads 410) and never echo the token. A test drives the share routes and asserts the
+  plaintext token appears in no captured log record, trace or audit row.
+
+#### 4.8.6 Tool reality check (actually run, 2026-11-04)
+
+- `NEO4J_*` unset, so the app falls back to SQLite: import of `src.app` prints
+  `[data] NEO4J_* env not set; FALLING BACK to SQLite at /workspace/ob-v2-feedback/var/onboarding.sqlite3`.
+- Route list from the staff router (`make_router` in `src/features/staff/routes.py`): 25 paths
+  including `/api/clients` and `/api/admin` aliases — staff clients, decisions, consults, the six
+  studio endpoints from 4.7, metrics, traces and audit. No share routes exist yet (this section
+  designs them). App-level client routes (`src/app.py`) are unchanged: session, upload, chat,
+  confirm, looks, review, resume, language, trace.
+- Migrations on disk: `db/migrations/001_init.sql` through `007_staff_studio.sql`. `008` is new here.
+- `env -u MODEL_API_KEY -u META_API_KEY -u RELAY_URL -u RELAY_SECRET python -m pytest -q tests`:
+  **219 passed** in about 14 s.
+- `npm --prefix web test`: all 7 check scripts pass (validation 87, i18n 463, api-contract 59,
+  mock-contract 27, consult-text-only 4, looks-refresh 13, studio-mock 12).
+- Relay status not re-probed this round (taken as given: Vercel relay paused, HTTP 503
+  `DEPLOYMENT_PAUSED`); no Meta call was made or needed for this feature.
 | Meta chat (direct) | Bearer [REDACTED] key | `MODEL_API_KEY` (box: `/home/box/.secrets/onboarding-app/meta.env`). Optional `META_API_BASE`, `MUSE_MODEL` |
 | Client board routes | per-session secret (hash stored) | header `x-session-secret` |
 | Staff board routes | shared passcode header `x-staff-key`; author from optional `x-staff-name` (self-reported, not proof) | `STAFF_PASSCODE` |
@@ -435,7 +589,7 @@ Client uploader strings come from `web/src/i18n` in all four languages (`brandbo
 No new secrets. No relay use (client uploads ride the existing app upload path; the board read uses
 the direct Meta path like `photo_read`).
 
-#### 4.8.5 Failure plan
+#### 4.9.5 Failure plan
 
 - **Retries:** same wrapper as `meta.chat` (2 retries on 429/5xx/timeouts with 1 s, 2 s backoff), `timeout=90`
   like `photo_read`. Every attempt is traced as `brand_board`. After the last failure the photos stay stored,
@@ -448,7 +602,7 @@ the direct Meta path like `photo_read`).
   Unreadable/blurry files are skipped with a per-file reason; the read runs on the survivors.
   Zero survivors = no model call, client gets the plain-language retake reply ("Please retake it in good
   light, with the whole shop in view."). Max 6 stored per client; a 7th upload returns 400 naming the limit.
-- **Model returns junk:** shape validation (4.8.3.1) rejects it; one immediate retry with the same photos,
+- **Model returns junk:** shape validation (4.9.3.1) rejects it; one immediate retry with the same photos,
   then the row stays empty-board `pending_review` with error "could not read" and staff edit the fields by
   hand. Junk is traced (`ok=false`) and never shown to the client.
 - **Reconciling drift:** board GET (staff + client) checks that every url in `photos` has its file on disk;
@@ -458,7 +612,7 @@ the direct Meta path like `photo_read`).
 - **Spend guard:** one `brand_board` trace per read; at most 2 model calls per upload (initial + one junk
   retry), counted in the existing S$120 build cap (D2).
 
-#### 4.8.6 Tool reality check (from docs and code only; nothing was called)
+#### 4.9.6 Tool reality check (from docs and code only; nothing was called)
 
 Confirmed from docs:
 - `chat/completions` accepts a `content` list mixing `text` and `image_url` parts with `data:` URLs and
@@ -480,7 +634,7 @@ Gaps and workarounds:
 - **`image_part` defaults to `max_side=1600`;** the board read passes `1024` explicitly so 6 photos fit
   the relay-style body budget on the direct path too.
 
-#### 4.8.7 Open questions
+#### 4.9.7 Open questions
 
 - O1. Should the style-photo uploader live inside the existing chat flow (a new agent status like
   `need_style_photos`) or as a standalone step outside chat? This decides whether `agent.py` or `app.py`
@@ -492,6 +646,25 @@ Gaps and workarounds:
   status resets to `pending_review`.
 - O5. Live check (paid, one call): 6-photo `chat/completions` vision read with `response_format`
   json_object on `muse-spark-1.3` — latency, token cost and hex-shape compliance. Not run (docs/code only).
+### 4.10 Staff case view
+
+Feature: clicking a client in the staff list opens a case view (timeline of stages, step cards with a side
+panel, case file panel). Branch `staff-case-view`. Frontend only; no new backend, no new auth.
+
+#### 4.10.1 Integration inventory (six points)
+
+| # | System / input | New? |
+|---|---|---|
+| 1 | Staff client detail `GET /api/staff/clients/{id}` — `audit`, `traces`, `documents`, `looks`, `consult`, `transcript`, `decisions`, `outbox` | None new; already returned |
+| 2 | Studio drafts `GET /api/staff/clients/{id}/studio` — drafts shown in the case file | None new; existing route |
+| 3 | Staff auth (`x-staff-key`, existing `require_staff`) | None new |
+| 4 | Masking (`guard.clean` server-side; client-side NRIC-pattern mask as belt-and-braces) | None new |
+| 5 | Mock data (`?mock=1` staff mock: transcript, audit, documents, looks, consult) | Extended the mock only |
+| 6 | Stage/step derivation (`web/src/staff/caseView.ts`, pure function of the detail payload) | New, frontend only |
+
+Stages shown are the six that exist on main (intake chat, document and photo reading, brand brief, image
+drafts, client approval, done). No brand board or share link stage. Actor names are rendered as roles
+(Staff / Client / System); no team names.
 
 ## 5. Flows (backend)
 ```
