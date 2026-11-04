@@ -171,11 +171,11 @@ a.staff-cc-value:hover { text-decoration: underline; }
    columns (incl. Status) visible at 1400px. */
 .designer-tablewrap { overflow-x: auto; }
 .designer-table { width: 100%; }
-.designer-table .designer-upload { min-width: 0; }
-.designer-table input[type="file"] { width: 100%; max-width: 190px; }
-.designer-upload { display: flex; flex-direction: column; gap: 6px; min-width: 200px; }
-.designer-finals { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
-.designer-thumb { width: 48px; height: 48px; cursor: default; }
+/* Compact one-line upload cell: label button, short status, small thumbs. */
+.designer-cell { display: flex; align-items: center; gap: 8px; min-width: 0; white-space: nowrap; }
+.designer-add { flex: none; }
+.designer-thumbs { flex-wrap: nowrap; gap: 4px; }
+.designer-thumb { width: 32px; height: 32px; flex: none; cursor: default; }
 
 /* Passcode screen */
 .staff-gate { max-width: 360px; margin: 48px auto; padding: 24px; background: #fff; border: 1px solid var(--border); border-radius: 8px; display: flex; flex-direction: column; gap: 10px; }

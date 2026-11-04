@@ -13,10 +13,10 @@ const cell = (v: string | null) => (v && v.trim() ? maskSensitive(v) : "—");
 function DesignerRowView({ client, row, onUploaded }: {
   client: StaffClient; row: DesignerRow; onUploaded: (id: string, urls: string[]) => void;
 }) {
-  const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const done = row.final_status === "Done";
+  const inputId = `designer-files-${row.id}`;
 
   const download = async () => {
     setBusy(true);
@@ -39,13 +39,12 @@ function DesignerRowView({ client, row, onUploaded }: {
     }
   };
 
-  const upload = async () => {
-    if (!files.length) return;
+  const upload = async (picked: File[]) => {
+    if (!picked.length || busy) return;
     setBusy(true);
     setErr("");
     try {
-      const res = await client.uploadFinals(row.id, files);
-      setFiles([]);
+      const res = await client.uploadFinals(row.id, picked);
       onUploaded(row.id, res.final_images);
     } catch (e) {
       console.error(e);
@@ -54,6 +53,9 @@ function DesignerRowView({ client, row, onUploaded }: {
       setBusy(false);
     }
   };
+
+  const count = row.final_images.length;
+  const status = busy ? "Uploading…" : count > 0 ? `${count} uploaded` : "None yet";
 
   return (
     <tr>
@@ -70,32 +72,35 @@ function DesignerRowView({ client, row, onUploaded }: {
         </button>
       </td>
       <td>
-        <div className="designer-upload">
+        <div className="designer-cell">
+          <label htmlFor={inputId} className="btn staff-btn-inline designer-add">
+            Add final images
+          </label>
           <input
+            id={inputId}
             type="file"
+            className="staff-sr"
             accept="image/jpeg,image/png"
             multiple
+            disabled={busy}
             aria-label={`Final images for ${row.business_name || row.id}`}
-            onChange={(e) => setFiles([...(e.target.files || [])])}
+            onChange={(e) => {
+              const picked = [...(e.target.files || [])];
+              e.target.value = "";
+              void upload(picked);
+            }}
           />
-          <button type="button" className="btn staff-btn-inline" disabled={busy || !files.length} onClick={upload}>
-            Upload final images
-          </button>
-        </div>
-        {row.final_images.length > 0 ? (
-          <div className="designer-finals">
-            <div className="staff-imgs">
+          <span className="staff-count" role="status">{status}</span>
+          {count > 0 && (
+            <span className="staff-imgs designer-thumbs">
               {row.final_images.map((u, i) => (
                 <span key={i} className="staff-img designer-thumb">
                   <img src={u} alt={`Final image ${i + 1}`} loading="lazy" />
                 </span>
               ))}
-            </div>
-            <span className="staff-count">{row.final_images.length} final image{row.final_images.length === 1 ? "" : "s"}</span>
-          </div>
-        ) : (
-          <span className="staff-empty">None yet</span>
-        )}
+            </span>
+          )}
+        </div>
         {err && <p className="field-error" role="alert">{err}</p>}
       </td>
       <td>

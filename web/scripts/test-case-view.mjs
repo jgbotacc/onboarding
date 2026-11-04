@@ -110,7 +110,20 @@ try {
   const designerSrc = readFileSync(join(root, "src", "staff", "DesignerPage.tsx"), "utf8");
   const mainSrc = readFileSync(join(root, "src", "main.tsx"), "utf8");
   pass("designer page renders rows", /\.map\(\(r\) => \(/.test(designerSrc) && /Download images/.test(designerSrc) &&
-    /Upload final images/.test(designerSrc) && /final_status/.test(designerSrc));
+    /Add final images/.test(designerSrc) && /final_status/.test(designerSrc));
+  pass("designer upload is one compact cell",
+    /<label[^>]*htmlFor=\{inputId\}[^>]*className="btn staff-btn-inline designer-add"[^>]*>\s*Add final images\s*<\/label>/.test(designerSrc) &&
+    /designer-cell/.test(designerSrc) && !/>Upload final images<\/button>/.test(designerSrc));
+  pass("designer file input hidden behind the label, same limits",
+    /<input[^>]*type="file"[^>]*className="staff-sr"/.test(designerSrc) &&
+    /accept="image\/jpeg,image\/png"/.test(designerSrc) && /multiple/.test(designerSrc) &&
+    /uploadFinals\(row\.id, picked\)/.test(designerSrc) && !/const \[files, setFiles\]/.test(designerSrc));
+  pass("designer upload status is one short line",
+    /None yet/.test(designerSrc) && /Uploading…/.test(designerSrc) && /uploaded/.test(designerSrc) &&
+    /role="status"/.test(designerSrc));
+  pass("designer cell stays one line",
+    /\.designer-cell\s*\{[^}]*display:\s*flex[^}]*align-items:\s*center/.test(css) &&
+    /\.designer-add/.test(css) && /\.designer-thumb/.test(css));
   pass("designer routed at /designer", /#\/designer/.test(mainSrc) && /\/designer/.test(mainSrc) && /DesignerPage/.test(mainSrc));
   pass("designer linked from staff header", />Designer<\/a>/.test(staffPageSrc) && /#\/designer/.test(staffPageSrc));
   pass("designer rows carry finals", /final_images/.test(designerSrc) && /chosen_look/.test(designerSrc));
