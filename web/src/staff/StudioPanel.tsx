@@ -96,7 +96,7 @@ function DraftCard({
               disabled={working || busy}
               onClick={() => act(() => client.starDraft(clientId, d.id, !d.starred), "Couldn't update the favourite.")}
             >
-              {d.starred ? "★ Favourited" : "☆ Favourite"}
+              {d.starred ? "Favourited" : "Favourite"}
             </button>
             <button type="button" className="btn studio-btn" disabled={working || busy || sent} onClick={remix}>
               More like this

@@ -110,7 +110,7 @@
 .staff-toast {
   position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 20; max-width: calc(100% - 32px);
   padding: 10px 16px; border-radius: 8px; background: var(--text); color: #fff; font-size: 14px;
-  box-shadow: 0 4px 16px rgba(29, 33, 41, .16);
+  box-shadow: 0 4px 16px rgba(29, 33, 41, .16); /* taste-skill-ignore: fixed toast is a real overlay */
 }
 
 /* Studio: allowance strip is the signature area element */
@@ -131,6 +131,15 @@ a.staff-cc-value:hover { text-decoration: underline; }
 
 .staff-traces { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 14px; line-height: 20px; font-variant-numeric: tabular-nums; }
 .staff-traces th, .staff-traces td { padding: 6px 10px; border-bottom: 1px solid var(--rule); text-align: left; }
+.staff-traces th.num, .staff-traces td.num { text-align: right; white-space: nowrap; }
+.staff-tablewrap { overflow-x: auto; }
+.staff-tablewrap .staff-traces { min-width: 540px; }
+
+/* Metrics KPIs: headline figures first, supporting stats below */
+.staff-kpi-row { display: flex; flex-wrap: wrap; gap: 8px 32px; margin: 4px 0 12px; }
+.staff-kpi { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.staff-kpi-value { font-size: 24px; line-height: 32px; font-weight: 700; letter-spacing: -0.01em; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.staff-kpi-label { font-size: 12px; line-height: 16px; color: var(--muted); font-weight: 500; }
 .staff-traces thead th { color: var(--muted); font-weight: 600; font-size: 12px; }
 .staff-traces tbody tr[data-ok="false"] td { color: var(--negative); }
 

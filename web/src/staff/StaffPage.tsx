@@ -182,14 +182,15 @@ function Detail({ client, row, onDecided, onOpen }: DetailProps) {
       {d.traces?.length ? (
         <div className="staff-section">
           <h3>Step traces</h3>
+          <div className="staff-tablewrap">
           <table className="staff-traces">
             <thead>
               <tr>
                 <th scope="col">Step</th>
                 <th scope="col">Model</th>
                 <th scope="col">OK</th>
-                <th scope="col">Ms</th>
-                <th scope="col">S$ cost</th>
+                <th scope="col" className="num">Ms</th>
+                <th scope="col" className="num">S$ cost</th>
               </tr>
             </thead>
             <tbody>
@@ -198,12 +199,13 @@ function Detail({ client, row, onDecided, onOpen }: DetailProps) {
                   <td>{t.step}</td>
                   <td>{t.model}</td>
                   <td>{t.ok ? "Yes" : "No"}</td>
-                  <td>{t.ms}</td>
-                  <td>{t.cost_sgd.toFixed(4)}</td>
+                  <td className="num">{t.ms}</td>
+                  <td className="num">{t.cost_sgd.toFixed(4)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       ) : null}
 
@@ -345,25 +347,36 @@ function MetricsPanel({ client }: { client: StaffClient }) {
   return (
     <div className="staff-section staff-metrics">
       <h3>Quality and cost</h3>
+      <div className="staff-kpi-row">
+        <div className="staff-kpi">
+          <span className="staff-kpi-value">{o.completed} of {o.sessions}</span>
+          <span className="staff-kpi-label">Sessions completed ({Math.round(o.completion_rate * 100)}%)</span>
+        </div>
+        <div className="staff-kpi">
+          <span className="staff-kpi-value">S${m.total_cost_sgd.toFixed(4)}</span>
+          <span className="staff-kpi-label">Total model cost</span>
+        </div>
+        <div className="staff-kpi">
+          <span className="staff-kpi-value">{o.avg_minutes_to_finish}</span>
+          <span className="staff-kpi-label">Avg minutes to finish</span>
+        </div>
+      </div>
       <dl className="staff-kv">
-        <div className="staff-kv-row"><dt>Sessions:</dt><dd>{o.sessions}</dd></div>
-        <div className="staff-kv-row"><dt>Completed:</dt><dd>{o.completed} ({Math.round(o.completion_rate * 100)}%)</dd></div>
-        <div className="staff-kv-row"><dt>Avg minutes to finish:</dt><dd>{o.avg_minutes_to_finish}</dd></div>
         <div className="staff-kv-row"><dt>Avg fields needing fixes:</dt><dd>{o.avg_fields_needing_fixes}</dd></div>
         <div className="staff-kv-row"><dt>Avg rounds to pick:</dt><dd>{o.avg_rounds_to_pick}</dd></div>
         <div className="staff-kv-row"><dt>Consult rate:</dt><dd>{Math.round(o.consult_rate * 100)}%</dd></div>
-        <div className="staff-kv-row"><dt>Total cost:</dt><dd>S${m.total_cost_sgd.toFixed(4)}</dd></div>
       </dl>
       {m.steps?.length ? (
+        <div className="staff-tablewrap">
         <table className="staff-traces">
           <thead>
             <tr>
               <th scope="col">Step</th>
               <th scope="col">Model</th>
-              <th scope="col">Calls</th>
-              <th scope="col">OK rate</th>
-              <th scope="col">Avg ms</th>
-              <th scope="col">S$ cost</th>
+              <th scope="col" className="num">Calls</th>
+              <th scope="col" className="num">OK rate</th>
+              <th scope="col" className="num">Avg ms</th>
+              <th scope="col" className="num">S$ cost</th>
             </tr>
           </thead>
           <tbody>
@@ -371,14 +384,15 @@ function MetricsPanel({ client }: { client: StaffClient }) {
               <tr key={i}>
                 <td>{s.step}</td>
                 <td>{s.model}</td>
-                <td>{s.calls}</td>
-                <td>{Math.round(s.ok_rate * 100)}%</td>
-                <td>{Math.round(s.avg_latency_ms)}</td>
-                <td>{s.cost_sgd.toFixed(4)}</td>
+                <td className="num">{s.calls}</td>
+                <td className="num">{Math.round(s.ok_rate * 100)}%</td>
+                <td className="num">{Math.round(s.avg_latency_ms)}</td>
+                <td className="num">{s.cost_sgd.toFixed(4)}</td>
               </tr>
             ))}
           </tbody>
         </table>
+        </div>
       ) : null}
     </div>
   );
@@ -448,8 +462,6 @@ export default function StaffPage() {
           />
         ) : (
         <div className="staff-column">
-          {client && <MetricsPanel client={client} />}
-          {client && <ConsultList client={client} />}
           <div className="staff-title">
             <h2>Client queue</h2>
             <span className="staff-count">{client ? `${rows.length} client${rows.length === 1 ? "" : "s"}` : "Loading…"}</span>
@@ -467,7 +479,7 @@ export default function StaffPage() {
                     aria-controls={`detail-${r.id}`}
                     onClick={() => setOpen(isOpen ? null : r.id)}
                   >
-                    <span className="staff-queue-num" aria-hidden="true">{String(i + 1).padStart(2, "0")}</span>
+                    <span className="staff-queue-num" aria-hidden="true">{i + 1}</span>
                     <span className="staff-thumb">{r.image ? <img src={r.image} alt="" /> : null}</span>
                     <span className="staff-who">
                       <span className="staff-name">{r.business_name || "No business name"}</span>
@@ -492,6 +504,8 @@ export default function StaffPage() {
               );
             })}
           </ul>
+          {client && <ConsultList client={client} />}
+          {client && <MetricsPanel client={client} />}
         </div>
         )}
       </main>
