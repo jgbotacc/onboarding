@@ -352,6 +352,8 @@ def _confirm_text(s):
     lines = [f"I read {p.get('filename')}.", "Please check the details below."]
     if "nric" in (p.get("removed") or []):
         lines.append("I left out the ID number.")
+    if p.get("removed"):
+        lines.append("I left out some private details (ID, phone, address).")
     lines.append("Is this right? Tap Confirm, or type what to change.")
     return "\n".join(lines)
 

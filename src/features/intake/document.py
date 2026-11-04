@@ -134,6 +134,7 @@ def drop_nric(fields: dict) -> tuple[dict, list[str]]:
 
 def llm_fields(text: str, session_id: str | None = None) -> dict:
     """One doc_read model call: document text + field list only. {} when disabled/failing."""
+    text = guard.scrub_nric(guard.scrub_private(text))  # the model copy never carries ID/phone/address
     fields = "; ".join(f"{k} ({label})" for k, label in LABELS.items())
     prompt = ("Return JSON with only these keys (omit unknown): " + fields
               + ". Never include identification numbers.\n\nDocument:\n" + text[:8000])
@@ -147,7 +148,7 @@ def llm_fields(text: str, session_id: str | None = None) -> dict:
 
 
 def read_document(text: str, session_id: str | None = None) -> dict:
-    """Classify (form/acra/other) and extract fields; NRIC always removed last."""
+    """Classify (form/acra/other) and extract fields; NRIC/phone/address always removed last."""
     if is_acra(text):
         kind, fields = "acra", parse_acra(text)
         for k, v in llm_fields(text, session_id=session_id).items():
@@ -160,4 +161,5 @@ def read_document(text: str, session_id: str | None = None) -> dict:
         fields = llm_fields(text, session_id=session_id) or extract.regex_extract(text)
     fields = {k: v for k, v in fields.items() if k in LABELS}
     clean, removed = drop_nric(fields)
-    return {"kind": kind, "fields": clean, "removed": removed}
+    clean, removed_private = guard.drop_private(clean)
+    return {"kind": kind, "fields": clean, "removed": removed + removed_private}

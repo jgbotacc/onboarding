@@ -363,7 +363,8 @@ async def upload(request: Request):
             doc_id = uuid.uuid4().hex
             p = docs_dir / f"{doc_id}.pdf"
             p.write_bytes(data)
-            s.setdefault("docs", {})[doc_id] = {"path": str(p), "filename": fname, "status": "pending"}
+            s.setdefault("docs", {})[doc_id] = {"path": str(p), "filename": fname, "status": "pending",
+                                                "content_type": "application/pdf"}
             store.audit(sid, "client", "document_uploaded", doc_id, {"filename": fname})
             out = agent.on_extracted(s, doc_id, fname, doc["fields"], doc["removed"])
         if pdfs and refs and out is not None and out["status"] == "missing_info":
@@ -389,7 +390,8 @@ async def upload(request: Request):
             doc_id = uuid.uuid4().hex
             p = docs_dir / f"{doc_id}.jpg"
             p.write_bytes(data)
-            s.setdefault("docs", {})[doc_id] = {"path": str(p), "filename": fname, "status": "pending"}
+            s.setdefault("docs", {})[doc_id] = {"path": str(p), "filename": fname, "status": "pending",
+                                                "content_type": "image/jpeg"}
             store.audit(sid, "client", "document_uploaded", doc_id, {"filename": fname})
             out = agent.on_extracted(s, doc_id, fname, r["fields"], r["removed"])
         if not out:

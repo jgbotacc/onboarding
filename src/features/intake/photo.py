@@ -4,7 +4,7 @@ import io
 from PIL import Image, ImageFilter, ImageStat
 
 from src.features.intake import document
-from src.shared import meta
+from src.shared import guard, meta
 from src.shared.config import LABELS
 
 BLUR_MIN = 60
@@ -76,4 +76,5 @@ def read_photo(data: bytes, session_id: str | None = None) -> dict:
     merged = {k: v.strip() for k, v in given.items() if k in LABELS and isinstance(v, str) and v.strip()}
     merged.update(parsed)  # text-based parse wins
     clean, removed = document.drop_nric(merged)
-    return {"retake": False, "reason": None, "kind": "photo", "fields": clean, "removed": removed}
+    clean, removed_private = guard.drop_private(clean)
+    return {"retake": False, "reason": None, "kind": "photo", "fields": clean, "removed": removed + removed_private}

@@ -318,7 +318,8 @@ Gaps and workarounds:
 ### 4.9 Privacy checks
 
 Feature: mask phone numbers and addresses before any model step reads an upload or intake text, and flag
-intake-vs-document mismatches for staff only. Docs only this round: no code yet. Tracking card: KAN-20.
+intake-vs-document mismatches for staff only. Masking and the staff file route are built (this round);
+mismatch comparison and flags are still docs-only (next round). Tracking card: KAN-20.
 
 Masking is in-app pattern matching, the same way as the existing NRIC removal (`src/shared/guard.py`,
 `drop_nric` in `src/features/intake/document.py`). No model call is used for masking. The original file is
@@ -421,11 +422,15 @@ No new secret. Masking needs no key.
   (`src/features/intake/document.py`), document photos via the `photo_read` step, which also sends the image
   pixels (`src/features/intake/photo.py`), and non-English chat text via `translate_in`
   (`src/features/i18n/lang.py`). English chat and form text stay in-app (regex extraction and checks only).
-  Masking therefore gates PDF text, photo OCR text and forwarded chat text before each of those three steps;
-  photo pixels inherently reach the vision step, so nothing identifiable from a photo is retained or forwarded
-  beyond the masked extraction (Standard mode holds, A1).
+  Masking gates the model-bound copies: PDF text and photo OCR text are scrubbed with `scrub_private`
+  just before `doc_read` (inside `llm_fields`), and held values pass `drop_private` right after `drop_nric`.
+  Chat text via `translate_in` keeps its existing PROTECT token gating (phones, UENs, S$ amounts and #units
+  pass through untranslated and are restored verbatim; pinned by `test_to_english_protects_pii`), because the
+  translator must see the source text to translate it. Photo pixels inherently reach the vision step, so
+  nothing identifiable from a photo is retained or forwarded beyond the masked extraction
+  (Standard mode holds, A1).
 - **Backend suite with `MODEL_API_KEY` and `META_API_KEY` unset:** `python -m pytest -q tests` ->
-  219 passed. Baseline holds.
+  243 passed (219 baseline + 24 in `tests/test_privacy_masking.py`). Baseline holds.
 - **Web checks:** 7 scripts in `web/scripts/` (`test-api-contract`, `test-consult-text-only`, `test-i18n`,
   `test-looks-refresh`, `test-mock`, `test-studio-mock`, `test-validation`). Baseline holds.
 
@@ -448,7 +453,7 @@ plus the new fields:
 { reply, lines: [str], lang: "en"|"zh"|"ms"|"ta", images, status, missing, invalid, round,
   retake: bool,                      // true = photo unreadable, ask for a retake; nothing changed
   retake_reason: "blurry"|"cropped"|"unreadable"|null,
-  confirm: null | { docId, filename, fields: [{key, label, value}], removed: ["nric"] },
+  confirm: null | { docId, filename, fields: [{key, label, value}], removed: ["nric", "phone", "address"] },
   looks: null | { round, max_rounds: 3, prompt: "Which look do you prefer?", options: [{id, url, title}] },
   consult: null | { id, status } }
 ```
@@ -469,7 +474,8 @@ New statuses: `confirm_details`.
 ### Staff routes (`x-staff-key`; optional `x-staff-name` recorded in the audit log)
 | Method / path | Result |
 |---|---|
-| `GET /api/staff/clients/{id}` | v1 detail plus `lang`, `transcript: [{role, text, original, lang, at}]`, `looks: [{round, id, url, title, brief, selected: bool}]`, `rejected_looks` (same items, not selected), `consult`, `audit` |
+| `GET /api/staff/clients/{id}` | v1 detail plus `lang`, `transcript: [{role, text, original, lang, at}]`, `looks: [{round, id, url, title, brief, selected: bool}]`, `rejected_looks` (same items, not selected), `consult`, `audit`, `documents: {docId: {filename, status, openable}}` (`status` reads `"file missing"` when the original is gone) |
+| `GET /api/staff/clients/{cid}/documents/{docId}` | streams the kept original with its stored content type; writes the `document_opened` audit row first, so a failed audit never serves the file |
 | `GET /api/staff/clients/{id}/rejected-looks` | grouped by round: `[{round, options: [{id, url, alt, title, brief, at}]}]` |
 | `GET /api/staff/consults` | consult cards, newest first: `{id, client_id, business_name, status: "pending_approval"\|"approved"\|"declined", created, lang, submitted: {label: value}, next_steps: [str], rejected_rounds, rejected_looks: [...], approved_by, decided_at, note}` |
 | `POST /api/staff/consults/{id}/decision` | `{decision: "approve"\|"decline", note?}` -> updated card (audited; no email) |

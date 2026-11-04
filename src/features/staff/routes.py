@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from src.features.chat import agent
@@ -17,7 +18,11 @@ from src.features.imagegen import studio
 from src.features.looks.brief import design_context
 from src.features.staff import email, metrics
 from src.shared import guard
-from src.shared.config import LABELS, MEDIA_DIR, PUBLIC_BASE_URL
+from src.shared.config import DATA_DIR, LABELS, MEDIA_DIR, PUBLIC_BASE_URL
+
+DOCS_DIR = DATA_DIR / "docs"
+_DOC_MEDIA = {".pdf": "application/pdf", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+              ".png": "image/png", ".heic": "image/heic", ".heif": "image/heif"}
 from src.shared.security import require_staff
 
 STATUS = {"approve": "approved", "reject": "rejected", "more_info": "needs_info"}
@@ -90,7 +95,11 @@ def _detail(store, s):
                 outbox=[_mail(m) for m in s.get("outbox", [])], refill=s.get("refill", []), missing=agent.missing(s))
     rej = [{"round": l["round"], "id": l["id"], "url": l["url"], "title": l["title"],
             "brief": l["brief"], "at": l["at"]} for l in _rejected(store, s)]
-    docs = {k: {"filename": v.get("filename"), "status": v.get("status")} for k, v in (s.get("docs") or {}).items()}
+    docs = {}
+    for k, v in (s.get("docs") or {}).items():
+        ok = Path(v.get("path") or "").is_file()
+        docs[k] = {"filename": v.get("filename"), "status": v.get("status") if ok else "file missing",
+                   "openable": ok}
     traces = [{"step": t.get("step"), "model": t.get("model"), "ok": t.get("ok"),
                "ms": t.get("latency_ms"), "cost_sgd": t.get("cost_sgd"), "at": t.get("at")}
               for t in store.traces(s["id"])]
@@ -309,6 +318,23 @@ def make_router(store, save):
     def get_audit(client: str | None = None):
         return store.audit_log(client or None)
 
+    def document_open(cid: str, doc_id: str, request: Request):
+        """Stream the kept original file; every open is audit-logged first."""
+        s = load(cid)
+        rec = (s.get("docs") or {}).get(doc_id)
+        if not rec:
+            raise HTTPException(404, "Document not found.")
+        p = Path(rec.get("path") or "")
+        try:
+            inside = p.resolve().is_relative_to(DOCS_DIR.resolve())
+        except Exception:
+            inside = False
+        if not inside or not p.is_file():
+            raise HTTPException(404, "Original file is missing.")
+        store.audit(cid, actor(request), "document_opened", doc_id, {"filename": rec.get("filename")})
+        media = rec.get("content_type") or _DOC_MEDIA.get(p.suffix.lower(), "application/octet-stream")
+        return FileResponse(str(p), media_type=media, filename=rec.get("filename") or p.name)
+
     def studio_get(cid: str):
         s = load(cid)
         _reconcile(store, cid)
@@ -518,6 +544,7 @@ def make_router(store, save):
     r.add_api_route("/api/staff/clients/{cid}/studio/drafts/{did}/star", studio_star, methods=["POST"])
     r.add_api_route("/api/staff/clients/{cid}/studio/drafts/{did}/pin", studio_pin, methods=["POST"])
     r.add_api_route("/api/staff/clients/{cid}/studio/drafts/{did}/send", studio_send, methods=["POST"])
+    r.add_api_route("/api/staff/clients/{cid}/documents/{doc_id}", document_open, methods=["GET"])
     r.add_api_route("/api/staff/metrics", get_metrics, methods=["GET"])
     r.add_api_route("/api/staff/traces", get_traces, methods=["GET"])
     r.add_api_route("/api/staff/audit", get_audit, methods=["GET"])
