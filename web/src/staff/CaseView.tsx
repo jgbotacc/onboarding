@@ -12,20 +12,13 @@ const fmtTime = (iso: string | null) => {
   return isNaN(d.getTime()) ? "—" : d.toLocaleTimeString("en-SG", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 };
 
-const emailLine = (email?: { status?: string; to?: string | null } | null) => {
-  if (!email || !email.status) return "";
-  const head = String(email.status).split(",")[0].trim();
-  if (/^sent/i.test(head)) return `Email sent${email.to ? ` to ${email.to}` : ""}.`;
-  return `Email: ${head.replace(/_/g, " ")}.`;
-};
-
 const HINTS: Record<CasePhase, string> = {
   onboarding: "Clients still chatting with the assistant. They move to Drafts under review on their own once drafts start.",
   drafts: "Tell the assistant what to change, pick a draft, then send it to the designers.",
   sent: "Handed over. Designers pick these up on their page.",
 };
 
-export default function CaseView({ client, row, onBack, onOpen, onDecided, onSent, initialPhase }: {
+export default function CaseView({ client, row, onBack, onOpen, onSent, initialPhase }: {
   client: StaffClient; row: StaffRow; onBack: () => void; onOpen: (u: string) => void;
   onDecided: (id: string, status: string, msg: string) => void;
   onSent?: (id: string, sentAt: string) => void;
@@ -33,30 +26,11 @@ export default function CaseView({ client, row, onBack, onOpen, onDecided, onSen
 }) {
   const [d, setD] = useState<StaffDetail | null>(null);
   const [drafts, setDrafts] = useState<StudioDraft[]>([]);
-  const [shortlist, setShortlist] = useState<StudioDraft[]>([]);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
-  const [decided, setDecided] = useState(false);
   const [actErr, setActErr] = useState("");
   const [phaseOverride, setPhaseOverride] = useState<CasePhase | null>(initialPhase ?? null);
   const [showChat, setShowChat] = useState(false);
-
-  // Same approve call the drafts panel uses.
-  const approve = async () => {
-    setBusy(true);
-    setActErr("");
-    try {
-      const res = await client.decide(row.id, { decision: "approve", fields: [], note: "" });
-      if (!res || res.ok === false) throw new Error("not saved");
-      setDecided(true);
-      onDecided(row.id, res.status, `${row.business_name || "Client"} approved. ${emailLine(res.email)}`.trim());
-    } catch (e) {
-      console.error(e);
-      setActErr("That didn't go through. Please try again.");
-    } finally {
-      setBusy(false);
-    }
-  };
 
   // Final-edit handoff: marks the case sent to designers, then shows stage 3.
   const sendToDesigners = async () => {
@@ -82,12 +56,11 @@ export default function CaseView({ client, row, onBack, onOpen, onDecided, onSen
       .then((x) => alive && setD(x))
       .catch((e: Error) => alive && (console.error(e), setErr("Couldn't load this case. Please try again.")));
     client.studio(row.id).then((g) => alive && setDrafts(g.drafts || [])).catch(() => {});
-    client.shortlist(row.id).then((s) => alive && setShortlist(s.drafts || [])).catch(() => {});
     return () => { alive = false; };
   }, [client, row.id]);
 
   const entries = useMemo(() => (d ? chatEntries(d) : []), [d]);
-  const play = useMemo(() => (d ? draftsInPlay(d, drafts, shortlist) : { set: "none" as const, items: [] as { id: string; url: string; label: string }[] }), [d, drafts, shortlist]);
+  const play = useMemo(() => (d ? draftsInPlay(d, drafts, []) : { set: "none" as const, items: [] as { id: string; url: string; label: string }[] }), [d, drafts]);
   const phase: CasePhase = phaseOverride ?? (d ? casePhase(d, drafts) : "drafts");
 
   if (err) return <div className="cv"><p className="field-error">{err}</p><button type="button" className="btn" onClick={onBack}>Back to the list</button></div>;
@@ -156,10 +129,7 @@ export default function CaseView({ client, row, onBack, onOpen, onDecided, onSen
           <p className="cv-hint">{HINTS.drafts}</p>
           <StudioPanel client={client} clientId={row.id} onOpen={onOpen} />
           <div className="cv-actions cv-actions-end" role="group" aria-label="Case actions">
-            <button type="button" className="btn primary cv-btn" disabled={busy || decided} onClick={approve}>
-              Approve
-            </button>
-            <button type="button" className="btn cv-btn" disabled={busy || decided || !!sentAt} onClick={sendToDesigners}>
+            <button type="button" className="btn primary cv-btn" disabled={busy || !!sentAt} onClick={sendToDesigners}>
               {sentAt ? "Sent to designers" : "Send to designers"}
             </button>
           </div>

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import type { StaffClient } from "./api";
-import FeedbackPanel from "./FeedbackPanel";
 import type { RejectedLookRound, StudioDraft, StudioGet, StudioSizePreset } from "./types";
 
 interface Props {
@@ -81,28 +80,6 @@ function DraftCard({
               <img src={d.url} alt={d.style_title || "Studio draft"} loading="lazy" style={{ aspectRatio: ratio }} />
             </button>
           )}
-          <div className="studio-meta">
-            <strong>{d.style_title || "Studio draft"}</strong>
-            <span className="studio-sub">
-              {d.author || "staff"}
-              {d.pinned_to === "client" ? " · Pinned to client" : ""}
-              {d.pinned_to === "consult" ? " · Pinned to consult" : ""}
-            </span>
-          </div>
-          <div className="studio-row">
-            <button
-              type="button"
-              className="btn studio-btn"
-              aria-pressed={d.starred}
-              disabled={working || busy}
-              onClick={() => act(() => client.starDraft(clientId, d.id, !d.starred), "Couldn't update the favourite.")}
-            >
-              {d.starred ? "Favourited" : "Favourite"}
-            </button>
-            <button type="button" className="btn studio-btn" disabled={working || busy || sent} onClick={remix}>
-              More like this
-            </button>
-          </div>
           <div className="studio-row">
             <label className="studio-note" htmlFor={`note-${d.id}`}>
               <span className="staff-empty">Remix note (optional)</span>
@@ -367,8 +344,6 @@ export default function StudioPanel({ client, clientId, onOpen }: Props) {
           <p className="staff-empty">No drafts yet. Generate the first three above.</p>
         )}
       </div>
-
-      <FeedbackPanel client={client} clientId={clientId} />
 
       {!!rejected?.length && (
         <div className="staff-section">

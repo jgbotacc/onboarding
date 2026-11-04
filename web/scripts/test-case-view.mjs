@@ -74,10 +74,10 @@ try {
   // Sent tab: drafts in play with the set labelled, falling back when nothing picked.
   const kopiPlay = draftsInPlay(kopi, [], []);
   pass("kopi shows picked drafts", kopiPlay.set === "picked" && kopiPlay.items.length === 1 && DRAFTS_SET_LABELS[kopiPlay.set] === "Picked drafts");
-  const sampleShort = await m.shortlist("c-sample04");
   const sample = await m.detail("c-sample04");
-  const samplePlay = draftsInPlay(sample, [], sampleShort.drafts);
-  pass("sample falls back to shortlist", samplePlay.set === "shortlist" && samplePlay.items.length === 2);
+  const sampleStudio = await m.studio("c-sample04");
+  const samplePlay = draftsInPlay(sample, sampleStudio.drafts, []);
+  pass("sample falls back to sent drafts", samplePlay.set === "sent" && samplePlay.items.length === 2);
   const bloomPlay = draftsInPlay(bloom, studio.drafts, []);
   pass("bloom falls back to latest round", bloomPlay.set === "latest" && bloomPlay.items.length === 1 && /Round 2/.test(bloomPlay.items[0].label));
   pass("empty case has no drafts", draftsInPlay(empty, [], []).set === "none");
@@ -102,7 +102,7 @@ try {
   pass("drafts tab always shows the studio", /<StudioPanel/.test(caseViewSrc));
   pass("no disabled request-changes button", !/Request changes/.test(caseViewSrc));
   pass("send to designers kept as final action", /Send to designers/.test(caseViewSrc));
-  pass("approve kept", /onClick=\{approve\}/.test(caseViewSrc));
+  pass("approve gone", !/onClick=\{approve\}/.test(caseViewSrc) && !/>Approve</.test(caseViewSrc));
   pass("onboarding shows client info", /ClientInfo/.test(caseViewSrc));
   const clientInfoSrc = readFileSync(join(root, "src", "staff", "ClientInfo.tsx"), "utf8");
   pass("client info has contact card", /Contact/.test(clientInfoSrc) && /Email/.test(clientInfoSrc));
@@ -134,8 +134,9 @@ try {
   pass("chat summary line", /Chat history: \{entries\.length\} message/.test(caseViewSrc) && /last at \{entries\.length \? fmtTime/.test(caseViewSrc));
   pass("chat opens on click", /aria-expanded=\{showChat\}/.test(caseViewSrc) && /\{showChat && \(/.test(caseViewSrc));
 
-  // Action bar: approve + send to designers, no send-to-client.
+  // Action bar: send to designers only, as the primary button; no approve, no send-to-client.
   pass("no send to client button", !/Send to client/.test(caseViewSrc));
+  pass("send to designers is primary", /className="btn primary cv-btn"[^>]*onClick=\{sendToDesigners\}/.test(caseViewSrc));
 
   // Designer handoff page: rows with download, upload and status; linked from staff.
   const designerSrc = readFileSync(join(root, "src", "staff", "DesignerPage.tsx"), "utf8");

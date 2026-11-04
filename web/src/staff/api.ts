@@ -1,5 +1,5 @@
 import { createStaffMock } from "./mock";
-import type { Consult, DecisionBody, DecisionResult, DesignerRow, FinalUploadResult, RejectedLookRound, ShareCreated, ShareLink, ShortlistView, StaffDetail, StaffRow, StudioDraft, StudioDraftsBody, StudioGet, StudioRemixBody, StudioRunResult } from "./types";
+import type { Consult, DecisionBody, DecisionResult, DesignerRow, FinalUploadResult, RejectedLookRound, StaffDetail, StaffRow, StudioDraft, StudioDraftsBody, StudioGet, StudioRemixBody, StudioRunResult } from "./types";
 
 export type StaffRole = "staff" | "designer";
 
@@ -15,14 +15,8 @@ export interface StaffClient {
   studio(id: string): Promise<StudioGet>;
   generateDrafts(id: string, body: StudioDraftsBody): Promise<StudioRunResult>;
   remixDraft(id: string, body: StudioRemixBody): Promise<StudioRunResult>;
-  starDraft(id: string, draftId: string, starred: boolean): Promise<StudioDraft>;
   pinDraft(id: string, draftId: string, target: "client" | "consult" | null): Promise<StudioDraft>;
   sendDraft(id: string, draftId: string): Promise<StudioDraft>;
-  createShare(id: string, days?: number): Promise<ShareCreated>;
-  listShares(id: string): Promise<ShareLink[]>;
-  revokeShare(id: string, tokenId: string): Promise<{ id: string; revoked_at: string }>;
-  shortlist(id: string): Promise<ShortlistView>;
-  setShortlist(id: string, draftId: string, add: boolean): Promise<{ drafts: StudioDraft[] }>;
   sendToDesigners(id: string): Promise<{ ok?: boolean; id?: string; sent_to_designers_at: string }>;
   designer(): Promise<DesignerRow[]>;
   downloadZip(id: string): Promise<Blob>;
@@ -122,12 +116,6 @@ const real: Omit<StaffClient, "mock"> = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }),
-  starDraft: (id, draftId, starred) =>
-    req("/api/staff/clients/" + encodeURIComponent(id) + "/studio/drafts/" + encodeURIComponent(draftId) + "/star", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ starred }),
-    }),
   pinDraft: (id, draftId, target) =>
     req("/api/staff/clients/" + encodeURIComponent(id) + "/studio/drafts/" + encodeURIComponent(draftId) + "/pin", {
       method: "POST",
@@ -137,26 +125,6 @@ const real: Omit<StaffClient, "mock"> = {
   sendDraft: (id, draftId) =>
     req("/api/staff/clients/" + encodeURIComponent(id) + "/studio/drafts/" + encodeURIComponent(draftId) + "/send", {
       method: "POST",
-    }),
-  createShare: (id, days = 7) =>
-    req("/api/staff/clients/" + encodeURIComponent(id) + "/studio/share", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ days }),
-    }),
-  listShares: (id) => req("/api/staff/clients/" + encodeURIComponent(id) + "/studio/shares"),
-  revokeShare: (id, tokenId) =>
-    req("/api/staff/clients/" + encodeURIComponent(id) + "/studio/shares/" + encodeURIComponent(tokenId) + "/revoke", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    }),
-  shortlist: (id) => req("/api/staff/clients/" + encodeURIComponent(id) + "/studio/shortlist"),
-  setShortlist: (id, draftId, add) =>
-    req("/api/staff/clients/" + encodeURIComponent(id) + "/studio/shortlist/" + encodeURIComponent(draftId), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ add }),
     }),
   sendToDesigners: (id) =>
     req("/api/staff/clients/" + encodeURIComponent(id) + "/send-to-designers", { method: "POST" }),
