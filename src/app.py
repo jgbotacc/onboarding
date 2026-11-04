@@ -368,7 +368,8 @@ async def upload(request: Request):
             s.setdefault("docs", {})[doc_id] = {"path": str(p), "filename": fname, "status": "pending",
                                                 "content_type": "application/pdf"}
             store.audit(sid, "client", "document_uploaded", doc_id, {"filename": fname})
-            out = agent.on_extracted(s, doc_id, fname, doc["fields"], doc["removed"])
+            out = agent.on_extracted(s, doc_id, fname, doc["fields"], doc["removed"],
+                                       doc.get("compared"))
         if pdfs and refs and out is not None and out["status"] == "missing_info":
             out = dict(out, reply=out["reply"] + f"\n\nSaved {len(refs)} reference image(s).")
         if refs and not pdfs:
@@ -395,7 +396,8 @@ async def upload(request: Request):
             s.setdefault("docs", {})[doc_id] = {"path": str(p), "filename": fname, "status": "pending",
                                                 "content_type": "image/jpeg"}
             store.audit(sid, "client", "document_uploaded", doc_id, {"filename": fname})
-            out = agent.on_extracted(s, doc_id, fname, r["fields"], r["removed"])
+            out = agent.on_extracted(s, doc_id, fname, r["fields"], r["removed"],
+                                       r.get("compared"))
         if not out:
             raise HTTPException(400, "Please upload a PDF, JPG or PNG.")
         if ref_meta:

@@ -205,6 +205,51 @@ def test_real_flow_form_then_doc_then_edit_flags_only_uen():
                                    "document": doc_uen, "source": "acra.pdf"}]
 
 
+FIX_ADDR_REAL = "8 Example Road, #02-15, Singapore (098765)"  # parse_acra value, pre-mask
+FIX_ADDR_TYPED = "8 Example Road, #02-15, Singapore 098765"  # how a client types the same address
+
+
+def _confirm_acra_with_address(sid, address):
+    """Upload the real ACRA fixture and confirm with this address as the client's own edit."""
+    with open(FIX, "rb") as f:
+        raw = f.read()
+    r = c.post("/api/upload", data={"sessionId": sid},
+               files={"files[]": ("acra_fake.pdf", raw, "application/pdf")}).json()
+    assert r["status"] == "confirm_details", r
+    doc_id = r["confirm"]["docId"]
+    payload = {f["field"]: f["value"] for f in r["extracted"]}
+    joined = json.dumps(payload)
+    assert "EXAMPLE ROAD" not in joined and "Example Road" not in joined, payload
+    payload["registered_address"] = address
+    c.post("/api/extracted/confirm", json={"sessionId": sid, "fields": payload}).json()
+    return doc_id
+
+
+def test_same_address_as_fixture_does_not_flag():
+    sid = new_session(c)
+    c.post("/api/form", json={"sessionId": sid, "fields": {
+        "business_name": "Lumen Kopi Pte. Ltd.", "contact_name": "Mei Ling",
+        "email": "mei@lumenkopi.example"}}).json()
+    doc_id = _confirm_acra_with_address(sid, FIX_ADDR_TYPED)
+    snap = store.load(sid)["docs"][doc_id]
+    assert snap["fields"]["registered_address"] == FIX_ADDR_REAL
+    d = c.get(f"/api/staff/clients/{sid}").json()
+    assert [f for f in d["mismatch_flags"] if f["field"] == "registered_address"] == []
+
+
+def test_different_street_flags_with_real_document_value():
+    sid = new_session(c)
+    c.post("/api/form", json={"sessionId": sid, "fields": {
+        "business_name": "Lumen Kopi Pte. Ltd.", "contact_name": "Mei Ling",
+        "email": "mei@lumenkopi.example"}}).json()
+    _confirm_acra_with_address(sid, "9 Sample Road, #02-15, Singapore 098765")
+    d = c.get(f"/api/staff/clients/{sid}").json()
+    assert [f for f in d["mismatch_flags"] if f["field"] == "registered_address"] == [
+        {"field": "registered_address",
+         "intake": "9 Sample Road, #02-15, Singapore 098765",
+         "document": FIX_ADDR_REAL, "source": "acra_fake.pdf"}]
+
+
 def test_flags_never_change_the_session():
     doc_uen, edit_uen = _uen(), _uen()
     sid = new_session(c)

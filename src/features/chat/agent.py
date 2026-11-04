@@ -374,13 +374,19 @@ def _confirm_text(s):
     return "\n".join(lines)
 
 
-def on_extracted(s, doc_id, filename, fields, removed):
-    """Hold extracted details as a pending draft until the client confirms."""
+def on_extracted(s, doc_id, filename, fields, removed, compared=None):
+    """Hold extracted details as a pending draft until the client confirms.
+
+    ``compared`` is the pre-mask compared-field values (what the document actually
+    said): server-side only, never rendered into the confirm card or any reply.
+    """
     if not fields:
         return resp(s, f"I couldn't find business details in {filename}.\n"
                        "Please type your business name, contact name and email.")
     s["pending"] = {"docId": doc_id, "filename": filename, "fields": dict(fields),
-                    "extracted": dict(fields), "removed": list(removed or [])}
+                    "extracted": dict(fields), "removed": list(removed or []),
+                    "compared": {k: v for k, v in (compared or {}).items()
+                                 if isinstance(v, str) and v.strip()}}
     s["status_before"] = s.get("status")
     s["status"] = "confirm_details"
     return resp(s, _confirm_text(s))
@@ -395,7 +401,9 @@ def on_confirm(s, accept: bool, edits: dict | None = None, remove: list | None =
         s["pending"] = None
         s["status"] = s.pop("status_before", None) or "need_document"
         return resp(s, "Okay, I won't use that file.\nUpload another, or type your details.")
-    said = dict(p.get("extracted") or p.get("fields", {}))  # what the document actually said
+    said = dict(p.get("extracted") or p.get("fields", {}))  # what the client saw (masked)
+    actual = {k: v for k, v in (p.get("compared") or {}).items()  # what the document said
+              if isinstance(v, str) and v.strip()}
     fields = dict(p.get("fields", {}))
     for k in (remove or []):
         fields.pop(k, None)
@@ -412,7 +420,8 @@ def on_confirm(s, accept: bool, edits: dict | None = None, remove: list | None =
     s["pdf_name"] = p.get("filename")
     doc = (s.get("docs") or {}).get(p.get("docId"))
     if isinstance(doc, dict):  # frozen snapshot for staff mismatch flags (PRD 4.9.3.2)
-        doc["fields"] = {k: said[k] for k in COMPARED if said.get(k)}
+        doc["fields"] = {k: actual.get(k) or said.get(k) for k in COMPARED
+                         if actual.get(k) or said.get(k)}
         doc["confirmed_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     s["status"] = s.pop("status_before", None) or "need_document"
     s["confirmed_doc"] = {"docId": p.get("docId"), "filename": p.get("filename"), "fields": list(fields)}

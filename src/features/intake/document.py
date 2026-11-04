@@ -2,6 +2,7 @@
 import re
 
 from src.features.intake import extract
+from src.features.intake.compare import COMPARED
 from src.shared import guard, meta
 from src.shared.config import LABELS
 
@@ -161,5 +162,10 @@ def read_document(text: str, session_id: str | None = None) -> dict:
         fields = llm_fields(text, session_id=session_id) or extract.regex_extract(text)
     fields = {k: v for k, v in fields.items() if k in LABELS}
     clean, removed = drop_nric(fields)
+    # Pre-mask compared values for the staff flag snapshot (PRD 4.9.3.2): what the
+    # document actually said for business_name/uen/registered_address, server-side only.
+    compared = {k: clean[k] for k in COMPARED
+                if isinstance(clean.get(k), str) and clean[k].strip()}
     clean, removed_private = guard.drop_private(clean)
-    return {"kind": kind, "fields": clean, "removed": removed + removed_private}
+    return {"kind": kind, "fields": clean, "removed": removed + removed_private,
+            "compared": compared}

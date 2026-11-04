@@ -128,7 +128,7 @@ def _detail(store, s):
         docs[k] = {"filename": v.get("filename"), "status": v.get("status") if ok else "file missing",
                    "openable": ok}
     try:  # flags are derived at read time and stored nowhere; a bad snapshot means no flags
-        intake = s.get("intake") or s.get("fields", {})  # client-given answers, kept apart from documents
+        intake = s.get("intake") or {}  # client-given answers only; fields hold masked doc values too
         flags = compare.mismatch_flags(intake, s.get("docs", {}))
     except Exception:
         flags = []

@@ -4,6 +4,7 @@ import io
 from PIL import Image, ImageFilter, ImageStat
 
 from src.features.intake import document
+from src.features.intake.compare import COMPARED
 from src.shared import guard, meta
 from src.shared.config import LABELS
 
@@ -71,10 +72,18 @@ def read_photo(data: bytes, session_id: str | None = None) -> dict:
         return _blank(False, "no_reader")
     if not out.get("readable"):
         return _blank(True, out.get("problem"))
-    parsed = document.read_document(out.get("text") or "", session_id=session_id)["fields"]
+    parsed_doc = document.read_document(out.get("text") or "", session_id=session_id)
+    parsed = parsed_doc["fields"]
     given = out.get("fields") or {}
     merged = {k: v.strip() for k, v in given.items() if k in LABELS and isinstance(v, str) and v.strip()}
     merged.update(parsed)  # text-based parse wins
     clean, removed = document.drop_nric(merged)
+    # Pre-mask compared values for the staff flag snapshot (PRD 4.9.3.2); the
+    # text-based parse wins here too, matching the merge above. Server-side only.
+    compared = {k: clean[k] for k in COMPARED
+                if isinstance(clean.get(k), str) and clean[k].strip()}
+    compared.update({k: v for k, v in parsed_doc.get("compared", {}).items()
+                     if isinstance(v, str) and v.strip()})
     clean, removed_private = guard.drop_private(clean)
-    return {"retake": False, "reason": None, "kind": "photo", "fields": clean, "removed": removed + removed_private}
+    return {"retake": False, "reason": None, "kind": "photo", "fields": clean,
+            "removed": removed + removed_private, "compared": compared}
