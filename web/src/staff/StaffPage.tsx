@@ -4,7 +4,7 @@ import ConsultList from "./ConsultCard";
 import RejectedLooks from "./RejectedLooks";
 import StudioPanel from "./StudioPanel";
 import { FIELDS, type FieldKey } from "./fields";
-import { statusLabel, type Decision, type DecisionResult, type EmailInfo, type StaffDetail, type StaffMetrics, type StaffRow } from "./types";
+import { statusLabel, type Decision, type DecisionResult, type EmailInfo, type StaffDetail, type StaffRow } from "./types";
 import { formatDate, stepName } from "./format";
 import "./staff.css";
 
@@ -322,76 +322,6 @@ function PasscodeGate({ error, onSubmit }: { error: string; onSubmit: (key: stri
   );
 }
 
-function MetricsPanel({ client }: { client: StaffClient }) {
-  const [m, setM] = useState<StaffMetrics | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    client
-      .metrics()
-      .then((x) => alive && setM(x))
-      .catch((e: Error) => alive && (console.error(e), setM(null)));
-    return () => {
-      alive = false;
-    };
-  }, [client]);
-
-  if (!m) return null;
-  const o = m.outcomes;
-  return (
-    <div className="staff-section staff-metrics">
-      <h3>Quality and cost</h3>
-      <div className="staff-kpi-row">
-        <div className="staff-kpi">
-          <span className="staff-kpi-value">{o.completed} of {o.sessions}</span>
-          <span className="staff-kpi-label">Sessions completed ({Math.round(o.completion_rate * 100)}%)</span>
-        </div>
-        <div className="staff-kpi">
-          <span className="staff-kpi-value">S${m.total_cost_sgd.toFixed(4)}</span>
-          <span className="staff-kpi-label">Total model cost</span>
-        </div>
-        <div className="staff-kpi">
-          <span className="staff-kpi-value">{o.avg_minutes_to_finish}</span>
-          <span className="staff-kpi-label">Avg minutes to finish</span>
-        </div>
-      </div>
-      <dl className="staff-kv">
-        <div className="staff-kv-row"><dt>Avg fields needing fixes:</dt><dd>{o.avg_fields_needing_fixes}</dd></div>
-        <div className="staff-kv-row"><dt>Avg rounds to pick:</dt><dd>{o.avg_rounds_to_pick}</dd></div>
-        <div className="staff-kv-row"><dt>Consult rate:</dt><dd>{Math.round(o.consult_rate * 100)}%</dd></div>
-      </dl>
-      {m.steps?.length ? (
-        <div className="staff-tablewrap">
-        <table className="staff-traces">
-          <thead>
-            <tr>
-              <th scope="col">Step</th>
-              <th scope="col">Model</th>
-              <th scope="col" className="num">Calls</th>
-              <th scope="col" className="num">OK rate</th>
-              <th scope="col" className="num">Avg ms</th>
-              <th scope="col" className="num">S$ cost</th>
-            </tr>
-          </thead>
-          <tbody>
-            {m.steps.map((s, i) => (
-              <tr key={i}>
-                <td>{stepName(s.step)}</td>
-                <td>{s.model}</td>
-                <td className="num">{s.calls}</td>
-                <td className="num">{Math.round(s.ok_rate * 100)}%</td>
-                <td className="num">{Math.round(s.avg_latency_ms)}</td>
-                <td className="num">{s.cost_sgd.toFixed(4)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 export default function StaffPage() {
   const [client, setClient] = useState<StaffClient | null>(null);
   const [rows, setRows] = useState<StaffRow[]>([]);
@@ -499,7 +429,6 @@ export default function StaffPage() {
             })}
           </ul>
           {client && <ConsultList client={client} />}
-          {client && <MetricsPanel client={client} />}
         </div>
         )}
       </main>

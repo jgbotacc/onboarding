@@ -1,5 +1,5 @@
 import { createStaffMock } from "./mock";
-import type { Consult, DecisionBody, DecisionResult, RejectedLookRound, StaffDetail, StaffMetrics, StaffRow, StudioDraft, StudioDraftsBody, StudioGet, StudioRemixBody, StudioRunResult } from "./types";
+import type { Consult, DecisionBody, DecisionResult, RejectedLookRound, StaffDetail, StaffRow, StudioDraft, StudioDraftsBody, StudioGet, StudioRemixBody, StudioRunResult } from "./types";
 
 export interface StaffClient {
   mock: boolean;
@@ -9,7 +9,6 @@ export interface StaffClient {
   rejectedLooks(id: string): Promise<RejectedLookRound[]>;
   consults(): Promise<Consult[]>;
   approveConsult(id: string): Promise<Consult>;
-  metrics(): Promise<StaffMetrics>;
   studio(id: string): Promise<StudioGet>;
   generateDrafts(id: string, body: StudioDraftsBody): Promise<StudioRunResult>;
   remixDraft(id: string, body: StudioRemixBody): Promise<StudioRunResult>;
@@ -84,7 +83,6 @@ const real: Omit<StaffClient, "mock"> = {
   consults: () => req("/api/staff/consults"),
   approveConsult: (id) =>
     req("/api/staff/consults/" + encodeURIComponent(id) + "/approve", { method: "POST" }),
-  metrics: () => req("/api/staff/metrics"),
   studio: (id) => req("/api/staff/clients/" + encodeURIComponent(id) + "/studio"),
   generateDrafts: (id, body) =>
     req("/api/staff/clients/" + encodeURIComponent(id) + "/studio/drafts", {
