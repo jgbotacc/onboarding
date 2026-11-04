@@ -225,8 +225,8 @@ def _ordered_fields(fields: dict):
 SUMMARY_CLOSE = "Using your design preferences and business information."
 SUMMARY_CLOSE_NO_PREFS = "Using your business information."
 LOOKS_PROMPT = "Which look do you prefer?"
-LOOKS_HINT = "Pick one or more, or type \"skip\" for new ones."
-LOOKS_HINT_SHORT = "Pick one or more, or type \"skip\"."
+LOOKS_HINT = "Pick one or more."
+LOOKS_HINT_SHORT = "Pick one or more."
 
 
 def _money(v):

@@ -10,7 +10,7 @@ from helpers import new_session, staff_client  # noqa: E402
 c = staff_client(app)
 CLOSE = "Using your design preferences and business information."
 CLOSE_NO_PREFS = "Using your business information."
-LOOKS_TAIL = "\nWhich look do you prefer?\nPick one or more, or type \"skip\" for new ones."
+LOOKS_TAIL = "\nWhich look do you prefer?\nPick one or more."
 FULL = {"business_name": "Lumière Bakehouse", "business_type": "Bakery", "industry": "Food and beverage",
         "business_website": "lumierebakehouse.sg", "contact_name": "Clara Ong", "title_position": "Founder",
         "email": "clara@lumiere.example", "phone_number": "+65 6348 2210", "design_preferences": "cream and gold",

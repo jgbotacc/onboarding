@@ -27,6 +27,7 @@ export default function LooksPicker({ looks, lang, client, disabled, onReply, on
   if (!hasLookOptions(looks)) return null;
 
   const { round, max } = roundInfo(looks);
+  const isLastRound = round >= max;
   const locked = !!disabled || busy;
   const prompt = t(lang, "looks.prompt");
 
@@ -84,7 +85,7 @@ export default function LooksPicker({ looks, lang, client, disabled, onReply, on
           {t(lang, "looks.useThese")}
         </button>
         <button type="button" className="btn" disabled={locked} onClick={() => void skip()}>
-          {t(lang, "looks.skipNew")}
+          {t(lang, isLastRound ? "looks.consult" : "looks.skipNew")}
         </button>
       </div>
     </section>
