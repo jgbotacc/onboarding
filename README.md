@@ -15,6 +15,18 @@ AI-assisted onboarding chat for small businesses. A client uploads a PDF or phon
 4. Make image brief: three briefs from confirmed fields, design direction, and gather rejected looks.
 5. Relay: Preferences relayed to the staff
 
+## How it works for staff
+1. Sign in: open /staff, enter staff, Continue.
+2. Onboarding: open a client, read Chat history and Business details.
+3. Drafts under review: tell the assistant what to change. Generate 3 drafts, Remix, Pin to client, Pin to consult, Send to client.
+4. Send to designers: Send to designers, case moves to Sent to designers.
+
+## How it works for designers
+1. Sign in: same /staff page, enter designer, Continue.
+2. One line per case: Business name, Design preferences, Chosen look.
+3. Download images: zip of the case images.
+4. Upload final images: JPG or PNG, status becomes Done.
+
 ## How to run it
 Backend:
 ```
