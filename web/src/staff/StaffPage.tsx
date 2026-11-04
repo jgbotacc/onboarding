@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { connectStaff, setOnAuthFail, setStaffKey, StaffAuthError, type StaffClient } from "./api";
 import CaseView from "./CaseView";
 import ConsultList from "./ConsultCard";
+import Header from "../Header";
 import RejectedLooks from "./RejectedLooks";
 import StudioPanel from "./StudioPanel";
 import { FIELDS, type FieldKey } from "./fields";
@@ -9,7 +10,6 @@ import { statusLabel, type Decision, type DecisionResult, type EmailInfo, type S
 import { formatDate } from "./format";
 import "./staff.css";
 
-const ASSET = import.meta.env.BASE_URL;
 const FINAL = ["approved", "rejected"];
 
 const emailText = (e?: EmailInfo | null) => {
@@ -380,17 +380,20 @@ export default function StaffPage() {
 
   return (
     <div className="staff">
-      <header className="header">
-        <img className="header-avatar" src={ASSET + "agent-64.png"} alt="" aria-hidden="true" width={24} height={24} />
-        <h1>Client onboarding</h1>
-        <span className="staff-tag">Staff review</span>
-        {client?.mock && (
-          <span className="badge-demo" id="demoBadge">
-            Demo (sample data)
-          </span>
-        )}
-        <a className="staff-nav" href={window.location.hash.startsWith("#/") ? "#/designer" : "/designer"}>Designer</a>
-      </header>
+      <Header
+        title="Client onboarding"
+        label={<span className="staff-tag">Staff review</span>}
+        right={
+          <>
+            {client?.mock && (
+              <span className="badge-demo" id="demoBadge">
+                Demo (sample data)
+              </span>
+            )}
+            <a className="staff-nav" href={window.location.hash.startsWith("#/") ? "#/designer" : "/designer"}>Designer</a>
+          </>
+        }
+      />
       <main className="staff-main">
         {gate ? (
           <PasscodeGate
@@ -401,7 +404,7 @@ export default function StaffPage() {
             }}
           />
         ) : (
-        <div className="staff-column">
+        <div className="staff-column card">
           <div className="staff-title">
             <h2>Client queue</h2>
             <span className="staff-count">{client ? `${rows.length} client${rows.length === 1 ? "" : "s"}` : "Loading…"}</span>

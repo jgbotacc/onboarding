@@ -4,6 +4,7 @@ import App from "./App";
 import SharePage from "./share/SharePage";
 import DesignerPage from "./staff/DesignerPage";
 import StaffPage from "./staff/StaffPage";
+import "./theme.css";
 import "./styles.css";
 
 // Hash route so the backend can keep serving web/dist at "/" with base "./": staff review lives at /#/staff (/#/review and the backend paths /staff, /review, /admin also work).

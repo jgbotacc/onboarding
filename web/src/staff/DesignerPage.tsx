@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { connectDesigner, setOnAuthFail, setStaffKey, type StaffClient, type StaffRole } from "./api";
 import { maskSensitive } from "./caseView";
 import { PasscodeGate } from "./StaffPage";
+import Header from "../Header";
 import type { DesignerRow } from "./types";
 import "./staff.css";
 
@@ -141,17 +142,21 @@ export default function DesignerPage() {
 
   return (
     <div className="staff">
-      <header className="header">
-        <h1>Designer handoff</h1>
-        <span className="staff-tag">Staff review</span>
-        {client?.mock && <span className="badge-demo" id="demoBadge">Demo (sample data)</span>}
-        {role === "staff" && <a className="staff-nav" href={staffHref()}>Staff</a>}
-      </header>
+      <Header
+        title="Designer handoff"
+        label={<span className="staff-tag">Staff review</span>}
+        right={
+          <>
+            {client?.mock && <span className="badge-demo" id="demoBadge">Demo (sample data)</span>}
+            {role === "staff" && <a className="staff-nav" href={staffHref()}>Staff</a>}
+          </>
+        }
+      />
       <main className="staff-main">
         {gate ? (
           <PasscodeGate error={gate.error} onSubmit={(k) => { setStaffKey(k); load(); }} />
         ) : (
-          <div className="staff-column">
+          <div className="staff-column card">
             <div className="staff-title">
               <h2>Cases sent to designers</h2>
               <span className="staff-count">{rows ? `${rows.length} case${rows.length === 1 ? "" : "s"}` : "Loading…"}</span>
@@ -159,7 +164,7 @@ export default function DesignerPage() {
             {rows && !rows.length && <p className="staff-empty">No cases sent to designers yet.</p>}
             {rows && rows.length > 0 && (
               <div className="staff-tablewrap">
-                <table className="staff-traces">
+                <table className="staff-traces table">
                   <thead>
                     <tr>
                       <th>Business name</th>

@@ -1,64 +1,12 @@
-:root {
-  --accent: #1664ff;
-  --accent-hover: #0e52d9;
-  --accent-soft: #e8f0ff;
-  --bg: #f7f8fa;
-  --surface: #ffffff;
-  --subtle: #f2f3f5;
-  --border: #e5e6eb;
-  --text: #1d2129;
-  --text-2: #4e5969;
-  --text-3: #6b7380;
-  --warn: #b25e00;
-  --warn-soft: #fff7e8;
-  --ok: #0f7b3f;
-  --ok-soft: #e8f7ee;
-  --danger: #c62a2a;
-  --danger-soft: #fdecec;
-  --r: 6px;
-  --r-lg: 8px;
-  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  font-size: 14px;
-  line-height: 20px;
-  color: var(--text);
-  background: var(--bg);
-  -webkit-font-smoothing: antialiased;
-  caret-color: var(--accent);
-  accent-color: var(--accent);
-}
-* { box-sizing: border-box; }
-html, body, #root { margin: 0; height: 100%; }
-::selection { background: #cddcff; color: var(--text); }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Shared palette, type, header, buttons, pills and inputs live in theme.css
+   (imported before this file in main.tsx). This file keeps only
+   client-specific layout. */
 * { scrollbar-width: thin; scrollbar-color: #c9cdd4 transparent; }
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background: #c9cdd4; border-radius: 4px; }
 button { font: inherit; }
 
 .app { position: relative; height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
-
-.header {
-  display: flex; align-items: center; gap: 8px;
-  height: 48px; padding: 0 16px;
-  background: var(--surface); border-bottom: 1px solid var(--border);
-}
-.header h1 { margin: 0; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; }
-.pill {
-  font-size: 12px; line-height: 16px; padding: 2px 8px; border-radius: 4px; font-weight: 500;
-  background: var(--accent-soft); color: var(--accent); white-space: nowrap;
-}
-.pill[data-status="missing_info"] { background: var(--warn-soft); color: var(--warn); }
-.pill[data-status="accepted"] { background: var(--ok-soft); color: var(--ok); }
-.pill[data-status="handed_off"] { background: var(--subtle); color: var(--text-2); }
-.badge-demo {
-  margin-left: auto; font-size: 12px; line-height: 16px; padding: 2px 8px;
-  border: 1px solid var(--border); border-radius: 4px; color: var(--text-2); white-space: nowrap;
-}
-.lang-select {
-  margin-left: auto; height: 28px; padding: 0 6px; border: 1px solid var(--border);
-  border-radius: var(--r); background: var(--surface); color: var(--text-2); font-size: 13px; cursor: pointer;
-}
-.header .badge-demo { margin-left: 0; }
 
 .column { width: 100%; max-width: 760px; margin: 0 auto; }
 .chat { flex: 1; overflow-y: auto; padding: 16px; }
@@ -71,7 +19,7 @@ button { font: inherit; }
 .msg.assistant { align-self: flex-start; background: var(--surface); border: 1px solid var(--border); }
 .msg.user { align-self: flex-end; background: var(--accent); color: #fff; }
 .msg.user .files { margin-top: 4px; font-size: 12px; line-height: 16px; color: #dbe6ff; }
-.msg.error { align-self: stretch; max-width: none; background: var(--danger-soft); color: var(--danger); font-size: 13px; }
+.msg.error { align-self: stretch; max-width: none; background: var(--danger-soft); color: var(--danger); font-size: 16px; line-height: 24px; }
 
 .img-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 8px; width: min(480px, 70vw); }
 .thumb { padding: 0; border: 1px solid var(--border); border-radius: var(--r); background: var(--subtle); cursor: zoom-in; overflow: hidden; display: block; }
@@ -79,16 +27,6 @@ button { font: inherit; }
 .thumb img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; }
 
 .review, .choices { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-.btn {
-  height: 28px; padding: 0 12px; border-radius: var(--r); font-size: 13px; font-weight: 500; cursor: pointer;
-  border: 1px solid var(--border); background: var(--surface); color: var(--text);
-  transition: background-color .12s ease-out, border-color .12s ease-out;
-}
-.btn:hover:not(:disabled) { border-color: #c9cdd4; background: var(--subtle); }
-.btn.on { border-color: var(--accent); color: var(--accent); }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-.btn.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
-.btn:disabled { opacity: .45; cursor: default; }
 
 .typing { align-self: flex-start; display: flex; gap: 4px; padding: 12px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); }
 .typing span { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); animation: pulse 1.2s infinite ease-in-out; }
@@ -98,23 +36,23 @@ button { font: inherit; }
 
 .dock { background: var(--surface); border-top: 1px solid var(--border); padding: 8px 16px 12px; }
 .missing-card { margin-bottom: 8px; padding: 8px 12px; border: 1px solid #f5d9ad; background: var(--warn-soft); border-radius: var(--r); }
-.missing-title { font-size: 12px; line-height: 16px; font-weight: 600; color: var(--warn); margin-bottom: 4px; }
+.missing-title { font-size: 16px; line-height: 24px; font-weight: 600; color: var(--warn); margin-bottom: 4px; }
 .missing-card ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
 .missing-card li { display: flex; align-items: center; gap: 8px; color: var(--text); }
 .missing-card li svg { color: var(--warn); flex: none; }
 
 .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
 .chip {
-  display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 4px 0 8px; max-width: 100%;
+  display: inline-flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 4px 0 8px; max-width: 100%;
   border: 1px solid var(--border); border-radius: 4px; background: var(--subtle); color: var(--text-2); font-size: 12px;
 }
 .chip .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; color: var(--text); }
-.chip button { display: inline-flex; padding: 2px; border: 0; background: none; color: var(--text-3); cursor: pointer; border-radius: 3px; }
+.chip button { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: 2px; border: 0; background: none; color: var(--text-3); cursor: pointer; border-radius: 3px; }
 .chip button:hover { color: var(--text); background: var(--border); }
 
 .composer { display: flex; align-items: flex-end; gap: 8px; }
 .composer textarea {
-  flex: 1; min-height: 36px; max-height: 140px; resize: none; padding: 7px 12px; font: inherit; color: var(--text);
+  flex: 1; min-height: 44px; max-height: 140px; resize: none; padding: 10px 12px; font: inherit; color: var(--text);
   border: 1px solid var(--border); border-radius: var(--r); background: var(--surface); outline: none;
   transition: border-color .12s ease-out;
 }
@@ -123,12 +61,12 @@ button { font: inherit; }
 .composer textarea:focus { border-color: var(--accent); }
 .composer.feedback textarea { border-color: var(--accent); }
 .btn-icon {
-  flex: none; width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center;
+  flex: none; width: 44px; height: 44px; min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center;
   border: 1px solid var(--border); border-radius: var(--r); background: var(--surface); color: var(--text-2); cursor: pointer;
 }
 .btn-icon:hover { background: var(--subtle); color: var(--text); }
 .btn-send {
-  flex: none; height: 36px; padding: 0 12px; display: inline-flex; align-items: center; gap: 4px;
+  flex: none; min-height: 44px; padding: 10px 12px; display: inline-flex; align-items: center; gap: 4px;
   border: 0; border-radius: var(--r); background: var(--accent); color: #fff; font-weight: 500; cursor: pointer;
 }
 .btn-send:hover:not(:disabled) { background: var(--accent-hover); }
@@ -147,7 +85,6 @@ button { font: inherit; }
   .dock { padding: 8px 12px 12px; }
   .msg { max-width: 88%; }
   .img-grid { width: min(480px, 76vw); }
-  .badge-demo { font-size: 11px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 
@@ -165,19 +102,19 @@ button { font: inherit; }
 .modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 16px 20px 12px; border-bottom: 1px solid var(--border); }
 .modal-head h2 { margin: 0; font-size: 16px; line-height: 24px; font-weight: 600; }
 .modal-head p { margin: 0; font-size: 12px; line-height: 16px; color: var(--text-2); }
-.icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 0; border-radius: var(--r); background: none; color: var(--text-2); cursor: pointer; }
+.icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; min-width: 44px; min-height: 44px; border: 0; border-radius: var(--r); background: none; color: var(--text-2); cursor: pointer; }
 .icon-btn:hover { background: var(--subtle); color: var(--text); }
 .modal-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 20px 16px; }
 .form-section { margin: 0; padding: 16px 0 0; border: 0; min-width: 0; }
 .form-section + .form-section { margin-top: 16px; border-top: 1px solid var(--border); }
-.form-section legend { float: left; width: 100%; padding: 0; margin-bottom: 12px; font-size: 13px; line-height: 20px; font-weight: 600; color: var(--text); }
+.form-section legend { float: left; width: 100%; padding: 0; margin-bottom: 12px; font-size: 16px; line-height: 24px; font-weight: 600; color: var(--text); }
 .form-grid { clear: both; display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
 .field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .field.full { grid-column: 1 / -1; }
-.field label { font-size: 13px; line-height: 20px; font-weight: 500; color: var(--text-2); }
+.field label { font-size: 16px; line-height: 24px; font-weight: 600; color: var(--text); }
 .field .req { color: var(--danger); }
 .field input, .field textarea {
-  width: 100%; height: 32px; padding: 5px 10px; font: inherit; color: var(--text);
+  width: 100%; min-height: 44px; padding: 10px 12px; font: inherit; color: var(--text);
   border: 1px solid var(--border); border-radius: var(--r); background: var(--surface); outline: none;
   transition: border-color .12s ease-out;
 }
@@ -185,18 +122,16 @@ button { font: inherit; }
 .field input:hover, .field textarea:hover { border-color: #c9cdd4; }
 .field input:focus, .field textarea:focus { border-color: var(--accent); }
 .field.invalid input, .field.invalid textarea { border-color: var(--danger); }
-.field-error { font-size: 12px; line-height: 16px; color: var(--danger); }
 /* Form: resume mode note */
-.form-intro { margin: 16px 0 0; padding: 8px 12px; border-radius: var(--r); background: var(--accent-soft); color: var(--text); font-size: 13px; line-height: 20px; }
+.form-intro { margin: 16px 0 0; padding: 8px 12px; border-radius: var(--r); background: var(--accent-soft); color: var(--text); font-size: 16px; line-height: 24px; }
 
 /* Form: optional reference images */
-.field-hint { margin: 0; font-size: 12px; line-height: 16px; color: var(--text-3); }
 .ref-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .ref-thumb { position: relative; width: 88px; height: 88px; border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; background: var(--subtle); }
 .ref-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .ref-remove {
   position: absolute; top: 4px; right: 4px; display: inline-flex; align-items: center; justify-content: center;
-  width: 20px; height: 20px; padding: 0; border: 1px solid var(--border); border-radius: 4px;
+  width: 44px; height: 44px; min-width: 44px; min-height: 44px; padding: 0; border: 1px solid var(--border); border-radius: 4px;
   background: var(--surface); color: var(--text-2); cursor: pointer;
 }
 .ref-remove:hover { color: var(--text); border-color: #c9cdd4; }
@@ -212,7 +147,6 @@ button { font: inherit; }
   padding: 12px 20px; border-top: 1px solid var(--border); background: var(--surface);
   border-radius: 0 0 var(--r-lg) var(--r-lg);
 }
-.modal-foot .btn { height: 32px; padding: 0 16px; }
 @media (max-width: 600px) {
   .modal-backdrop { padding: 0; align-items: stretch; }
   .modal { max-height: none; border-radius: 0; border: 0; }
@@ -221,7 +155,6 @@ button { font: inherit; }
 }
 
 /* Onboarding agent identity */
-.header-avatar { width: 24px; height: 24px; object-fit: contain; flex: none; }
 .row { display: flex; align-items: flex-end; gap: 8px; max-width: 86%; }
 .row.assistant { align-self: flex-start; }
 .row .msg { max-width: 100%; min-width: 0; }
@@ -249,8 +182,6 @@ button { font: inherit; }
 }
 @media (prefers-reduced-motion: reduce) { .welcome-figure { animation: none; } }
 @media (max-width: 600px) {
-  .header { height: auto; min-height: 48px; flex-wrap: wrap; row-gap: 4px; padding: 8px 12px; }
-  .badge-demo { margin-left: 0; }
   .img-grid { width: calc(100vw - 112px); max-width: 480px; }
   .welcome .agent-label { display: none; }
   .welcome-body { max-width: 100%; }
@@ -270,7 +201,7 @@ button { font: inherit; }
 /* Listen buttons: read a bot message or form question aloud (WCAG 2.2: native
    buttons with visible focus, >=24px targets, text labels, no autoplay). */
 .listen-group { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
-.listen-btn { min-height: 28px; min-width: 24px; }
+.listen-btn { min-height: 44px; min-width: 44px; }
 .listen-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .listen-btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
 .listen-notice { font-size: 12px; line-height: 16px; color: var(--text-2); }
@@ -320,7 +251,7 @@ button { font: inherit; }
 .confirm-edit { display: flex; align-items: center; gap: 8px; margin: 0; }
 .confirm-edit .listen-group { margin-top: 0; flex: none; }
 .confirm-edit textarea {
-  flex: 1 1 auto; min-width: 0; min-height: 32px; padding: 5px 10px; font: inherit; color: var(--text);
+  flex: 1 1 auto; min-width: 0; min-height: 44px; padding: 10px 12px; font: inherit; color: var(--text);
   border: 1px solid var(--border); border-radius: var(--r); background: var(--surface); outline: none;
   transition: border-color .12s ease-out; resize: none; overflow: hidden; overflow-wrap: anywhere;
 }
@@ -328,10 +259,10 @@ button { font: inherit; }
 .confirm-edit textarea:focus { border-color: var(--accent); }
 .confirm-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .retake { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
-.retake-notice { margin: 0; font-size: 13px; line-height: 20px; color: var(--text); }
+.retake-notice { margin: 0; font-size: 16px; line-height: 24px; color: var(--text); }
 .consult-note {
   margin: 8px 0 0; padding: 8px 12px; border-radius: var(--r);
-  background: var(--accent-soft); color: var(--text); font-size: 13px; line-height: 20px;
+  background: var(--accent-soft); color: var(--text); font-size: 16px; line-height: 24px;
 }
 @media (max-width: 600px) {
   .looks { width: calc(100vw - 112px); max-width: 480px; }
@@ -348,18 +279,9 @@ button { font: inherit; }
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
 
-/* 375px chat: no sideways scroll, >=44px tap targets. Desktop untouched. */
+/* 375px chat: no sideways scroll, >=44px tap targets (base rules already 44px). */
 @media (max-width: 600px) {
-  /* Header: wrap onto two rows, picker gets a full 44px row. */
-  .header { row-gap: 8px; }
-  .lang-select {
-    min-height: 44px; min-width: 44px; max-width: 100%;
-    font-size: 16px; padding: 0 12px;
-  }
-  /* All chat buttons hit 44px. */
-  .btn { min-height: 44px; height: auto; padding: 10px 16px; max-width: 100%; }
-  .modal-foot .btn { height: auto; min-height: 44px; }
-  .listen-btn { min-height: 44px; min-width: 44px; padding: 8px 12px; }
+  .listen-btn { padding: 8px 12px; }
   .chip { min-height: 44px; }
   .chip button { min-width: 44px; min-height: 44px; justify-content: center; }
   /* Looks: fill the bubble instead of vw math (no overflow), bigger check. */

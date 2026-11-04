@@ -203,7 +203,7 @@ export default function FeedbackPanel({ client, clientId }: { client: StaffClien
           <p className="staff-empty">No links yet. Create the first one above.</p>
         ) : (
           <div className="staff-tablewrap">
-            <table className="staff-traces">
+            <table className="staff-traces table">
               <thead>
                 <tr>
                   <th scope="col">Created by</th>
@@ -278,7 +278,7 @@ export default function FeedbackPanel({ client, clientId }: { client: StaffClien
             <h4 className="staff-feed-title">Client taps</h4>
             {feed.length ? (
               <div className="staff-tablewrap">
-                <table className="staff-traces">
+                <table className="staff-traces table">
                   <thead>
                     <tr>
                       <th scope="col">Draft</th>
