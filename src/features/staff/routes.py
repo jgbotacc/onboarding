@@ -12,6 +12,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from src.features.brandboard import board as brandboard
 from src.features.chat import agent
 from src.features.imagegen import studio
 from src.features.looks.brief import design_context
@@ -94,9 +95,13 @@ def _detail(store, s):
     traces = [{"step": t.get("step"), "model": t.get("model"), "ok": t.get("ok"),
                "ms": t.get("latency_ms"), "cost_sgd": t.get("cost_sgd"), "at": t.get("at")}
               for t in store.traces(s["id"])]
+    bb, bb_changed = brandboard.prune_missing(store.get_brand_board(s["id"]))
+    if bb_changed:
+        store.save_brand_board(s["id"], dict(bb, version=bb.get("version") or 1))
     d = dict(base, lang=s.get("lang") or "en", transcript=s.get("transcript", []),
              looks=_all_looks(store, s["id"]), rejected_looks=rej,
              consult=_with_pins(store, _consult_for(store, s["id"])),
+             brand_board=bb,
              audit=store.audit_log(s["id"]), documents=docs, traces=traces)
     d.pop("pending", None)  # A9: pending drafts never reach staff
     return guard.clean(d, guard.others_identifiers(store, s["id"]))[0]
@@ -116,6 +121,18 @@ class RemixIn(BaseModel):
     source_kind: Literal["draft", "look"]
     note: str | None = Field(default=None, max_length=300)
     preset: Literal["post", "story", "flyer"] | None = None
+
+
+class BoardIn(BaseModel):
+    colours: list[str] | None = None
+    tone_words: list[str] | None = None
+    style_words: list[str] | None = None
+    summary: str | None = None
+
+
+class BoardDecisionIn(BaseModel):
+    decision: Literal["approve", "reject"]
+    note: str | None = Field(default=None, max_length=500)
 
 
 class StarIn(BaseModel):
@@ -438,6 +455,62 @@ def make_router(store, save):
             out = {"run_id": run_id, "drafts": [_draft_json(d)], "remaining": remaining}
             return guard.clean(out, others)[0]
 
+    def _board_json(b: dict | None):
+        if not b:
+            return None
+        return {k: b.get(k) for k in ("version", "colours", "tone_words", "style_words",
+                                      "summary", "photos", "status", "approved_by",
+                                      "decided_at", "note", "updated_at")}
+
+    def board_get(cid: str):
+        load(cid)
+        bb, changed = brandboard.prune_missing(store.get_brand_board(cid))
+        if changed:
+            bb = store.save_brand_board(cid, dict(bb, version=bb.get("version") or 1))
+        rows = [a for a in store.audit_log(cid)
+                if str(a.get("action", "")).startswith("brand_board")]
+        return guard.clean({"board": _board_json(bb),
+                            "audit": rows}, guard.others_identifiers(store, cid))[0]
+
+    def board_edit(cid: str, body: BoardIn, request: Request):
+        load(cid)
+        bb = store.get_brand_board(cid)
+        if not bb:
+            raise HTTPException(404, "No brand board for this client yet.")
+        patch = {}
+        for k in ("colours", "tone_words", "style_words", "summary"):
+            v = getattr(body, k)
+            if v is not None:
+                patch[k] = v
+        if not patch:
+            raise HTTPException(400, "Nothing to change.")
+        trial = brandboard.validate_board({**{k: bb.get(k) for k in
+                                               ("colours", "tone_words", "style_words", "summary")},
+                                           **patch})
+        if not trial:
+            raise HTTPException(400, "Board shape is wrong: 3-6 hex colours, 2-6 tone words, "
+                                     "2-6 style words, summary under 300 chars.")
+        bb = store.save_brand_board(cid, dict(bb, **trial, version=bb.get("version")))
+        store.audit(cid, actor(request), "brand_board_edited", None, {"fields": sorted(patch)})
+        return guard.clean(_board_json(bb), guard.others_identifiers(store, cid))[0]
+
+    def board_decide(cid: str, body: BoardDecisionIn, request: Request):
+        load(cid)
+        bb = store.get_brand_board(cid)
+        if not bb:
+            raise HTTPException(404, "No brand board for this client yet.")
+        if bb.get("status") != "pending_review":
+            raise HTTPException(409, "This board was already decided. A fresh upload re-opens it.")
+        act = actor(request)
+        bb = store.save_brand_board(
+            cid, dict(bb, status="approved" if body.decision == "approve" else "rejected",
+                      approved_by=act if body.decision == "approve" else None,
+                      decided_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                      note=body.note, version=bb.get("version")))
+        store.audit(cid, act, "brand_board_" + body.decision, None,
+                    {"version": bb.get("version")})
+        return guard.clean(_board_json(bb), guard.others_identifiers(store, cid))[0]
+
     def studio_star(cid: str, did: str, body: StarIn, request: Request):
         load(cid)
         d = store.get_draft(did)
@@ -512,6 +585,9 @@ def make_router(store, save):
     r.add_api_route("/api/staff/consults", list_consults, methods=["GET"])
     r.add_api_route("/api/staff/consults/{cid}/decision", consult_decide, methods=["POST"])
     r.add_api_route("/api/staff/consults/{cid}/approve", consult_approve, methods=["POST"])
+    r.add_api_route("/api/staff/clients/{cid}/brand-board", board_get, methods=["GET"])
+    r.add_api_route("/api/staff/clients/{cid}/brand-board", board_edit, methods=["POST"])
+    r.add_api_route("/api/staff/clients/{cid}/brand-board/decision", board_decide, methods=["POST"])
     r.add_api_route("/api/staff/clients/{cid}/studio", studio_get, methods=["GET"])
     r.add_api_route("/api/staff/clients/{cid}/studio/drafts", studio_drafts, methods=["POST"])
     r.add_api_route("/api/staff/clients/{cid}/studio/remix", studio_remix, methods=["POST"])

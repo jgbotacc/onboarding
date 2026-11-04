@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarHTTPException
 
 from src.data.store import get_store
+from src.features.brandboard import board as brandboard
 from src.features.chat import agent
 from src.features.i18n import lang
 from src.features.intake import document, photo
@@ -600,6 +601,92 @@ async def upload_delete(request: Request):
         out = agent.remove_pending(s, doc_id)
         store.audit(s["id"], "client", "document_removed", doc_id)
         return _finish(s, out)
+
+
+def _board_json(b: dict | None) -> dict | None:
+    if not b:
+        return None
+    return {k: b.get(k) for k in ("version", "colours", "tone_words", "style_words", "summary",
+                                  "photos", "status", "approved_by", "decided_at", "note",
+                                  "updated_at")}
+
+
+@app.post("/api/brand-board/photos")
+async def brand_board_photos(request: Request):
+    form = await request.form()
+    sid = str(form.get("sessionId", ""))
+    files = [v for k, v in form.multi_items() if k in ("files", "files[]") and hasattr(v, "read")]
+    if not files:
+        raise HTTPException(400, "Please choose up to 6 photos.")
+    if len(files) > brandboard.MAX_PHOTOS:
+        raise HTTPException(400, f"Please choose up to {brandboard.MAX_PHOTOS} photos at a time.")
+    blobs = []
+    for f in files:
+        data = await f.read(security.MAX_FILE_BYTES + 1)
+        if len(data) > security.MAX_FILE_BYTES:
+            raise HTTPException(400, f"{f.filename or 'That file'} is too big. Max 10 MB.")
+        blobs.append((f.filename, f.content_type, data))
+    with _lock_for(sid or "missing"):
+        s = _load(sid, _secret(request, form.get("sessionSecret")))
+        _apply_lang(s, request, form.get("lang"))
+        existing = store.get_brand_board(sid) or {}
+        kept, _ = brandboard.prune_missing(existing)
+        urls = list((kept or {}).get("photos") or [])
+        if len(urls) + len(blobs) > brandboard.MAX_PHOTOS:
+            raise HTTPException(400, f"Only {brandboard.MAX_PHOTOS} style photos per client. Remove one first.")
+        good, skipped = [], []
+        for fname, ctype, data in blobs:
+            if security.is_pdf(data):
+                skipped.append({"filename": fname, "reason": "not_image"})
+                continue
+            try:
+                if photo.is_heic(data):
+                    data = _heic_to_jpeg(data)
+                img, ext = security.clean_image(data)
+            except Exception:
+                skipped.append({"filename": fname, "reason": "unreadable"})
+                continue
+            try:
+                problem = photo.quality(photo.load_image(img))
+            except Exception:
+                problem = "unreadable"
+            if problem:
+                skipped.append({"filename": fname, "reason": problem})
+                continue
+            rid = uuid.uuid4().hex
+            p = MEDIA_DIR / f"brand-{rid}{ext}"
+            p.write_bytes(img)
+            good.append((f"/media/brand-{rid}{ext}", img))
+            urls.append(f"/media/brand-{rid}{ext}")
+        board = dict(kept or {})
+        if good:
+            read = brandboard.read_board([g[1] for g in good], s.get("fields"),
+                                         s.get("direction"), session_id=sid)
+            board = {"colours": read.get("colours", []), "tone_words": read.get("tone_words", []),
+                     "style_words": read.get("style_words", []), "summary": read.get("summary", ""),
+                     "photos": urls, "status": "pending_review",
+                     "approved_by": None, "decided_at": None, "note": None}
+            board = store.save_brand_board(sid, board)
+            store.audit(sid, "client", "brand_board_uploaded", None,
+                        {"photos": len(urls), "version": board.get("version")})
+        elif urls != (existing.get("photos") or []):
+            board = store.save_brand_board(sid, dict(existing, photos=urls))
+        out = {"board": _board_json(board or existing), "photos": urls, "skipped": skipped}
+        if not good and not urls:
+            out["retake"] = True
+            out["retake_reason"] = (skipped[0].get("reason") if skipped else "unreadable")
+        return out
+
+
+@app.get("/api/brand-board")
+def brand_board_get(request: Request):
+    sid = request.query_params.get("sessionId", "")
+    with _lock_for(sid or "missing"):
+        _load(sid, _secret(request))
+        board, changed = brandboard.prune_missing(store.get_brand_board(sid))
+        if changed:
+            board = store.save_brand_board(sid, dict(board, version=board.get("version") or 1))
+        return {"board": _board_json(board)}
 
 
 @app.post("/api/trace")

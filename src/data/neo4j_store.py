@@ -258,6 +258,62 @@ class Neo4jStore:
         except (ValueError, TypeError, KeyError):
             return 0
 
+    _BOARD_COLS = ("session_id", "version", "colours", "tone_words", "style_words",
+                   "summary", "photos", "status", "approved_by", "decided_at",
+                   "note", "created_at", "updated_at")
+    BOARD_RET = ("b.session_id AS session_id, b.version AS version, b.colours AS colours, "
+                 "b.tone_words AS tone_words, b.style_words AS style_words, b.summary AS summary, "
+                 "b.photos AS photos, b.status AS status, b.approved_by AS approved_by, "
+                 "b.decided_at AS decided_at, b.note AS note, "
+                 "toString(b.created_at) AS created_at, toString(b.updated_at) AS updated_at")
+
+    @staticmethod
+    def _board_row(row: dict) -> dict:
+        d = {k: row.get(k) for k in Neo4jStore._BOARD_COLS}
+        for k in ("colours", "tone_words", "style_words", "photos"):
+            v = d.get(k)
+            if isinstance(v, str):
+                try:
+                    v = json.loads(v)
+                except (ValueError, TypeError):
+                    v = []
+            d[k] = v if isinstance(v, list) else []
+        try:
+            d["version"] = int(d.get("version") or 0)
+        except (ValueError, TypeError):
+            d["version"] = 0
+        return d
+
+    @staticmethod
+    def _board_params(board: dict) -> dict:
+        def _js(v):
+            return json.dumps(v if isinstance(v, list) else [])
+        return {"colours": _js(board.get("colours")), "tone_words": _js(board.get("tone_words")),
+                "style_words": _js(board.get("style_words")), "summary": board.get("summary") or "",
+                "photos": _js(board.get("photos")), "status": board.get("status") or "pending_review",
+                "approved_by": board.get("approved_by"), "decided_at": board.get("decided_at"),
+                "note": board.get("note")}
+
+    def save_brand_board(self, sid, board: dict) -> dict | None:
+        """One statement: upsert the client's BrandBoard node (version +1 per new read)."""
+        rows = self._run(
+            "MERGE (c:Client {id:$sid}) "
+            "MERGE (c)-[:HAS_BOARD]->(b:BrandBoard {session_id:$sid}) "
+            "SET b.version=coalesce($version, coalesce(b.version, 0) + 1), "
+            "b.colours=$colours, b.tone_words=$tone_words, b.style_words=$style_words, "
+            "b.summary=$summary, b.photos=$photos, b.status=$status, b.approved_by=$approved_by, "
+            "b.decided_at=$decided_at, b.note=$note, b.updated_at=datetime(), "
+            "b.created_at=coalesce(b.created_at, datetime()) "
+            f"RETURN {self.BOARD_RET}",
+            sid=sid, version=int(board["version"]) if board.get("version") else None,
+            **self._board_params(board))
+        return self._board_row(rows[0]) if rows else None
+
+    def get_brand_board(self, sid) -> dict | None:
+        rows = self._run(f"MATCH (b:BrandBoard {{session_id:$sid}}) RETURN {self.BOARD_RET}",
+                         sid=sid)
+        return self._board_row(rows[0]) if rows else None
+
     def save_consult(self, card: dict):
         self._run("MERGE (c:Client {id:$sid}) MERGE (k:Consult {id:$cid}) "
                   "SET k.status=$status, k.card=$card, k.approvedBy=$approvedBy, k.decidedAt=$decidedAt, "

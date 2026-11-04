@@ -113,6 +113,19 @@ def build_prompt(brief: dict, shape: str | None = None) -> str:
         parts.append(f"Design direction (style and colours): {style}")
     if clean.get("brand_colours"):
         parts.append(f"Brand colours: {clean['brand_colours']}")
+    bb = clean.get("brand_board")
+    if isinstance(bb, dict):
+        bits = []
+        if bb.get("colours"):
+            bits.append("colours " + ", ".join(str(c) for c in bb["colours"] if c))
+        if bb.get("tone"):
+            bits.append("tone: " + ", ".join(str(w) for w in bb["tone"] if w))
+        if bb.get("style"):
+            bits.append("style: " + ", ".join(str(w) for w in bb["style"] if w))
+        if bb.get("summary"):
+            bits.append(str(bb["summary"]).strip())
+        if bits:
+            parts.append("Approved brand board: " + "; ".join(bits))
     if kind:
         parts.append(f"Business type and industry: {kind}")
     parts.append(f"Business name: show '{name}' clearly")

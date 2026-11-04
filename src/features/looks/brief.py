@@ -16,12 +16,23 @@ ALLOWED = ("business_name", "business_type", "industry", "design_preferences",
            "requirements_notes", "tagline", "brand_colours")
 
 
-def design_context(fields, direction, feedback) -> dict:
-    """Only design-safe fields plus direction/feedback; never contact details."""
+def design_context(fields, direction, feedback, brand_board=None) -> dict:
+    """Only design-safe fields plus direction/feedback; never contact details.
+
+    brand_board (an approved board dict) adds one look-and-feel key.
+    Pending/rejected boards must never be passed: approve gates the brief.
+    """
     f = fields or {}
     ctx = {k: f[k] for k in ALLOWED if f.get(k)}
     ctx["direction"] = direction
     ctx["feedback"] = feedback
+    if isinstance(brand_board, dict) and brand_board.get("status") == "approved":
+        ctx["brand_board"] = {
+            "colours": [c for c in (brand_board.get("colours") or []) if isinstance(c, str)][:6],
+            "tone": [w for w in (brand_board.get("tone_words") or []) if isinstance(w, str)][:6],
+            "style": [w for w in (brand_board.get("style_words") or []) if isinstance(w, str)][:6],
+            "summary": str(brand_board.get("summary") or "")[:300],
+        }
     return ctx
 
 

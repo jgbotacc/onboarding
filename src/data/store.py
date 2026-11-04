@@ -195,6 +195,56 @@ class SqliteStore:
             self.db.execute("UPDATE staff_drafts SET sent_at=?, sent_by=? WHERE id=?", (at, actor, id))
         return self.get_draft(id)
 
+    _BOARD_COLS = ("session_id", "version", "colours", "tone_words", "style_words",
+                   "summary", "photos", "status", "approved_by", "decided_at",
+                   "note", "created_at", "updated_at")
+
+    @staticmethod
+    def _board_row(row) -> dict:
+        d = dict(zip(SqliteStore._BOARD_COLS, row))
+        for k in ("colours", "tone_words", "style_words", "photos"):
+            try:
+                v = json.loads(d[k]) if d[k] else []
+                d[k] = v if isinstance(v, list) else []
+            except (ValueError, TypeError):
+                d[k] = []
+        d["version"] = int(d.get("version") or 0)
+        return d
+
+    def save_brand_board(self, sid, board: dict) -> dict:
+        """Upsert one board row per client (one transaction)."""
+        import datetime
+
+        def _js(v):
+            return json.dumps(v if isinstance(v, list) else [])
+
+        with self._txn():
+            row = self.db.execute(
+                "SELECT version FROM brand_boards WHERE session_id=?", (sid,)).fetchone()
+            version = int(board.get("version") or (int(row[0]) + 1 if row else 1))
+            now = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+            self.db.execute(
+                "INSERT INTO brand_boards(session_id, version, colours, tone_words, style_words,"
+                " summary, photos, status, approved_by, decided_at, note, updated_at)"
+                " VALUES(?,?,?,?,?,?,?,?,?,?,?,?)"
+                " ON CONFLICT(session_id) DO UPDATE SET version=excluded.version,"
+                " colours=excluded.colours, tone_words=excluded.tone_words,"
+                " style_words=excluded.style_words, summary=excluded.summary, photos=excluded.photos,"
+                " status=excluded.status, approved_by=excluded.approved_by,"
+                " decided_at=excluded.decided_at, note=excluded.note, updated_at=excluded.updated_at",
+                (sid, version, _js(board.get("colours")), _js(board.get("tone_words")),
+                 _js(board.get("style_words")), board.get("summary") or "",
+                 _js(board.get("photos")), board.get("status") or "pending_review",
+                 board.get("approved_by"), board.get("decided_at"), board.get("note"), now))
+        return self.get_brand_board(sid)
+
+    def get_brand_board(self, sid) -> dict | None:
+        with self.lock:
+            row = self.db.execute(
+                "SELECT {} FROM brand_boards WHERE session_id=?".format(
+                    ", ".join(self._BOARD_COLS)), (sid,)).fetchone()
+            return self._board_row(row) if row else None
+
     def sweep_stale_drafts(self, sid, older_than_s=600) -> int:
         """Mark 'reserved' rows older than the limit as failed ('timed out'),
         freeing their cap slots. Returns the number swept."""
