@@ -484,10 +484,11 @@ def translate(body: TranslateIn, request: Request):
                 out_texts.append(cache[key])
                 continue
             tr = lang.to_client(t, lng, s["id"])  # source back on Meta failure
-            cache[key] = tr
-            dirty = True
-            while len(cache) > 200:  # small per-session dict: drop oldest first
-                cache.pop(next(iter(cache)))
+            if lng == "en" or tr != t:  # failed non-en call: don't cache, retry next time
+                cache[key] = tr
+                dirty = True
+                while len(cache) > 200:  # small per-session dict: drop oldest first
+                    cache.pop(next(iter(cache)))
             out_texts.append(tr)
         if dirty:
             _save(s)

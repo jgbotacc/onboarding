@@ -7,14 +7,15 @@ import Header from "./Header";
 import LooksPicker from "./looks/LooksPicker";
 import { mergeLooks, mergeSuggested } from "./looks/refresh";
 import { toFieldKeys } from "./staff/fields";
-import { LANGS, fieldLabel, statusLabel, t, useLang, type Lang } from "./i18n";
+import { LANGS, fieldLabel, statusLabel, t, useLang, type I18nKey, type Lang } from "./i18n";
+import { pendingSources, seedTranslation, swapMessages } from "./retranslate";
 import { CheckboxIcon, CloseIcon, FileIcon, ImageIcon, MicIcon, PaperclipIcon, SendIcon } from "./icons";
 import ListenButton from "./speech/ListenButton";
 import { isMicSupported, startListening } from "./speech/mic";
 
 type Msg =
   | { id: number; role: "user"; text: string; files: string[] }
-  | { id: number; role: "assistant"; text: string; images: string[]; status: string; round: number; choices?: boolean; looks?: Looks | null; suggested_looks?: SuggestedLook[] | null; extracted?: ExtractedField[] | null; retake?: RetakeInfo | null; consult?: ConsultInfo | null }
+  | { id: number; role: "assistant"; text: string; images: string[]; status: string; round: number; choices?: boolean; looks?: Looks | null; suggested_looks?: SuggestedLook[] | null; extracted?: ExtractedField[] | null; retake?: RetakeInfo | null; consult?: ConsultInfo | null; source?: string; i18nKey?: "greeting" | "welcomeBack" }
   | { id: number; role: "error"; text: string };
 
 type NewMsg = Msg extends infer T ? (T extends Msg ? Omit<T, "id"> : never) : never;
@@ -47,6 +48,12 @@ export default function App() {
   const [lang, setLang] = useLang();
   const [client, setClient] = useState<Client | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
+  // History re-translation: cached translation per source+lang for this page.
+  const transCache = useRef(new Map<string, string>());
+  const messagesRef = useRef<Msg[]>([]);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
   const [status, setStatus] = useState("registering");
   const [missing, setMissing] = useState<string[]>([]);
   const [files, setFiles] = useState<File[]>([]);
@@ -97,13 +104,16 @@ export default function App() {
       if (c.linkClosed || c.resume) setChatReady(true); // [chat-gate]
       if (c.linkClosed) {
         // [resume-410] Used/unknown resume link: show the message, no start choices, chat closed.
-        setMessages([{ id: nextId++, role: "assistant", text: c.linkClosed.message, images: [], status: c.linkClosed.status, round: 0 }]);
+        seedTranslation(transCache.current, c.linkClosed.message, lang, c.linkClosed.message);
+        setMessages([{ id: nextId++, role: "assistant", text: c.linkClosed.message, images: [], status: c.linkClosed.status, round: 0, source: c.linkClosed.message }]);
         setStatus(c.linkClosed.status);
         return;
       }
       if (c.resume) {
         const keys = toFormKeys(c.resume.missing);
-        setMessages([{ id: nextId++, role: "assistant", text: c.resume.reply || t(lang, "welcomeBack"), images: [], status: "missing_info", round: 0 }]);
+        const welcome = !c.resume.reply;
+        if (!welcome) seedTranslation(transCache.current, c.resume.reply, lang, c.resume.reply);
+        setMessages([{ id: nextId++, role: "assistant", text: c.resume.reply || t(lang, "welcomeBack"), images: [], status: "missing_info", round: 0, ...(welcome ? { i18nKey: "welcomeBack" as const } : { source: c.resume.reply }) }]);
         setStatus("missing_info");
         if (keys.length) {
           setRefill({ keys, note: c.resume.reply });
@@ -118,7 +128,7 @@ export default function App() {
         }
         return;
       }
-      setMessages([{ id: nextId++, role: "assistant", text: t(lang, "greeting"), images: [], status: "registering", round: 0, choices: true }]);
+      setMessages([{ id: nextId++, role: "assistant", text: t(lang, "greeting"), images: [], status: "registering", round: 0, choices: true, i18nKey: "greeting" }]);
       inputRef.current?.focus();
     });
     return () => {
@@ -151,6 +161,30 @@ export default function App() {
     setMicOn(false);
   }, [lang]);
 
+  // Language switch: built-in lines re-render from i18n; server lines show the cached
+  // translation for the new language at once, else one client.translate call for all
+  // uncached sources swaps the text in place. A failed call keeps the text on screen.
+  useEffect(() => {
+    const renderBuiltin = (key: string) => t(lang, key as I18nKey);
+    setMessages((prev) => swapMessages(prev, lang, transCache.current, new Map(), renderBuiltin));
+    const needed = pendingSources(messagesRef.current, lang, transCache.current);
+    if (!client || needed.length === 0) return;
+    let alive = true;
+    client
+      .translate(needed, lang)
+      .then((res) => {
+        if (!alive) return;
+        const fetched = new Map(needed.map((s, i) => [s, res.texts[i] ?? s] as [string, string]));
+        setMessages((prev) => swapMessages(prev, lang, transCache.current, fetched, renderBuiltin));
+      })
+      .catch(() => {
+        /* keep the text on screen */
+      });
+    return () => {
+      alive = false;
+    };
+  }, [lang, client]);
+
   useEffect(
     () => () => {
       micStopRef.current?.();
@@ -160,11 +194,15 @@ export default function App() {
 
   const render = useCallback(
     (r: ApiResponse) => {
-      push({ role: "assistant", text: r.reply || "", images: r.consult ? [] : r.images || [], status: r.status || "", round: r.round || 0, looks: r.consult ? null : r.looks ?? null, suggested_looks: r.suggested_looks ?? null, extracted: r.extracted ?? null, retake: r.retake ?? null, consult: r.consult ?? null });
+      // History re-translation: keep the English source so a language switch can re-translate.
+      const source = r.source ?? r.reply ?? "";
+      const creationLang: Lang = r.lang === "en" || r.lang === "zh" || r.lang === "ms" || r.lang === "ta" ? r.lang : lang;
+      if (source) seedTranslation(transCache.current, source, creationLang, r.reply || "");
+      push({ role: "assistant", text: r.reply || "", images: r.consult ? [] : r.images || [], status: r.status || "", round: r.round || 0, looks: r.consult ? null : r.looks ?? null, suggested_looks: r.suggested_looks ?? null, extracted: r.extracted ?? null, retake: r.retake ?? null, consult: r.consult ?? null, source: source || undefined });
       if (r.status) setStatus(r.status);
       setMissing(r.missing || []);
     },
-    [push],
+    [push, lang],
   );
 
   const replyError = useCallback(

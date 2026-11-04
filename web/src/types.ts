@@ -61,6 +61,8 @@ export type TraceKind = "listen" | "mic";
 export interface ChatReply {
   reply: string;
   lang?: Lang | string;
+  /** English source of `reply`; POST /api/translate re-translates it on language switch. */
+  source?: string;
   /** New step name; falls back to `status` when the backend sends only v1 `status`. */
   step?: string;
   status: Status | string;

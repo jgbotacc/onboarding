@@ -212,6 +212,28 @@ def test_reply_lang_lock_respected(monkeypatch):
     assert out["lang"] == "zh" and out["texts"] == ["[ZH]" + r["source"]]
 
 
+def test_translate_failure_not_cached_retries(monkeypatch):
+    """A failed non-en call (source back unchanged) is not cached, so it retries."""
+    monkeypatch.setenv("MODEL_API_KEY", "x")
+    calls = []
+
+    def fake(**kw):
+        calls.append(kw.get("step"))
+        return None
+
+    monkeypatch.setattr(meta, "chat", fake)
+    c = staff_client(app)
+    sid = new_session(c)
+    src = store.load(sid)["transcript"][-1]["text"]
+    body = {"sessionId": sid, "lang": "zh", "texts": [src]}
+    assert c.post("/api/translate", json=body).json() == {"lang": "zh", "texts": [src]}
+    assert calls.count("translate_out") == 1
+    assert store.load(sid).get("translate_cache", {}) == {}
+    lang._out_cached.cache_clear()  # simulate a restart: process lru gone, nothing persisted
+    assert c.post("/api/translate", json=body).json() == {"lang": "zh", "texts": [src]}
+    assert calls.count("translate_out") == 2
+
+
 def test_translate_auth_and_lang_validation(monkeypatch):
     c, sid, r, _ = _zh_session(monkeypatch)
     body = {"sessionId": sid, "lang": "zh", "texts": [r["source"]]}
