@@ -35,6 +35,12 @@ try {
   pass("bloom consult step in brief lane", c.stages.find((s) => s.id === "brief").steps.some((s) => s.id === "consult"));
   pass("bloom audit attached", c.steps.some((s) => s.audit.length > 0));
   pass("bloom docs steps", c.stages.find((s) => s.id === "reading").steps.length >= 2);
+  pass("reading lane uses queue names", c.stages.find((s) => s.id === "reading").steps.some((s) => s.title === "Read document"));
+  pass("brief lane uses queue names", c.stages.find((s) => s.id === "brief").steps.some((s) => s.title.startsWith("Image brief")));
+  pass("no raw step ids in titles", c.steps.every((s) => !s.title.includes("read_document") && !s.title.includes("image_brief")));
+  pass("handoff on new-stage cards", c.steps.some((s) => typeof s.handoff === "string" && /^[a-z ]+ sent to [a-z ]+$/.test(s.handoff)));
+  pass("handoff has no team names", c.steps.every((s) => !s.handoff || (!/staff:|bot|team/i.test(s.handoff))));
+  pass("no cost or S$ in case model", !/S\$|SGD|cost_sgd/i.test(JSON.stringify(c)));
 
   const kopi = await m.detail("c-kopi01");
   const k = buildCase(kopi, []);

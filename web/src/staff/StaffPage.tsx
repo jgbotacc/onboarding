@@ -294,6 +294,29 @@ function Detail({ client, row, onDecided, onOpen }: DetailProps) {
   );
 }
 
+/** The older Detail panel (approve, studio, share links), hidden behind a toggle so nothing is lost. */
+function FullDetails({ client, row, onDecided, onOpen }: DetailProps) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="cv-full">
+      <button
+        type="button"
+        className="btn cv-toggle"
+        aria-expanded={show}
+        aria-controls={`full-${row.id}`}
+        onClick={() => setShow((v) => !v)}
+      >
+        {show ? "Hide full details and studio" : "Full details and studio"}
+      </button>
+      {show && (
+        <div id={`full-${row.id}`}>
+          <Detail client={client} row={row} onDecided={onDecided} onOpen={onOpen} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** [staff-key] Passcode screen shown before any staff data loads, and again after a 401. */
 function PasscodeGate({ error, onSubmit }: { error: string; onSubmit: (key: string) => void }) {
   const [key, setKey] = useState("");
@@ -420,8 +443,8 @@ export default function StaffPage() {
                   </button>
                   {isOpen && client && (
                     <div id={`detail-${r.id}`}>
-                      <CaseView client={client} row={r} onBack={() => setOpen(null)} onOpen={setLightbox} />
-                      <Detail client={client} row={r} onDecided={onDecided} onOpen={setLightbox} />
+                      <CaseView client={client} row={r} onBack={() => setOpen(null)} onOpen={setLightbox} onDecided={onDecided} />
+                      <FullDetails client={client} row={r} onDecided={onDecided} onOpen={setLightbox} />
                     </div>
                   )}
                 </li>
