@@ -12,7 +12,16 @@ from src.shared.config import MEDIA_DIR
 
 NAMED = {"red": "#d64545", "blue": "#2563eb", "green": "#2f9e57", "brown": "#7a4b2a", "cream": "#f3e9d2",
          "black": "#111111", "white": "#ffffff", "orange": "#f08c2e", "yellow": "#f2c94c", "purple": "#7b4bd6",
-         "pink": "#e86fa6", "navy": "#1e3a8a", "teal": "#14b8a6", "grey": "#9ca3af", "gray": "#9ca3af"}
+         "pink": "#e86fa6", "navy": "#1e3a8a", "teal": "#14b8a6", "grey": "#9ca3af", "gray": "#9ca3af",
+         "tomato": "#ff6347", "coral": "#ff7f50", "salmon": "#fa8072", "peach": "#ffdab9",
+         "beige": "#f5f5dc", "ivory": "#fffff0", "khaki": "#f0e68c", "sand": "#e6ccb2",
+         "terracotta": "#e2725b", "clay": "#b66e41", "honey": "#eb9e34", "mustard": "#ffdb58",
+         "gold": "#ffd700", "silver": "#c0c0c0", "bronze": "#cd7f32", "blush": "#ffb6c1",
+         "lavender": "#e6e6fa", "lilac": "#c8a2c8", "plum": "#dda0dd", "orchid": "#da70d6",
+         "magenta": "#ff00ff", "maroon": "#800000", "burgundy": "#800020", "wine": "#722f37",
+         "ruby": "#e0115f", "emerald": "#50c878", "mint": "#98ff98", "lime": "#32cd32",
+         "olive": "#808000", "forest": "#228b22", "turquoise": "#40e0d0", "cyan": "#00bcd4",
+         "sky": "#87ceeb", "indigo": "#4b0082", "charcoal": "#36454f", "slate": "#64748b"}
 
 
 def parse_colours(text: str | None) -> list[str]:
@@ -23,15 +32,60 @@ def parse_colours(text: str | None) -> list[str]:
     return found[:3]
 
 
-def _font(size):
-    for p in ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-              "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf"]:
-        if os.path.exists(p):
-            return ImageFont.truetype(p, size)
+def _font(size, bold=True):
+    names = (["DejaVuSans-Bold.ttf", "DejaVuSans.ttf"] if bold
+             else ["DejaVuSans.ttf", "DejaVuSans-Bold.ttf"])
+    for d in ("/usr/share/fonts/truetype/dejavu/", "/usr/share/fonts/dejavu/"):
+        for n in names:
+            p = os.path.join(d, n)
+            if os.path.exists(p):
+                return ImageFont.truetype(p, size)
     try:
         return ImageFont.load_default(size=size)
     except TypeError:
         return ImageFont.load_default()
+
+
+# Fixed high-contrast + soft-warm palettes for the two alternative looks.
+BOLD_COLOURS = ["#ff2e63", "#08d9d6", "#ffd60a"]
+WARM_COLOURS = ["#e8935a", "#f6d8b8", "#c97b4a"]
+NEUTRAL_COLOURS = ["#64748b"]
+
+
+def _theme(brief: dict) -> str:
+    """Which look draft this brief is: 'bold', 'warm', or the client's own 'brief'.
+
+    Pure string matching on the look title when the caller passes one
+    (``look_title``), else on the exact alternative style lines from
+    ``looks.brief.ALTERNATIVES``; anything else is the client's brief.
+    Never calls a model.
+    """
+    from src.features.looks.brief import ALTERNATIVES
+    styles = {t.lower(): s.lower() for t, s in ALTERNATIVES}
+    title = str(brief.get("look_title") or brief.get("title") or "").strip().lower()
+    if title:
+        if "bold" in title or "colourful" in title or "colorful" in title:
+            return "bold"
+        if "warm" in title or "friendly" in title:
+            return "warm"
+        return "brief"
+    direction = str(brief.get("direction") or "").strip().lower()
+    for known_title, known_style in styles.items():
+        if direction and direction == known_style:
+            if "bold" in known_title or "colourful" in known_title or "colorful" in known_title:
+                return "bold"
+            if "warm" in known_title or "friendly" in known_title:
+                return "warm"
+    return "brief"
+
+
+def _client_colours(brief: dict) -> list[str]:
+    """Colours named in the client's own fields; neutral fallback. No model call."""
+    for key in ("brand_colours", "direction", "design_preferences"):
+        cols = parse_colours(brief.get(key))
+        if cols:
+            return cols
+    return list(NEUTRAL_COLOURS)
 
 
 def _wrap(draw, text, font, width):
@@ -50,26 +104,57 @@ class PlaceholderProvider:
     name = "placeholder"
 
     def generate(self, brief: dict, refs: list[str], round_n: int) -> list[str]:
-        cols = parse_colours(brief.get("brand_colours")) or parse_colours(brief.get("direction")) or ["#2563eb"]
-        bg, accent = "#f8fafc", cols[0]
+        theme = _theme(brief)
+        if theme == "bold":
+            # Bright high-contrast palette, heavy large headline, full-width colour block.
+            bg, accent, ink, sub = "#141414", BOLD_COLOURS[0], "#ffffff", "#ffd60a"
+            cols = list(BOLD_COLOURS)
+            head_size, head_bold, head_y = 96, True, 380
+            d_head = "Design direction: bold, bright, high contrast"
+        elif theme == "warm":
+            # Soft warm palette, rounded shapes and corners, lighter friendlier type.
+            bg, accent, ink, sub = "#fff4e6", WARM_COLOURS[0], "#7c4a2d", "#a9714b"
+            cols = list(WARM_COLOURS)
+            head_size, head_bold, head_y = 64, False, 280
+            d_head = "Design direction: soft, warm and friendly"
+        else:
+            # The client's own brief: palette and feel from its colours, else neutral.
+            cols = _client_colours(brief)
+            bg, accent, ink, sub = "#f8fafc", cols[0], "#0f172a", "#475569"
+            head_size, head_bold, head_y = 72, True, 200
+            direction = brief.get("direction") or "not given"
+            d_head = "Design direction: " + direction
+            if brief.get("feedback"):
+                d_head += "  |  Feedback: " + brief["feedback"]
         img = Image.new("RGB", (1080, 1080), bg)
         d = ImageDraw.Draw(img)
-        d.rectangle([0, 0, 1080, 140], fill=accent)
-        d.text((40, 45), f"PLACEHOLDER  ·  round {round_n}", font=_font(44), fill="white")
-        y = 200
-        for line in _wrap(d, brief.get("business_name", "Your business"), _font(72), 1000)[:3]:
-            d.text((40, y), line, font=_font(72), fill="#0f172a"); y += 86
+        if theme == "bold":
+            d.rectangle([0, 0, 1080, 320], fill=accent)
+            d.rectangle([0, 320, 1080, 344], fill=sub)
+            d.text((40, 45), f"PLACEHOLDER  ·  round {round_n}", font=_font(44), fill="white")
+        elif theme == "warm":
+            d.rounded_rectangle([40, 36, 1040, 220], radius=60, fill=accent)
+            d.text((80, 100), f"PLACEHOLDER  ·  round {round_n}", font=_font(36, False), fill="white")
+        else:
+            d.rectangle([0, 0, 1080, 140], fill=accent)
+            d.text((40, 45), f"PLACEHOLDER  ·  round {round_n}", font=_font(44), fill="white")
+        y = head_y
+        for line in _wrap(d, brief.get("business_name", "Your business"), _font(head_size, head_bold), 1000)[:3]:
+            d.text((40, y), line, font=_font(head_size, head_bold), fill=ink); y += head_size + 14
         tag = brief.get("tagline") or " · ".join(x for x in [brief.get("business_type"), brief.get("industry")] if x)
-        for line in _wrap(d, tag, _font(40), 1000)[:2]:
-            d.text((40, y + 10), line, font=_font(40), fill="#334155"); y += 52
+        for line in _wrap(d, tag, _font(40, not theme == "warm"), 1000)[:2]:
+            d.text((40, y + 10), line, font=_font(40, not theme == "warm"), fill=sub if theme == "warm" else ink); y += 52
         for i, c in enumerate(cols):
-            d.rectangle([40 + i * 90, y + 40, 110 + i * 90, y + 110], fill=c, outline="#0f172a")
+            if theme == "warm":
+                d.rounded_rectangle([40 + i * 90, y + 40, 110 + i * 90, y + 110], radius=24,
+                                    fill=c, outline=sub)
+            else:
+                d.rectangle([40 + i * 90, y + 40, 110 + i * 90, y + 110], fill=c,
+                            outline="#0f172a" if theme == "brief" else "white")
         y += 150
-        txt = "Design direction: " + (brief.get("direction") or "not given")
-        if brief.get("feedback"):
-            txt += "  |  Feedback: " + brief["feedback"]
-        for line in _wrap(d, txt, _font(30), 1000)[:6]:
-            d.text((40, y), line, font=_font(30), fill="#475569"); y += 40
+        txt = d_head
+        for line in _wrap(d, txt, _font(30, theme != "warm"), 1000)[:6]:
+            d.text((40, y), line, font=_font(30, theme != "warm"), fill=sub); y += 40
         for i, ref in enumerate(refs[:3]):
             try:
                 th = Image.open(ref).convert("RGB"); th.thumbnail((300, 220))
