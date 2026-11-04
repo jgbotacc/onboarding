@@ -22,12 +22,19 @@ _CODE_KEEP = r"[A-Z]{2,}\d*-\d+"
 _PHONE = (r"\+\d[\d \t().-]{5,}\d|\(\d{3}\)[\s.-]?\d{3}[\s.-]\d{4}"
           r"|\b\d{3}[\s.-]\d{3}[\s.-]\d{4}\b|(?:\+65[\s-]?)?[689]\d{3}[\s-]?\d{4}|\d{7,15}")
 _BLK = r"\bblk\b\s*\.?\s*\d+[A-Za-z]?|\bblock\s+\d+[A-Za-z]?"
-_ROAD = r"\b(?:street|road|avenue|lane|drive|st|rd|ave)\b"
+_ROAD = r"\b(?:street|road|avenue|lane|drive|place|st|rd|ave)\b"
 _UNIT = r"#\d+-\d+"
 _POSTAL = r"\d{6}"
+_FULL_BLK = (r"\bblk\b\s*\.?\s*\d+[A-Za-z]?\b(?:\s+[A-Za-z0-9]+){0,8}?"
+            r"\s*(?:#\d+-\d+\s*)?(?:singapore\s*)?\d{6}\b")
+_FULL_STREET = (r"\b\d{1,5}[A-Za-z]?\s+(?:[A-Za-z0-9]+\s+){0,5}?"
+               r"(?:street|road|avenue|lane|drive|place|st|rd|ave)\b\.?"
+               r"(?:\s*,?\s*\d+[A-Za-z]?)?(?:\s*,?\s*#\d+-\d+)?"
+               r"(?:\s*,?\s*singapore)?(?:\s*,?\s*\d{6})?")
 _PRIVATE = re.compile(
     r"(?P<keep>" + "|".join([_UEN_KEEP, _PRICE_KEEP, _DATE_KEEP, _ORDER_KEEP, _CODE_KEEP]) + r")"
     + r"|(?P<phone>" + _PHONE + r")"
+    + r"|(?P<full>" + _FULL_BLK + r"|" + _FULL_STREET + r")"
     + r"|(?P<blk>" + _BLK + r")"
     + r"|(?P<road>" + _ROAD + r")"
     + r"|(?P<unit>" + _UNIT + r")"
@@ -71,6 +78,11 @@ def _spans(text: str) -> list[tuple[int, int, str]]:
             if raw.startswith("+") and not 7 <= sum(c.isdigit() for c in raw) <= 15:
                 continue
             out.append((s, e, "phone"))
+            continue
+        if kind == "full":
+            if not re.search(r"#\d+-\d+|singapore|\d{6}", raw, re.IGNORECASE):
+                continue
+            out.append((s, e, "address"))
             continue
         line = _line_of(text, s, e)
         if kind == "postal":

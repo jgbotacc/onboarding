@@ -67,7 +67,14 @@ def test_read_document_acra_no_nric():
     assert out["kind"] == "acra"
     s = json.dumps(out)
     assert "S1234567D" not in s and "S7654321A" not in s
-    _check_acra_fields(out["fields"])
+    f = out["fields"]
+    assert f["business_name"].lower() == "lumen kopi pte. ltd."
+    assert f["uen"] == "202498765K"
+    assert f["contact_name"].lower() == "tan mei ling"
+    assert f["title_position"] == "Director"
+    # comma-written street/unit is masked; postal in parens is kept per guard rule
+    assert f["registered_address"] == "[removed] (098765)"
+    assert "address" in out["removed"]
 
 
 def test_read_document_removed_nric(monkeypatch):

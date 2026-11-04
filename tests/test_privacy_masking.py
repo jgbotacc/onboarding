@@ -40,11 +40,25 @@ def test_international_phones_masked(phone):
     assert "[removed]" in out and phone not in out
 
 
-def test_sg_address_masked():
-    out = guard.scrub_private(f"Visit us at {ADDR}.")
-    for fragment in ("Blk 123", "#05-12", "560123"):
+ADDR2 = "10 Anson Road #10-01 Singapore 079903"
+ADDR3 = "1 Raffles Place, #20-01, Singapore 048616"
+
+
+@pytest.mark.parametrize("addr,fragments", [
+    (ADDR, ("Blk 123", "Ang Mo Kio", "#05-12", "560123")),
+    (ADDR2, ("Anson", "#10-01", "079903")),
+    (ADDR3, ("Raffles Place", "#20-01", "048616")),
+])
+def test_sg_address_masked(addr, fragments):
+    out = guard.scrub_private(f"Visit us at {addr}.")
+    assert out == "Visit us at [removed].", out
+    for fragment in fragments:
         assert fragment not in out, fragment
-    assert "[removed]" in out
+
+
+def test_comma_address_with_trailing_text():
+    out = guard.scrub_private(f"Visit us at {ADDR3}. Open 9am.")
+    assert out == "Visit us at [removed]. Open 9am.", out
 
 
 # --- over-masking negatives: everything here must stay -----------------------
