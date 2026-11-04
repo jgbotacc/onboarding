@@ -315,6 +315,120 @@ Gaps and workarounds:
 - Author identity is the self-reported `x-staff-name`. Accepted until per-staff logins exist.
 - Client picker polls every 15 s while open so sent suggestions appear; a suggestion sent during a round is replaced when the client skips to the next round.
 
+### 4.9 Privacy checks
+
+Feature: mask phone numbers and addresses before any model step reads an upload or intake text, and flag
+intake-vs-document mismatches for staff only. Docs only this round: no code yet. Tracking card: KAN-20.
+
+Masking is in-app pattern matching, the same way as the existing NRIC removal (`src/shared/guard.py`,
+`drop_nric` in `src/features/intake/document.py`). No model call is used for masking. The original file is
+always kept; masking applies only to the text copy sent to the model and to values held after reading.
+
+---
+
+#### 4.9.1 Integration inventory
+
+| System | Endpoint / capability used | Checked against | Owner |
+|---|---|---|---|
+| In-app mask (`src/shared/guard.py`, new `scrub_private` / `drop_private` beside `scrub_nric` / `drop_nric`) | Pure regex on the backend; no network call | `src/shared/guard.py`, `src/features/intake/document.py` | Us |
+| Chat model, document reading | `POST https://api.meta.ai/v1/chat/completions` (`doc_read` step for PDF text, `photo_read` step for document photos, `translate_in` / `translate_out` for non-English intake text) | https://dev.meta.ai/docs/api-reference/chat-completions , https://dev.meta.ai/docs/pricing-rate-limits ; `src/shared/meta.py`, `src/features/intake/document.py`, `src/features/intake/photo.py`, `src/features/i18n/lang.py` | Third party (provider; key as in 4.4) |
+| App store (SQLite live, second store when live) | New `document_opened` audit rows; extracted field snapshot kept on the doc record | `src/data/store.py`, `src/data/neo4j_store.py` | Us |
+| Staff file access (new) | `GET /api/staff/clients/{cid}/documents/{docId}` streams the kept original; every open is audit-logged (who, when, which file) | `src/features/staff/routes.py` (new route beside `get_client`) | Us |
+| Staff web (current client detail) | New `mismatch_flags` tags beside the field values; new document list with an open-original link | `web/src/staff/StaffPage.tsx`, `web/src/staff/types.ts` | Us |
+
+Not used: no new model, no new provider, no client-facing change beyond the confirm line below.
+
+#### 4.9.2 Source of truth
+
+| Record | Owner | Derived copies |
+|---|---|---|
+| Original upload bytes | `DATA_DIR/docs/{docId}.pdf\|.jpg` (as today) plus filename and status in `s["docs"][docId]` | nothing; the file is never altered |
+| Masked text sent to the model | derived per call, never stored (PDF text and photo OCR text are masked with `scrub_private` just before `doc_read`, and before any re-parse or translation of that text) | extracted field draft |
+| Extracted field snapshot per document | `s["docs"][docId]["fields"]`, written once at confirm time from the pending draft | mismatch comparison input |
+| Intake answers | the session (`sessions.state.fields`), confirmed by form, chat or the confirm step | mismatch comparison input |
+| Mismatch flags | derived at staff-detail read time from intake answers vs the latest confirmed document snapshot; stored nowhere | `mismatch_flags` on the staff detail |
+| File opens | `audit` rows (`actor = "staff:" + x-staff-name`, action `document_opened`, target `docId`, filename and time in details) | staff audit view |
+
+#### 4.9.3 Data contract and field mapping
+
+##### 4.9.3.1 Masking (`src/shared/guard.py`)
+
+- New `scrub_private(text)`: masks Singapore phones (`+65` followed by 8 digits starting 6, 8 or 9, with
+  spaces or dashes), common international shapes (leading `+` with country code, `(xxx) xxx-xxxx`,
+  `xxx-xxx-xxxx`, `xxx xxx xxxx`, 7 to 15 digits), and Singapore address cues (`blk` / `block` + number,
+  `street` / `road` / `avenue` / `lane` / `drive`, `#unit-no` such as `#12-34`, and 6-digit postal codes).
+- New `drop_private(fields)`: drops extracted values that are only a phone or an address, and masks one
+  found inside a longer value, mirroring `drop_nric`. `read_document` and `read_photo` call it right after
+  `drop_nric`; the `removed` list gains `"phone"` and `"address"` beside `"nric"`.
+- The confirm line becomes "I left out some private details (ID, phone, address)." when `removed` is non-empty.
+- Anti-over-masking (A33 lesson): a 6-digit run counts as a postal code only with an address cue on the same
+  line (`blk`, `block`, `street`, `road`, `#`, `Singapore`); standalone 6-digit runs stay. A digit run is never
+  masked when it is part of a longer run, carries a decimal point or comma, or sits next to a currency mark
+  (`S$`, `$`), a date separator (`/`, `-` between date parts), or an order-number cue. Values matching the UEN
+  shapes are checked first and are never masked (prices, dates, order numbers and UENs stay intact).
+
+##### 4.9.3.2 Normalisation and comparison (new `src/features/intake/compare.py`, decided but not built)
+
+- Compared fields only: `business_name`, `uen`, `registered_address` (document snapshot vs confirmed intake answers).
+- Normalise both sides the same way: lower case, punctuation stripped (keeping `#` and `-` in unit numbers),
+  whitespace collapsed, and company suffixes canonicalised (`pte ltd`, `pte. ltd.`, `private limited` ->
+  `pte ltd`; `ltd` / `limited` unified). UENs compare upper-cased without spaces.
+- A flag is raised only on a real difference after normalisation. Flags never change or block anything:
+  no status change, no extra question, no write to the client record.
+
+##### 4.9.3.3 Staff data
+
+- Staff detail gains `mismatch_flags: [{field, intake, document, source}]`, where `source` is the document
+  filename (and id). The current client detail shows them simply as tags beside the field values
+  (for example "Differs from ACRA profile: ..."), English only. The pending draft stays hidden (A9);
+  flags use the confirmed snapshot only.
+- New route `GET /api/staff/clients/{cid}/documents/{docId}` (staff passcode as now) streams the original
+  file with its stored content type and writes the `document_opened` audit row first.
+
+#### 4.9.4 Auth and secrets (names only)
+
+| Connection | Auth | Where (env var names) |
+|---|---|---|
+| Chat model (masked text only) | Bearer key | `MODEL_API_KEY`, optional `META_API_BASE`, `META_CHAT_MODEL` |
+| Staff file route and flags | shared passcode header `x-staff-key`; author from optional `x-staff-name` (self-reported, as now) | `STAFF_PASSCODE` |
+| Client intake routes | per-session secret `x-session-secret` (hash stored) | none (runtime) |
+| Tests | none; model env unset, model calls return `None` | n/a |
+
+No new secret. Masking needs no key.
+
+#### 4.9.5 Failure plan
+
+- **Masking is local, so no retries.** If masking ever throws, the step fails closed: nothing is sent to the
+  model and the client is asked to retype or re-upload (same retake path as an unreadable photo).
+- **Original write fails:** the upload is rejected with the existing "too big / unreadable" reply; no draft
+  is held and nothing reaches the model.
+- **Partial writes:** the original file lands on disk before the session records it; an audit row is written
+  right after. A file on disk with no session record is orphaned and ignored; a record whose file is missing
+  is shown as "file missing" and cannot be opened. File opens audit first, then stream: if the audit write
+  fails the file is not served.
+- **Mismatch comparison fails:** flags come back empty and the detail renders as today; intake and document
+  flows are untouched. Drift (snapshot doc removed, fields edited after confirm) simply drops that flag.
+- **Reconciliation:** the existing reconcile script gains two checks: records pointing at missing originals,
+  and `document_opened` rows without a matching stored file.
+
+#### 4.9.6 Tool reality check (ran now, 2026-11-04)
+
+- **Routes listed from the running app:** client `POST /api/upload`, `POST /api/chat`, `POST /api/form`,
+  `POST /api/confirm`, `POST /api/extracted/confirm`, `DELETE /api/documents/{docId}` plus session, looks,
+  review, language and trace routes; staff `GET /api/staff/clients/{cid}`, consults, metrics, traces, audit
+  and studio routes. No staff route serves original files today: the detail returns only filename and status.
+- **Every place uploads and intake text reach the model:** PDF text via the `doc_read` step
+  (`src/features/intake/document.py`), document photos via the `photo_read` step, which also sends the image
+  pixels (`src/features/intake/photo.py`), and non-English chat text via `translate_in`
+  (`src/features/i18n/lang.py`). English chat and form text stay in-app (regex extraction and checks only).
+  Masking therefore gates PDF text, photo OCR text and forwarded chat text before each of those three steps;
+  photo pixels inherently reach the vision step, so nothing identifiable from a photo is retained or forwarded
+  beyond the masked extraction (Standard mode holds, A1).
+- **Backend suite with `MODEL_API_KEY` and `META_API_KEY` unset:** `python -m pytest -q tests` ->
+  219 passed. Baseline holds.
+- **Web checks:** 7 scripts in `web/scripts/` (`test-api-contract`, `test-consult-text-only`, `test-i18n`,
+  `test-looks-refresh`, `test-mock`, `test-studio-mock`, `test-validation`). Baseline holds.
+
 ## 5. Flows (backend)
 ```
 upload (PDF or photo) -> read (regex for the registration form; ACRA parser + Muse Spark for other documents)
