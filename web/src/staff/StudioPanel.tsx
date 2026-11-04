@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { StaffClient } from "./api";
+import FeedbackPanel from "./FeedbackPanel";
 import type { RejectedLookRound, StudioDraft, StudioGet, StudioSizePreset } from "./types";
 
 interface Props {
@@ -366,6 +367,8 @@ export default function StudioPanel({ client, clientId, onOpen }: Props) {
           <p className="staff-empty">No drafts yet. Generate the first three above.</p>
         )}
       </div>
+
+      <FeedbackPanel client={client} clientId={clientId} />
 
       {!!rejected?.length && (
         <div className="staff-section">
