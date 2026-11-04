@@ -34,8 +34,8 @@ PRESETS = {
 
 CHIPS = {
     "add_logo": {"id": "add_logo", "label": "Add logo",
-                 "text": "Include the business logo prominently at the top of the design",
-                 "prompt": "Include the business logo prominently at the top of the design"},
+                 "text": "Include the business logo at the top of the design",
+                 "prompt": "Include the business logo at the top of the design"},
     "less_text": {"id": "less_text", "label": "Less text",
                   "text": "Keep text minimal, only the headline offer and the business name",
                   "prompt": "Keep text minimal, only the headline offer and the business name"},
@@ -46,8 +46,8 @@ CHIPS = {
                 "text": "Festive look with warm celebratory accents",
                 "prompt": "Festive look with warm celebratory accents"},
     "bolder_headline": {"id": "bolder_headline", "label": "Bolder headline",
-                        "text": "Make the headline extra big and bold, the dominant element",
-                        "prompt": "Make the headline extra big and bold, the dominant element"},
+                        "text": "Make the headline big and bold, the main element",
+                        "prompt": "Make the headline big and bold, the main element"},
 }
 
 

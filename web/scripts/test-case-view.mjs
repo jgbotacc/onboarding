@@ -123,6 +123,8 @@ try {
   pass("role lookup returns the caller role", /\/api\/staff\/role/.test(apiSrc) && /connectDesigner/.test(apiSrc));
   pass("staff page sends designers to the designer page", /goDesigner/.test(staffPageSrc) && /r\.role === "designer"/.test(staffPageSrc));
   pass("designer header hides the staff link for designers", /role === "staff" &&/.test(designerSrc));
+  pass("designer header label is Designer", />Designer<\/span>/.test(designerSrc) && !/Staff review/.test(designerSrc));
+  pass("designer title is Designer", /document\.title = "Designer /.test(designerSrc));
   pass("mock reports a role", /role:/.test(mockSrc));
 
   // Mock designer flow: sent cases only, picked title first, upload flips status, zip parses.

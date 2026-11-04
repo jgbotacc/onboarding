@@ -195,7 +195,7 @@ export default function SharePage() {
           <div>
             <p className="share-kicker">Your designs{data?.business_name ? ` · ${data.business_name}` : ""}</p>
             <h1>{data?.business_name ? `Designs for ${data.business_name}` : "Your designs"}</h1>
-            <p className="share-sub">No sign-in needed — this private link opens your designs. Tap the heart on the ones you love.</p>
+            <p className="share-sub">No sign-in needed: this private link opens your designs. Tap the heart on the ones you love.</p>
           </div>
           {client.mock && <span className="share-demo">Demo (sample data)</span>}
         </div>
@@ -221,7 +221,7 @@ export default function SharePage() {
         {phase === "expired" && (
           <section className="share-state" aria-live="polite">
             <h2>This link has expired</h2>
-            <p>Links last 7 days. Please ask our team for a new one and we'll send it right over.</p>
+            <p>Links last 7 days. Please ask our team for a new one and we'll send it.</p>
           </section>
         )}
 
@@ -229,19 +229,19 @@ export default function SharePage() {
           <>
             {approved && (
               <section className="share-decided" role="status">
-                <h2>Thank you — you've approved a design.</h2>
+                <h2>Thank you, you've approved a design.</h2>
                 <p>Our team will take it from here and be in touch soon. Nothing else you need to do.</p>
               </section>
             )}
             {!approved && decided?.kind === "changes" && (
               <section className="share-decided" role="status">
-                <h2>Thanks — we've got your note.</h2>
+                <h2>Thanks, we've got your note.</h2>
                 <p>Our team will revise the designs. You can still heart favourites or approve one below.</p>
               </section>
             )}
 
             {data.drafts.length === 0 ? (
-              <p className="share-empty">No designs here yet — our team is still preparing them. This page refreshes on its own.</p>
+              <p className="share-empty">No designs here yet: our team is still preparing them. This page refreshes on its own.</p>
             ) : (
               <ul className="share-grid">
                 {data.drafts.map((d, i) => {
@@ -304,7 +304,7 @@ export default function SharePage() {
             <section className="share-shortlist" aria-live="polite">
               <h2>Your shortlist ({shortlisted.length})</h2>
               {shortlisted.length === 0 ? (
-                <p className="share-empty">Nothing loved yet — tap the heart on any design to add it here.</p>
+                <p className="share-empty">Nothing loved yet. Tap the heart on any design to add it here.</p>
               ) : (
                 <ul className="share-shortlist-list">
                   {shortlisted.map((d) => (
@@ -357,7 +357,7 @@ export default function SharePage() {
                     {noteError}
                   </p>
                 )}
-                {noteSent && !noteError && <p className="share-sent">Sent — thank you. Our team will revise the designs.</p>}
+                {noteSent && !noteError && <p className="share-sent">Sent, thank you. Our team will revise the designs.</p>}
               </section>
             )}
           </>

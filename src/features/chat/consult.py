@@ -13,8 +13,8 @@ def build_card(s, labels) -> dict:
         ask = [k for k in s["refill"] if k not in invalid_keys]
     else:
         ask = [k for k, _ in MANDATORY if not str(fields.get(k) or "").strip() and k not in invalid_keys]
-    steps = ["Arrange a consult to find out the client's design preferences",
-             "Pick a look with the client (3 rounds of looks were skipped)"]
+    steps = ["Arrange a consult to learn the client's design preferences",
+             "Pick a look with the client"]
     steps += [f"Ask for: {labels.get(k, k)}" for k in ask]
     steps += [f"Fix: {labels.get(k, k)}" for k in invalid_keys]
     if s.get("pending") and (s["pending"] or {}).get("filename"):

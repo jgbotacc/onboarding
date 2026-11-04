@@ -67,7 +67,7 @@ function ConsultCard({ client, consult, onApproved }: CardProps) {
           <span className="staff-hint">Handed off{consult.decided_at ? ` on ${formatDate(consult.decided_at)}` : ""}.</span>
         ) : (
           <>
-            <span className="staff-hint">Approving books the consult hand-off.</span>
+            <span className="staff-hint">Approving sets up the consult hand-off.</span>
             <button type="button" className="btn primary" disabled={busy} onClick={approve}>
               Approve hand-off
             </button>

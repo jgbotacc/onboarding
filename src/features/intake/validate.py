@@ -14,7 +14,7 @@ EXAMPLES = {
     "title_position": ["Owner"],
     "email": ["name@business.com"],
     "phone_number": ["+65 6123 4567"],
-    "design_preferences": ["warm and rustic, tomato red and cream"],
+    "design_preferences": ["warm and rustic"],
     "expected_annual_revenue": ["S$250,000"],
     "requirements_notes": ["A post for our new truffle pizza"],
 }

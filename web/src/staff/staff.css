@@ -167,7 +167,12 @@ a.staff-cc-value:hover { text-decoration: underline; }
 
 
 
-/* Designer handoff table extras */
+/* Designer handoff table extras: sideways scroll on narrow screens, all 10
+   columns (incl. Status) visible at 1400px. */
+.designer-tablewrap { overflow-x: auto; }
+.designer-table { width: 100%; }
+.designer-table .designer-upload { min-width: 0; }
+.designer-table input[type="file"] { width: 100%; max-width: 190px; }
 .designer-upload { display: flex; flex-direction: column; gap: 6px; min-width: 200px; }
 .designer-finals { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
 .designer-thumb { width: 48px; height: 48px; cursor: default; }

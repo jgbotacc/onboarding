@@ -173,7 +173,7 @@ export default function FeedbackPanel({ client, clientId }: { client: StaffClien
         )}
         {created && (
           <div className="staff-panel" role="status" aria-label="New share link">
-            <strong>Copy this link now — it won't be shown again.</strong>
+            <strong>Copy this link now. It won't be shown again.</strong>
             <span className="staff-share-urlrow">
               <input type="text" readOnly value={created.url} aria-label="New share link" onFocus={(e) => e.target.select()} />
               <button type="button" className="btn" onClick={copy}>

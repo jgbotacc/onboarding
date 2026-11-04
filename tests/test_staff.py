@@ -40,7 +40,7 @@ def test_approve():
     sid = _client()
     d = c.post(f"/api/staff/clients/{sid}/decision", json={"decision": "approve"}).json()
     assert d["status"] == "approved" and d["email"]["to"] == notify_email_to() == "ops@example.com"
-    assert "operations team will get in contact" in _body(sid)
+    assert "operations team will contact you soon" in _body(sid)
     assert "Client email on file: jo@acme.example" in _body(sid)
     assert d["email"]["status"].startswith("Sent")
 

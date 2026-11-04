@@ -127,7 +127,7 @@ export default function DesignerPage() {
     });
 
   useEffect(() => {
-    document.title = "Designer handoff · Client onboarding";
+    document.title = "Designer · Client onboarding";
     setOnAuthFail((e) => {
       setClient(null);
       setRows(null);
@@ -144,7 +144,7 @@ export default function DesignerPage() {
     <div className="staff">
       <Header
         title="Designer handoff"
-        label={<span className="staff-tag">Staff review</span>}
+        label={<span className="staff-tag">Designer</span>}
         right={
           <>
             {client?.mock && <span className="badge-demo" id="demoBadge">Demo (sample data)</span>}
@@ -163,8 +163,8 @@ export default function DesignerPage() {
             </div>
             {rows && !rows.length && <p className="staff-empty">No cases sent to designers yet.</p>}
             {rows && rows.length > 0 && (
-              <div className="staff-tablewrap">
-                <table className="staff-traces table">
+              <div className="staff-tablewrap designer-tablewrap">
+                <table className="staff-traces table designer-table">
                   <thead>
                     <tr>
                       <th>Business name</th>

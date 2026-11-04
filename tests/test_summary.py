@@ -73,7 +73,7 @@ def test_every_end_of_flow_says_team_will_contact():
     s = agent.new_session()
     s.update(status="awaiting_review", round=1)
     r = agent.on_review(s, True, None)
-    assert r["reply"] == "Great, design direction accepted! " + end, r["reply"]
+    assert r["reply"] == "Done. Your design direction is set. " + end, r["reply"]
     assert agent.on_chat(s, "hi")["reply"].endswith(end)
     s = agent.new_session()
     s.update(status="awaiting_review", round=agent.MAX_ROUNDS)

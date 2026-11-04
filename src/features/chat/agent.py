@@ -155,7 +155,7 @@ def _after_fields(s, prefix="", touched=None):
                 "Now tell me your design direction, or type \"skip\".")
     else:
         refs = ("You can upload reference images (JPG or PNG).\n"
-                "Then tell me your design direction, like \"minimal, warm, brown and cream\".\n"
+                "Then tell me your design direction, like \"warm and minimal\".\n"
                 "Or type \"skip\".")
     return resp(s, prefix + f"{thanks}\n\n{refs}")
 
@@ -301,7 +301,7 @@ def _consult(s):
     """No pick after 3 rounds: hand off with a consult card for staff."""
     s["status"] = "handed_off"
     s["consult"] = consult.build_card(s, LABELS)
-    return resp(s, "No problem.\nOur staff will arrange a consult to better find out your preferences.\n"
+    return resp(s, "Okay.\nOur team will arrange a consult with you to learn what you like.\n"
                    "Our team will contact you shortly.")
 
 
@@ -318,14 +318,14 @@ def on_looks(s, selected_ids: list[str], skip: bool = False):
         chosen = [by_id[i] for i in ids]
         s["selected_looks"] = chosen
         s["status"] = "accepted"
-        return resp(s, "Great choice!\nOur team will contact you shortly.", [c["url"] for c in chosen])
+        return resp(s, "Done. Your choice is saved.\nOur team will contact you shortly.", [c["url"] for c in chosen])
     s.setdefault("rejected", []).extend(looks)
     if s.get("history"):
         s["history"][-1]["accepted"] = False
     if s.get("round", 0) >= MAX_ROUNDS:
         return _consult(s)
     out = run_round(s)
-    out["reply"] = "No problem.\n" + out["reply"]
+    out["reply"] = "Okay.\n" + out["reply"]
     out["lines"] = [ln.strip() for ln in out["reply"].splitlines() if ln.strip()]
     return out
 
@@ -430,12 +430,12 @@ def on_chat(s, text):
     if st == "awaiting_review":
         return _looks_chat(s, text)
     if st in ("approved", "rejected", "pending_review"):
-        msg = {"approved": "You're approved!\nOur team will contact you shortly.",
+        msg = {"approved": "Approved.\nOur team will contact you shortly.",
                "rejected": "Thanks for your interest.\nOur team will contact you shortly.",
-               "pending_review": "Thanks! We're reviewing your details.\nOur team will contact you shortly."}[st]
+               "pending_review": "Thanks. We're reviewing your details.\nOur team will contact you shortly."}[st]
         return resp(s, msg, s.get("images"))
     if st == "accepted":
-        return resp(s, "Your design direction is locked in.\nOur team will contact you shortly.", s.get("images"))
+        return resp(s, "Your design direction is set.\nOur team will contact you shortly.", s.get("images"))
     return resp(s, "A designer has your details.\nOur team will contact you shortly.")
 
 
@@ -459,7 +459,7 @@ def on_review(s, accepted: bool, feedback: str | None):
         if s.get("looks"):
             s["selected_looks"] = [s["looks"][0]]
         s["status"] = "accepted"
-        return resp(s, "Great, design direction accepted! Our team will contact you shortly.", s.get("images"))
+        return resp(s, "Done. Your design direction is set. Our team will contact you shortly.", s.get("images"))
     s["feedback"] = (feedback or "").strip() or None
     if s.get("round", 0) >= MAX_ROUNDS:
         s.setdefault("rejected", []).extend(s.get("looks") or [])

@@ -45,11 +45,11 @@ def compose(decision: str, s: dict, fields: list[str], note: str | None, resume_
     greet = f"Hi {contact}," if contact else "Hello,"
     if decision == "approve":
         subject = f"{name}: your onboarding is approved"
-        text = "Great news, your onboarding has been approved.\n\nOur operations team will get in contact with you soon."
+        text = "Your onboarding is approved.\n\nOur operations team will contact you soon."
     elif decision == "reject":
         subject = f"{name}: update on your onboarding"
-        text = ("Thank you for taking the time to register with us. After reviewing your details, we're unable to "
-                "proceed with your onboarding at this time.\n\nWe appreciate your interest and wish you all the best.")
+        text = ("Thank you for registering with us. After reviewing your details, we're unable to "
+                "proceed with your onboarding.\n\nWe wish you all the best.")
     else:
         subject = f"{name}: we need a little more information"
         items = "\n".join(f"  - {LABELS.get(k, k)}" for k in fields) or "  - (see note)"
