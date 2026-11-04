@@ -184,7 +184,6 @@ function Detail({ client, row, onDecided, onOpen }: DetailProps) {
                 <th scope="col">Model</th>
                 <th scope="col">OK</th>
                 <th scope="col" className="num">Ms</th>
-                <th scope="col" className="num">S$ cost</th>
               </tr>
             </thead>
             <tbody>
@@ -194,7 +193,6 @@ function Detail({ client, row, onDecided, onOpen }: DetailProps) {
                   <td>{t.model}</td>
                   <td>{t.ok ? "Yes" : "No"}</td>
                   <td className="num">{t.ms}</td>
-                  <td className="num">{t.cost_sgd.toFixed(4)}</td>
                 </tr>
               ))}
             </tbody>

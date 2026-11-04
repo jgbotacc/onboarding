@@ -29,6 +29,10 @@ for (const [label, src] of [["api", api], ["types", types], ["mock", mock], ["pa
   pass(`${label} has no StaffMetrics`, !/StaffMetrics/.test(src));
 }
 
+// The traces table keeps its fields but drops the cost column.
+pass("traces table has no cost column", !/S\$ cost/.test(page));
+pass("traces table has no cost_sgd", !/cost_sgd/.test(page));
+
 // The client queue and everything else are untouched.
 pass("queue kept", /Client queue/.test(page));
 pass("consult list kept", /ConsultList/.test(page));
