@@ -14,6 +14,7 @@ export interface StaffRow {
   industry?: string | null;
   updated: string | null; // ISO 8601 (UTC), last activity
   image: string | null; // latest generated image URL
+  sent_to_designers_at?: string | null;
 }
 
 /** One intake-vs-document difference (PRD 4.9.3.2). `source` is the document filename. */
@@ -44,10 +45,42 @@ export interface StaffDetail {
   mismatch_flags: MismatchFlag[];
   /** Uploaded documents keyed by doc id; open each via GET /api/staff/clients/:id/documents/:docId. */
   documents: Record<string, StaffDocument>;
-  /** Step traces, when available; the UI hides the table when absent. */
+  /** Step traces feed the case lanes; the UI never shows a traces table or cost. */
   traces?: StepTrace[];
   /** Emails sent for this client so far (oldest first). */
   outbox?: EmailInfo[];
+  /** Everything the case view is built from (all present on the real API). */
+  transcript?: TranscriptMsg[];
+  audit?: AuditEntry[];
+  looks?: CaseLook[];
+  consult?: Consult | null;
+  decisions?: { decision: string; at?: string }[];
+  /** Final-edit handoff timestamp; set by POST send-to-designers. */
+  sent_to_designers_at?: string | null;
+}
+
+export interface TranscriptMsg {
+  role: string;
+  text: string;
+  at?: string;
+}
+
+export interface AuditEntry {
+  at?: string;
+  actor?: string;
+  action?: string;
+  target?: string | null;
+  details?: unknown;
+}
+
+export interface CaseLook {
+  id: string;
+  url: string;
+  title?: string;
+  brief?: string;
+  round?: number;
+  selected?: boolean;
+  at?: string;
 }
 
 /** GET /api/staff/clients/:id/rejected-looks -> RejectedLookRound[] (every look not picked, grouped by round) */
@@ -80,38 +113,16 @@ export interface Consult {
   decided_at?: string | null;
 }
 
-/** Step trace recorded for a client; shown as (step, model, ok, ms, S$ cost). */
+/** Step trace recorded for a client. The backend keeps model and cost fields;
+ * the staff UI never shows them. */
 export interface StepTrace {
   step: string;
-  model: string;
+  /** Backend-kept model id; never rendered. */
+  model?: string;
   ok: boolean;
   ms: number;
   cost_sgd: number;
   at?: string;
-}
-
-/** GET /api/staff/metrics */
-export interface StaffMetrics {
-  outcomes: {
-    sessions: number;
-    completed: number;
-    completion_rate: number;
-    avg_minutes_to_finish: number;
-    avg_fields_needing_fixes: number;
-    avg_rounds_to_pick: number;
-    consult_rate: number;
-  };
-  steps: {
-    step: string;
-    model: string;
-    calls: number;
-    ok_rate: number;
-    avg_latency_ms: number;
-    cost_sgd: number;
-  }[];
-  total_cost_sgd: number;
-  errors?: StepTrace[];
-  evals?: { doc_extraction_accuracy: number; image_fit: number; n: number; at: string } | null;
 }
 
 export interface EmailInfo {
@@ -212,6 +223,39 @@ export interface StudioRemixBody {
   source_kind: "draft" | "look";
   note?: string;
   preset?: StudioSizePreset;
+}
+
+/** POST /api/staff/clients/:id/studio/share -> shown once, never stored */
+export interface ShareCreated {
+  id: string;
+  url: string;
+  expires_at: string;
+}
+
+/** GET /api/staff/clients/:id/studio/shares -> live and past links (no tokens) */
+export interface ShareLink {
+  id: string;
+  expires_at: string;
+  revoked_at: string | null;
+  used_at: string | null;
+  created_by: string | null;
+}
+
+export type FeedbackKind = "heart" | "reject" | "approve" | "changes";
+
+/** One client tap from the share page (change requests carry the client's note). */
+export interface FeedbackEntry {
+  draft_id: string;
+  kind: FeedbackKind;
+  note: string | null;
+  actor: string;
+  created_at: string;
+}
+
+/** GET /api/staff/clients/:id/studio/shortlist */
+export interface ShortlistView {
+  drafts: StudioDraft[];
+  feedback: FeedbackEntry[];
 }
 
 export const STAFF_STATUS_LABELS: Record<string, string> = {

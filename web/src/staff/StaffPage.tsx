@@ -1,21 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { connectStaff, getStaffKey, setOnAuthFail, setStaffKey, StaffAuthError, type StaffClient } from "./api";
+import CaseView from "./CaseView";
 import ConsultList from "./ConsultCard";
 import RejectedLooks from "./RejectedLooks";
 import StudioPanel from "./StudioPanel";
 import { FIELDS, type FieldKey } from "./fields";
-import { statusLabel, type Decision, type DecisionResult, type EmailInfo, type MismatchFlag, type StaffDetail, type StaffMetrics, type StaffRow } from "./types";
+import { statusLabel, type Decision, type DecisionResult, type EmailInfo, type MismatchFlag, type StaffDetail, type StaffRow } from "./types";
+import { formatDate } from "./format";
 import "./staff.css";
 
 const ASSET = import.meta.env.BASE_URL;
 const FINAL = ["approved", "rejected"];
-
-const fmtDate = (iso: string) => {
-  const d = new Date(iso);
-  return isNaN(d.getTime())
-    ? iso
-    : d.toLocaleString("en-SG", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
-};
 
 const emailText = (e?: EmailInfo | null) => {
   if (!e || !e.status) return "";
@@ -265,34 +260,6 @@ function Detail({ client, row, onDecided, onOpen }: DetailProps) {
       <RejectedLooks client={client} clientId={row.id} onOpen={onOpen} />
       <ConsultList client={client} clientId={row.id} />
 
-      {d.traces?.length ? (
-        <div className="staff-section">
-          <h3>Step traces</h3>
-          <table className="staff-traces">
-            <thead>
-              <tr>
-                <th scope="col">Step</th>
-                <th scope="col">Model</th>
-                <th scope="col">OK</th>
-                <th scope="col">Ms</th>
-                <th scope="col">S$ cost</th>
-              </tr>
-            </thead>
-            <tbody>
-              {d.traces.map((t, i) => (
-                <tr key={i} data-ok={t.ok}>
-                  <td>{t.step}</td>
-                  <td>{t.model}</td>
-                  <td>{t.ok ? "Yes" : "No"}</td>
-                  <td>{t.ms}</td>
-                  <td>{t.cost_sgd.toFixed(4)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
-
       {result && (
         <div className="staff-result" role="status" data-decision={result.decision}>
           <strong>{DECISION_COPY[result.decision].done}.</strong> {emailText(result.res.email)}
@@ -385,6 +352,29 @@ function Detail({ client, row, onDecided, onOpen }: DetailProps) {
   );
 }
 
+/** The older Detail panel (approve, studio, share links), hidden behind a toggle so nothing is lost. */
+function FullDetails({ client, row, onDecided, onOpen }: DetailProps) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="cv-full">
+      <button
+        type="button"
+        className="btn cv-toggle"
+        aria-expanded={show}
+        aria-controls={`full-${row.id}`}
+        onClick={() => setShow((v) => !v)}
+      >
+        {show ? "Hide full details and studio" : "Full details and studio"}
+      </button>
+      {show && (
+        <div id={`full-${row.id}`}>
+          <Detail client={client} row={row} onDecided={onDecided} onOpen={onOpen} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** [staff-key] Passcode screen shown before any staff data loads, and again after a 401. */
 function PasscodeGate({ error, onSubmit }: { error: string; onSubmit: (key: string) => void }) {
   const [key, setKey] = useState("");
@@ -412,68 +402,12 @@ function PasscodeGate({ error, onSubmit }: { error: string; onSubmit: (key: stri
   );
 }
 
-function MetricsPanel({ client }: { client: StaffClient }) {
-  const [m, setM] = useState<StaffMetrics | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    client
-      .metrics()
-      .then((x) => alive && setM(x))
-      .catch((e: Error) => alive && (console.error(e), setM(null)));
-    return () => {
-      alive = false;
-    };
-  }, [client]);
-
-  if (!m) return null;
-  const o = m.outcomes;
-  return (
-    <div className="staff-section staff-metrics">
-      <h3>Quality and cost</h3>
-      <dl className="staff-kv">
-        <div className="staff-kv-row"><dt>Sessions:</dt><dd>{o.sessions}</dd></div>
-        <div className="staff-kv-row"><dt>Completed:</dt><dd>{o.completed} ({Math.round(o.completion_rate * 100)}%)</dd></div>
-        <div className="staff-kv-row"><dt>Avg minutes to finish:</dt><dd>{o.avg_minutes_to_finish}</dd></div>
-        <div className="staff-kv-row"><dt>Avg fields needing fixes:</dt><dd>{o.avg_fields_needing_fixes}</dd></div>
-        <div className="staff-kv-row"><dt>Avg rounds to pick:</dt><dd>{o.avg_rounds_to_pick}</dd></div>
-        <div className="staff-kv-row"><dt>Consult rate:</dt><dd>{Math.round(o.consult_rate * 100)}%</dd></div>
-        <div className="staff-kv-row"><dt>Total cost:</dt><dd>S${m.total_cost_sgd.toFixed(4)}</dd></div>
-      </dl>
-      {m.steps?.length ? (
-        <table className="staff-traces">
-          <thead>
-            <tr>
-              <th scope="col">Step</th>
-              <th scope="col">Model</th>
-              <th scope="col">Calls</th>
-              <th scope="col">OK rate</th>
-              <th scope="col">Avg ms</th>
-              <th scope="col">S$ cost</th>
-            </tr>
-          </thead>
-          <tbody>
-            {m.steps.map((s, i) => (
-              <tr key={i}>
-                <td>{s.step}</td>
-                <td>{s.model}</td>
-                <td>{s.calls}</td>
-                <td>{Math.round(s.ok_rate * 100)}%</td>
-                <td>{Math.round(s.avg_latency_ms)}</td>
-                <td>{s.cost_sgd.toFixed(4)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : null}
-    </div>
-  );
-}
-
 export default function StaffPage() {
   const [client, setClient] = useState<StaffClient | null>(null);
   const [rows, setRows] = useState<StaffRow[]>([]);
   const [open, setOpen] = useState<string | null>(null);
+  // Current CaseView tab per open row, so the full-details toggle only shows on drafts.
+  const [cvPhase, setCvPhase] = useState<{ id: string; phase: string } | null>(null);
   const [toast, setToast] = useState("");
   const [lightbox, setLightbox] = useState<string | null>(null);
   const toastTimer = useRef<number>(0);
@@ -511,6 +445,13 @@ export default function StaffPage() {
     toastTimer.current = window.setTimeout(() => setToast(""), 5000);
   };
 
+  const onSent = (id: string, sentAt: string) => {
+    setRows((p) => p.map((r) => (r.id === id ? { ...r, sent_to_designers_at: sentAt } : r)));
+    setToast("Sent to designers.");
+    window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(""), 5000);
+  };
+
   return (
     <div className="staff">
       <header className="header">
@@ -534,15 +475,13 @@ export default function StaffPage() {
           />
         ) : (
         <div className="staff-column">
-          {client && <MetricsPanel client={client} />}
-          {client && <ConsultList client={client} />}
           <div className="staff-title">
-            <h2>Submissions</h2>
+            <h2>Client queue</h2>
             <span className="staff-count">{client ? `${rows.length} client${rows.length === 1 ? "" : "s"}` : "Loading…"}</span>
           </div>
           {client && !rows.length && <p className="staff-empty">No submissions yet.</p>}
           <ul className="staff-list">
-            {rows.map((r) => {
+            {rows.map((r, i) => {
               const isOpen = open === r.id;
               return (
                 <li key={r.id} className={"staff-item" + (isOpen ? " open" : "")}>
@@ -553,15 +492,18 @@ export default function StaffPage() {
                     aria-controls={`detail-${r.id}`}
                     onClick={() => setOpen(isOpen ? null : r.id)}
                   >
+                    <span className="staff-queue-num" aria-hidden="true">{i + 1}</span>
                     <span className="staff-thumb">{r.image ? <img src={r.image} alt="" /> : null}</span>
                     <span className="staff-who">
                       <span className="staff-name">{r.business_name || "No business name"}</span>
                       <span className="staff-contact">
                         {r.contact_name}
                         {r.email ? ` · ${r.email}` : ""}
+                        {r.sent_to_designers_at ? " · Sent to designers" : ""}
                       </span>
                     </span>
-                    <span className="staff-date">{r.updated ? fmtDate(r.updated) : ""}</span>
+                    <span className="staff-date">{formatDate(r.updated)}</span>
+                    <span className="staff-dot" data-status={r.status} aria-hidden="true" />
                     <Pill status={r.status} />
                     <svg className="staff-chev" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
                       <path d="m4 6 4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
@@ -569,13 +511,25 @@ export default function StaffPage() {
                   </button>
                   {isOpen && client && (
                     <div id={`detail-${r.id}`}>
-                      <Detail client={client} row={r} onDecided={onDecided} onOpen={setLightbox} />
+                      <CaseView
+                        client={client}
+                        row={r}
+                        onBack={() => { setOpen(null); setCvPhase(null); }}
+                        onOpen={setLightbox}
+                        onDecided={onDecided}
+                        onSent={onSent}
+                        onPhase={(p) => setCvPhase({ id: r.id, phase: p })}
+                        fullDetails={cvPhase?.id === r.id && cvPhase.phase === "drafts" ? (
+                          <FullDetails client={client} row={r} onDecided={onDecided} onOpen={setLightbox} />
+                        ) : null}
+                      />
                     </div>
                   )}
                 </li>
               );
             })}
           </ul>
+          {client && <ConsultList client={client} />}
         </div>
         )}
       </main>

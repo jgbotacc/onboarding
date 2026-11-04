@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { StaffClient } from "./api";
 import type { Consult } from "./types";
+import { formatDate } from "./format";
 
 interface CardProps {
   client: StaffClient;
@@ -63,7 +64,7 @@ function ConsultCard({ client, consult, onApproved }: CardProps) {
       )}
       <div className="staff-actions">
         {approved ? (
-          <span className="staff-hint">Handed off{consult.decided_at ? ` on ${consult.decided_at}` : ""}.</span>
+          <span className="staff-hint">Handed off{consult.decided_at ? ` on ${formatDate(consult.decided_at)}` : ""}.</span>
         ) : (
           <>
             <span className="staff-hint">Approving books the consult hand-off.</span>

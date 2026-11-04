@@ -1,6 +1,8 @@
 """Staff metrics per PRD 3.1 / 3.5 / section 6."""
 from datetime import datetime
 
+from src.shared.config import MEDIA_DIR
+
 DONE = {"accepted", "approved", "rejected", "pending_review"}
 
 
@@ -23,6 +25,44 @@ def _parse(ts):
 def _minutes(start, end):
     a, b = _parse(start), _parse(end)
     return (b - a).total_seconds() / 60 if a and b else None
+
+
+def drift(store) -> list[dict]:
+    """Derived-copy mismatches, listed rather than silently dropped (4.7.5, 4.8.5).
+
+    Sent drafts whose media file is gone or which have no matching looks row;
+    feedback rows pointing at deleted drafts; shortlist rows for unsent drafts.
+    Never raises: metrics must not break on a partial store.
+    """
+    out: list[dict] = []
+    try:
+        ids = [s["id"] for s in store.list_states()]
+    except Exception:
+        return out
+    for sid in ids:
+        try:
+            ds = {d.get("id"): d for d in store.drafts(sid)}
+            fb = store.feedback_for(sid)
+            sl = store.shortlist_for(sid)
+            looks = {l.get("id") for l in store.looks(sid)}
+        except Exception:
+            continue
+        for d in ds.values():
+            if d.get("sent_at"):
+                if d.get("status") == "ok" and d.get("url") and not (
+                        MEDIA_DIR / str(d["url"]).rsplit("/", 1)[-1]).is_file():
+                    out.append({"session_id": sid, "kind": "draft_file_missing", "id": d.get("id")})
+                if d.get("id") not in looks:
+                    out.append({"session_id": sid, "kind": "draft_not_in_looks", "id": d.get("id")})
+        for f in fb:
+            if (f.get("draft_id") or "") not in ds:
+                out.append({"session_id": sid, "kind": "feedback_orphan", "id": f.get("id")})
+        for did in sl:
+            if did not in ds or not ds[did].get("sent_at"):
+                out.append({"session_id": sid, "kind": "shortlist_unsent", "id": did})
+        if len(out) >= 50:
+            break
+    return out[:50]
 
 
 def compute(store) -> dict:
@@ -81,4 +121,4 @@ def compute(store) -> dict:
         "at": (doc or img or {}).get("at"),
     }
     return {"outcomes": outcomes, "steps": steps, "total_cost_sgd": round(total, 4),
-            "errors": errors, "evals": evals}
+            "errors": errors, "evals": evals, "drift": drift(store)}

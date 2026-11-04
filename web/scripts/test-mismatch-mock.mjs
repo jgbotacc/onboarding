@@ -27,7 +27,12 @@ try {
     ),
   );
   pass("flags clearly fake", d.mismatch_flags.every((f) => /demo/i.test(f.intake + f.document + f.source)));
-  pass("documents map", d.documents && typeof d.documents === "object" && Object.keys(d.documents).length > 0);
+  pass(
+    "business-name and registration-number flags",
+    d.mismatch_flags.some((f) => f.field === "business_name") &&
+    d.mismatch_flags.some((f) => f.field === "uen"),
+  );
+  pass("documents map", d.documents && typeof d.documents === "object" && Object.keys(d.documents).length >= 2);
   pass(
     "document shape",
     Object.values(d.documents).every(
@@ -41,12 +46,21 @@ try {
   pass("detail has mismatch_flags", /mismatch_flags:\s*MismatchFlag\[\]/.test(types));
   pass("detail has documents", /documents:\s*Record<string,\s*StaffDocument>/.test(types));
 
-  const page = readFileSync(join(root, "src", "staff", "StaffPage.tsx"), "utf8");
-  pass("page renders flag tags", /mismatch_flags/.test(page) && /Differs from/.test(page));
-  pass("page lists documents", /d\.documents/.test(page) && /Open original/.test(page));
+  // Flags and the documents list live in the Case file panel (cv-file) of the
+  // Drafts under review tab in CaseView.tsx; the Full details view in
+  // StaffPage.tsx keeps its own copy behind the drafts-tab toggle.
+  const view = readFileSync(join(root, "src", "staff", "CaseView.tsx"), "utf8");
+  pass("case file renders flag tags", /mismatch_flags/.test(view) && /Differs from document/.test(view));
+  pass("flags are amber tags", /cv-flag/.test(view));
+  pass("case file lists documents", /cv-docs/.test(view) && /d\.documents/.test(view) && /Open original/.test(view));
   pass(
     "open link uses staff route",
-    /\/api\/staff\/clients\//.test(page) && /\/documents\//.test(page),
+    /\/api\/staff\/clients\//.test(view) && /\/documents\//.test(view) && /x-staff-key/.test(view),
+  );
+  pass(
+    "case file lives in the drafts tab",
+    view.indexOf('phase === "drafts"') !== -1 &&
+    view.indexOf('phase === "drafts"') < view.indexOf("cv-file"),
   );
 
   console.log(`mismatch-mock: ${n} checks passed`);

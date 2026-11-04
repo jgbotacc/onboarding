@@ -1,5 +1,5 @@
 // Mock staff API (demo data only). Used on ?mock=1 or when /api/staff/* is unreachable.
-import type { Consult, DecisionBody, DecisionResult, RejectedLookRound, StaffDetail, StaffMetrics, StaffRow, StepTrace, StudioDraft, StudioDraftsBody, StudioGet, StudioRemixBody, StudioRunResult, StudioSizePreset } from "./types";
+import type { Consult, DecisionBody, DecisionResult, FeedbackEntry, RejectedLookRound, ShareCreated, ShareLink, ShortlistView, StaffDetail, StaffRow, StepTrace, StudioDraft, StudioDraftsBody, StudioGet, StudioRemixBody, StudioRunResult, StudioSizePreset } from "./types";
 
 function art(title: string, sub: string, bg: string, fg: string): string {
   const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
@@ -39,12 +39,26 @@ const DETAILS: StaffDetail[] = [
     status: "accepted",
     round: 1,
     mismatch_flags: [
-      { field: "uen", intake: "201900001A (demo)", document: "201900002B (demo)", source: "acra-profile-demo.pdf" },
-      { field: "registered_address", intake: "1 Demo Street (demo)", document: "2 Sample Road (demo)", source: "acra-profile-demo.pdf" },
+      { field: "business_name", intake: "Kopi Corner (demo)", document: "Kopi Corner Pte Ltd (demo)", source: "ACRA-profile.pdf" },
+      { field: "uen", intake: "201900001A (demo)", document: "201900002B (demo)", source: "ACRA-profile.pdf" },
     ],
     documents: {
-      "doc-demo-1": { filename: "acra-profile-demo.pdf", status: "confirmed", openable: true },
+      "doc-acra": { filename: "ACRA-profile.pdf", status: "confirmed", openable: true },
+      "doc-form": { filename: "registration-form.pdf (demo)", status: "confirmed", openable: true },
     },
+    transcript: [
+      { role: "assistant", text: "Welcome! Tell me about your business.", at: "2026-10-31T09:00:02Z" },
+      { role: "client", text: "Kopi Corner, Tiong Bahru branch opening next month.", at: "2026-10-31T09:01:20Z" },
+    ],
+    looks: [{ id: "lk-k1", url: art("Kopi Corner", "Final post", "#F3E6D3", "#6B3F1F"), title: "Warm retro kopitiam post", brief: "Brown and cream storefront", round: 1, selected: true, at: "2026-10-31T09:09:31Z" }],
+    consult: null,
+    decisions: [{ decision: "approve", at: "2026-10-31T09:11:00Z" }],
+    outbox: [{ status: "Sent (demo)", to: "mei@kopicorner.example", subject: "Approved", sent_at: "2026-10-31T09:11:05Z" }],
+    audit: [
+      { at: "2026-10-31T09:02:11Z", actor: "system", action: "document_uploaded", target: "doc-acra" },
+      { at: "2026-10-31T09:09:31Z", actor: "client", action: "look_selected", target: "lk-k1" },
+      { at: "2026-10-31T09:11:00Z", actor: "staff:demo", action: "decision_approve", target: "lk-k1" },
+    ],
   },
   {
     id: "c-bloom02",
@@ -69,7 +83,38 @@ const DETAILS: StaffDetail[] = [
     status: "awaiting_review",
     round: 2,
     mismatch_flags: [],
-    documents: {},
+    transcript: [
+      { role: "assistant", text: "Welcome! Tell me about your business.", at: "2026-10-30T14:10:02Z" },
+      { role: "client", text: "Bloom & Stem florist, Mother's Day banner.", at: "2026-10-30T14:12:40Z" },
+      { role: "assistant", text: "Got it — soft pastel, lots of white space?", at: "2026-10-30T14:13:05Z" },
+    ],
+    documents: {
+      "doc-acra": { filename: "ACRA-profile.pdf", status: "confirmed", openable: true },
+      "doc-shop": { filename: "shopfront.jpg", status: "confirmed", openable: true },
+    },
+    looks: [
+      { id: "r1-a", url: art("Bloom & Stem", "Round 1 · A", "#F6E8EE", "#8A3B5C"), title: "Round 1 · A", brief: "Soft pink storefront banner", round: 1, selected: false, at: "2026-10-30T14:36:40Z" },
+      { id: "r1-b", url: art("Bloom & Stem", "Round 1 · B", "#EAF2EA", "#2F6B45"), title: "Round 1 · B", brief: "Green botanical poster", round: 1, selected: false, at: "2026-10-30T14:36:41Z" },
+      { id: "r2-a", url: art("Bloom & Stem", "Round 2 · A", "#FFF3E0", "#9C6B2F"), title: "Round 2 · A", brief: "Warm cream Mother's Day card", round: 2, selected: false, at: "2026-10-30T14:38:02Z" },
+    ],
+    consult: {
+      id: "consult-01",
+      client_id: "c-bloom02",
+      business_name: "Bloom & Stem (demo)",
+      status: "pending_approval",
+      submitted: { "Design preferences": "Soft pastel, minimal, lots of white space" },
+      next_steps: ["Agree a style direction", "Confirm the banner size"],
+      created: "2026-10-30T15:02:00Z",
+    },
+    decisions: [],
+    outbox: [],
+    audit: [
+      { at: "2026-10-30T14:20:11Z", actor: "system", action: "document_uploaded", target: "doc-acra" },
+      { at: "2026-10-30T14:22:03Z", actor: "system", action: "document_uploaded", target: "doc-shop" },
+      { at: "2026-10-30T14:31:55Z", actor: "system", action: "image_brief_failed", target: null },
+      { at: "2026-10-30T14:33:02Z", actor: "system", action: "image_brief_ok", target: null },
+      { at: "2026-10-30T15:02:00Z", actor: "system", action: "consult_handoff_created", target: "consult-01" },
+    ],
   },
   {
     id: "c-forge03",
@@ -90,30 +135,68 @@ const DETAILS: StaffDetail[] = [
     reference_images: [art("Reference", "Competitor poster", "#E5E6EB", "#1D2129"), art("Reference", "Brand colours", "#E8F0FF", "#1664FF")],
     status: "handed_off",
     round: 3,
+    sent_to_designers_at: "2026-10-29T03:05:00Z",
     mismatch_flags: [],
     documents: {
       "doc-demo-2": { filename: "registration-form-demo.pdf", status: "file missing", openable: false },
+      "doc-acra": { filename: "ACRA-profile.pdf", status: "confirmed", openable: true },
     },
+    transcript: [
+      { role: "assistant", text: "Welcome! Tell me about your business.", at: "2026-10-29T02:40:00Z" },
+      { role: "client", text: "Forge Fitness gym, bold promo graphic.", at: "2026-10-29T02:44:12Z" },
+    ],
+    looks: [{ id: "r1-a", url: art("Forge Fitness", "Final poster", "#1D2129", "#E8F0FF"), title: "Dark gym poster", brief: "High contrast headline", round: 2, selected: true, at: "2026-10-29T02:58:12Z" }],
+    consult: null,
+    decisions: [{ decision: "approve", at: "2026-10-29T03:04:00Z" }],
+    outbox: [{ status: "Sent (demo)", to: "daniel@forgefit.example", subject: "With a designer", sent_at: "2026-10-29T03:04:05Z" }],
+    audit: [
+      { at: "2026-10-29T02:51:09Z", actor: "system", action: "document_uploaded", target: "doc-acra" },
+      { at: "2026-10-29T02:58:12Z", actor: "client", action: "look_selected", target: "r1-a" },
+      { at: "2026-10-29T03:04:00Z", actor: "staff:demo", action: "decision_approve", target: "r1-a" },
+    ],
+  },
+  {
+    id: "c-sample04",
+    fields: {
+      business_name: "Sample Bakery (demo)",
+      business_type: "Bakery",
+      industry: "Food & Beverage",
+      business_website: "sample-bakery.example.test",
+      contact_name: "Sam Lee",
+      title_position: "Owner",
+      email: "sam@sample-bakery.example.test",
+      phone_number: "+65 6000 0004",
+      design_preferences: "Cosy neighbourhood bakery, warm browns and cream",
+      expected_annual_revenue: "SGD 250k",
+      requirements_notes: "Weekend offer poster.",
+    },
+    images: [art("Sample Bakery", "Weekend offer", "#FFF3E0", "#9C6B2F")],
+    reference_images: [],
+    status: "awaiting_review",
+    round: 1,
+    mismatch_flags: [],
+    documents: {},
   },
 ];
 
+// Mock traces carry no model ids: the staff UI never shows them.
 const TRACES: Record<string, StepTrace[]> = {
   "c-kopi01": [
-    { step: "read_document", model: "muse-spark-1.3", ok: true, ms: 1840, cost_sgd: 0.0042, at: "2026-10-31T09:02:11Z" },
-    { step: "translate", model: "muse-spark-1.3", ok: true, ms: 620, cost_sgd: 0.0011, at: "2026-10-31T09:04:02Z" },
-    { step: "image_brief", model: "muse-spark-1.3", ok: true, ms: 2310, cost_sgd: 0.0056, at: "2026-10-31T09:07:44Z" },
-    { step: "generate_image", model: "muse-image-1.0", ok: true, ms: 9420, cost_sgd: 0.0135, at: "2026-10-31T09:09:31Z" },
+    { step: "read_document", ok: true, ms: 1840, cost_sgd: 0.0042, at: "2026-10-31T09:02:11Z" },
+    { step: "translate", ok: true, ms: 620, cost_sgd: 0.0011, at: "2026-10-31T09:04:02Z" },
+    { step: "image_brief", ok: true, ms: 2310, cost_sgd: 0.0056, at: "2026-10-31T09:07:44Z" },
+    { step: "generate_image", ok: true, ms: 9420, cost_sgd: 0.0135, at: "2026-10-31T09:09:31Z" },
   ],
   "c-bloom02": [
-    { step: "read_document", model: "muse-spark-1.3", ok: true, ms: 2010, cost_sgd: 0.0048, at: "2026-10-30T14:20:11Z" },
-    { step: "image_brief", model: "muse-spark-1.3", ok: false, ms: 30500, cost_sgd: 0.0021, at: "2026-10-30T14:31:55Z" },
-    { step: "image_brief", model: "muse-spark-1.3", ok: true, ms: 2480, cost_sgd: 0.0059, at: "2026-10-30T14:33:02Z" },
-    { step: "generate_image", model: "muse-image-1.0", ok: true, ms: 8810, cost_sgd: 0.0135, at: "2026-10-30T14:36:40Z" },
+    { step: "read_document", ok: true, ms: 2010, cost_sgd: 0.0048, at: "2026-10-30T14:20:11Z" },
+    { step: "image_brief", ok: false, ms: 30500, cost_sgd: 0.0021, at: "2026-10-30T14:31:55Z" },
+    { step: "image_brief", ok: true, ms: 2480, cost_sgd: 0.0059, at: "2026-10-30T14:33:02Z" },
+    { step: "generate_image", ok: true, ms: 8810, cost_sgd: 0.0135, at: "2026-10-30T14:36:40Z" },
   ],
   "c-forge03": [
-    { step: "read_document", model: "muse-spark-1.3", ok: true, ms: 1760, cost_sgd: 0.0041, at: "2026-10-29T02:51:09Z" },
-    { step: "image_brief", model: "muse-spark-1.3", ok: true, ms: 2190, cost_sgd: 0.0054, at: "2026-10-29T02:55:37Z" },
-    { step: "generate_image", model: "muse-image-1.0", ok: true, ms: 9100, cost_sgd: 0.0135, at: "2026-10-29T02:58:12Z" },
+    { step: "read_document", ok: true, ms: 1760, cost_sgd: 0.0041, at: "2026-10-29T02:51:09Z" },
+    { step: "image_brief", ok: true, ms: 2190, cost_sgd: 0.0054, at: "2026-10-29T02:55:37Z" },
+    { step: "generate_image", ok: true, ms: 9100, cost_sgd: 0.0135, at: "2026-10-29T02:58:12Z" },
   ],
 };
 const REJECTED: Record<string, RejectedLookRound[]> = {
@@ -181,26 +264,7 @@ const CONSULTS: Consult[] = [
     decided_at: "2026-10-29T06:40:00Z",
   },
 ];
-const METRICS: StaffMetrics = {
-  outcomes: {
-    sessions: 3,
-    completed: 2,
-    completion_rate: 0.67,
-    avg_minutes_to_finish: 18.5,
-    avg_fields_needing_fixes: 1.3,
-    avg_rounds_to_pick: 1.5,
-    consult_rate: 0.33,
-  },
-  steps: [
-    { step: "read_document", model: "muse-spark-1.3", calls: 3, ok_rate: 1, avg_latency_ms: 1870, cost_sgd: 0.0131 },
-    { step: "image_brief", model: "muse-spark-1.3", calls: 4, ok_rate: 0.75, avg_latency_ms: 9295, cost_sgd: 0.019 },
-    { step: "generate_image", model: "muse-image-1.0", calls: 3, ok_rate: 1, avg_latency_ms: 9110, cost_sgd: 0.0405 },
-  ],
-  total_cost_sgd: 0.0726,
-  errors: [{ step: "image_brief", model: "muse-spark-1.3", ok: false, ms: 30500, cost_sgd: 0.0021, at: "2026-10-30T14:31:55Z" }],
-  evals: { doc_extraction_accuracy: 0.92, image_fit: 0.85, n: 12, at: "2026-10-28T00:00:00Z" },
-};
-const SUBMITTED = ["2026-10-31T09:12:00Z", "2026-10-30T14:40:00Z", "2026-10-29T03:05:00Z"];
+const SUBMITTED = ["2026-10-31T09:12:00Z", "2026-10-30T14:40:00Z", "2026-10-29T03:05:00Z", "2026-11-03T10:15:00Z"];
 
 const STATUS_AFTER: Record<string, string> = { approve: "approved", reject: "rejected", more_info: "needs_info" };
 
@@ -259,6 +323,10 @@ export function createStaffMock() {
   const db = DETAILS.map((d) => ({ ...d, traces: TRACES[d.id] || [] }));
   const consultDb = CONSULTS.map((c) => ({ ...c }));
   const draftsDb = new Map<string, StudioDraft[]>();
+  // Clearly fake share-link + feedback demo data (Sample Bakery only).
+  const sharesDb = new Map<string, ShareLink[]>();
+  const shortlistDb = new Map<string, string[]>();
+  const feedbackDb = new Map<string, FeedbackEntry[]>();
   let seq = 0;
   const wait = <T,>(v: T) => new Promise<T>((r) => setTimeout(() => r(structuredClone(v)), 300));
   const draftsFor = (cid: string): StudioDraft[] => {
@@ -286,6 +354,43 @@ export function createStaffMock() {
     const notes = (f as Record<string, unknown>).requirements_notes;
     if (typeof notes === "string" && notes.trim()) brief.requirements_notes = notes;
     return brief;
+  };
+  const sharesFor = (cid: string): ShareLink[] => {
+    let list = sharesDb.get(cid);
+    if (!list) {
+      list = [];
+      sharesDb.set(cid, list);
+    }
+    return list;
+  };
+  const shortlistIds = (cid: string): string[] => shortlistDb.get(cid) || [];
+  const shortlistDrafts = (cid: string): StudioDraft[] => {
+    const ids = new Set(shortlistIds(cid));
+    return draftsFor(cid).filter((d) => ids.has(d.id));
+  };
+  const knownClient = (cid: string) => db.some((x) => x.id === cid);
+  const DAY = 86400000;
+
+  // Seed Sample Bakery with two sent drafts, a shortlist, taps and two links.
+  const seedSample = () => {
+    const cid = "c-sample04";
+    const sentAt = new Date(Date.now() - 2 * DAY).toISOString();
+    const a = makeDraft(cid, "Sample Bakery", "post", 3, { run_id: "mock-run-sample" });
+    const b = makeDraft(cid, "Sample Bakery", "post", 0, { run_id: "mock-run-sample" });
+    a.sent_at = sentAt;
+    b.sent_at = sentAt;
+    draftsFor(cid).push(a, b);
+    shortlistDb.set(cid, [a.id, b.id]);
+    feedbackDb.set(cid, [
+      { draft_id: a.id, kind: "heart", note: null, actor: "client:share", created_at: new Date(Date.now() - 30 * 3600000).toISOString() },
+      { draft_id: b.id, kind: "changes", note: "Love the colours — please make the weekend offer headline bigger.", actor: "client:share", created_at: new Date(Date.now() - 26 * 3600000).toISOString() },
+      { draft_id: b.id, kind: "reject", note: null, actor: "client:share", created_at: new Date(Date.now() - 25 * 3600000).toISOString() },
+      { draft_id: a.id, kind: "approve", note: null, actor: "client:share", created_at: new Date(Date.now() - 5 * 3600000).toISOString() },
+    ]);
+    sharesDb.set(cid, [
+      { id: "mock-share-live", expires_at: new Date(Date.now() + 6 * DAY).toISOString(), revoked_at: null, used_at: new Date(Date.now() - DAY).toISOString(), created_by: "staff:demo" },
+      { id: "mock-share-old", expires_at: new Date(Date.now() - DAY).toISOString(), revoked_at: null, used_at: null, created_by: "staff:demo" },
+    ]);
   };
   const makeDraft = (cid: string, name: string, preset: StudioSizePreset, styleIdx: number, extra?: Partial<StudioDraft>): StudioDraft => {
     seq += 1;
@@ -315,7 +420,7 @@ export function createStaffMock() {
       created_at: new Date().toISOString(),
     };
   };
-  return {
+  const api = {
     list: (): Promise<StaffRow[]> =>
       wait(
         db.map((d, i) => ({
@@ -328,6 +433,7 @@ export function createStaffMock() {
           industry: d.fields.industry || "",
           updated: SUBMITTED[i] || SUBMITTED[0],
           image: d.images[d.images.length - 1] || null,
+          sent_to_designers_at: d.sent_to_designers_at || null,
         })),
       ),
     detail: (id: string): Promise<StaffDetail> => {
@@ -345,6 +451,12 @@ export function createStaffMock() {
         resume_url: body.decision === "more_info" ? "./?resume=demo-token&mock=1" : null,
       });
     },
+    sendToDesigners: (id: string): Promise<{ ok: boolean; id: string; sent_to_designers_at: string }> => {
+      const d = db.find((x) => x.id === id);
+      if (!d) return Promise.reject(new Error("HTTP 404"));
+      if (!d.sent_to_designers_at) d.sent_to_designers_at = new Date().toISOString();
+      return wait({ ok: true, id, sent_to_designers_at: d.sent_to_designers_at });
+    },
     rejectedLooks: (id: string): Promise<RejectedLookRound[]> => {
       if (!db.some((x) => x.id === id)) return Promise.reject(new Error("HTTP 404"));
       return wait(REJECTED[id] || []);
@@ -358,7 +470,6 @@ export function createStaffMock() {
       c.decided_at = new Date().toISOString();
       return wait(c);
     },
-    metrics: (): Promise<StaffMetrics> => wait(METRICS),
     studio: (cid: string): Promise<StudioGet> => {
       if (!db.some((x) => x.id === cid)) return Promise.reject(new Error("HTTP 404"));
       const { list, used, remaining } = usage(cid);
@@ -425,5 +536,42 @@ export function createStaffMock() {
       d.sent_at = new Date().toISOString();
       return wait(d);
     },
+    createShare: (cid: string, days = 7): Promise<ShareCreated> => {
+      if (!knownClient(cid)) return Promise.reject(new Error("HTTP 404"));
+      if (!Number.isInteger(days) || days < 1 || days > 30) {
+        return Promise.reject(new Error("Link lifetime must be between 1 and 30 days."));
+      }
+      seq += 1;
+      const id = `mock-share-${seq}`;
+      const expiresAt = new Date(Date.now() + days * DAY).toISOString();
+      sharesFor(cid).push({ id, expires_at: expiresAt, revoked_at: null, used_at: null, created_by: "staff:demo" });
+      return wait({ id, url: `https://example.test/share#t=mock-token-${seq}`, expires_at: expiresAt });
+    },
+    listShares: (cid: string): Promise<ShareLink[]> => {
+      if (!knownClient(cid)) return Promise.reject(new Error("HTTP 404"));
+      return wait(sharesFor(cid));
+    },
+    revokeShare: (cid: string, tokenId: string): Promise<{ id: string; revoked_at: string }> => {
+      if (!knownClient(cid)) return Promise.reject(new Error("HTTP 404"));
+      const row = sharesFor(cid).find((s) => s.id === tokenId);
+      if (!row) return Promise.reject(new Error("HTTP 404"));
+      row.revoked_at = row.revoked_at || new Date().toISOString();
+      return wait({ id: row.id, revoked_at: row.revoked_at });
+    },
+    shortlist: (cid: string): Promise<ShortlistView> => {
+      if (!knownClient(cid)) return Promise.reject(new Error("HTTP 404"));
+      return wait({ drafts: shortlistDrafts(cid), feedback: feedbackDb.get(cid) || [] });
+    },
+    setShortlist: (cid: string, draftId: string, add: boolean): Promise<{ drafts: StudioDraft[] }> => {
+      if (!knownClient(cid)) return Promise.reject(new Error("HTTP 404"));
+      if (!draftsFor(cid).some((d) => d.id === draftId)) return Promise.reject(new Error("HTTP 404"));
+      const ids = new Set(shortlistIds(cid));
+      if (add) ids.add(draftId);
+      else ids.delete(draftId);
+      shortlistDb.set(cid, [...ids]);
+      return wait({ drafts: shortlistDrafts(cid) });
+    },
   };
+  seedSample();
+  return api;
 }
