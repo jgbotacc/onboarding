@@ -108,6 +108,7 @@ function Detail({ client, row, onDecided, onOpen }: DetailProps) {
 
   return (
     <div className="staff-detail">
+      <h2 className="staff-client-name">{d.fields.business_name || "No business name"}</h2>
       <div className="staff-tabs" role="tablist" aria-label="Client sections">
         <button
           type="button"
@@ -355,7 +356,7 @@ function MetricsPanel({ client }: { client: StaffClient }) {
         <div className="staff-kv-row"><dt>Total cost:</dt><dd>S${m.total_cost_sgd.toFixed(4)}</dd></div>
       </dl>
       {m.steps?.length ? (
-        <table className="staff-traces">
+        <table className="staff-traces staff-traces-metrics">
           <thead>
             <tr>
               <th scope="col">Step</th>
@@ -425,6 +426,12 @@ export default function StaffPage() {
     toastTimer.current = window.setTimeout(() => setToast(""), 5000);
   };
 
+  // Longest-waiting client that still needs a decision, from the rows already loaded.
+  const waiting = rows
+    .filter((r) => !["approved", "rejected", "accepted", "handed_off"].includes(r.status))
+    .sort((a, b) => String(a.updated || "").localeCompare(String(b.updated || "")));
+  const longest = waiting.length ? waiting[0] : null;
+
   return (
     <div className="staff">
       <header className="header">
@@ -454,6 +461,11 @@ export default function StaffPage() {
             <h2>Submissions</h2>
             <span className="staff-count">{client ? `${rows.length} client${rows.length === 1 ? "" : "s"}` : "Loading…"}</span>
           </div>
+          {client && longest && (
+            <p className="staff-summary">
+              <strong>{longest.business_name || "No business name"}</strong> waiting longest, {statusLabel(longest.status).toLowerCase()}.
+            </p>
+          )}
           {client && !rows.length && <p className="staff-empty">No submissions yet.</p>}
           <ul className="staff-list">
             {rows.map((r) => {

@@ -91,12 +91,15 @@ function DraftCard({
           <div className="studio-row">
             <button
               type="button"
-              className="btn studio-btn"
+              className="btn studio-btn studio-fav"
               aria-pressed={d.starred}
               disabled={working || busy}
               onClick={() => act(() => client.starDraft(clientId, d.id, !d.starred), "Couldn't update the favourite.")}
             >
-              {d.starred ? "★ Favourited" : "☆ Favourite"}
+              <svg className="studio-star" width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill={d.starred ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round">
+                <path d="M8 1.8l1.9 3.9 4.3.6-3.1 3 .7 4.2-3.8-2-3.8 2 .7-4.2-3.1-3 4.3-.6z" />
+              </svg>
+              {d.starred ? "Favourited" : "Favourite"}
             </button>
             <button type="button" className="btn studio-btn" disabled={working || busy || sent} onClick={remix}>
               More like this
