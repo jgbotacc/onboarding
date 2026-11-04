@@ -97,6 +97,13 @@ class LanguageIn(BaseModel):
     lang: str
 
 
+class TranslateIn(BaseModel):
+    sessionId: str
+    sessionSecret: str | None = None
+    lang: str
+    texts: list[str]
+
+
 class ConfirmIn(BaseModel):
     sessionId: str
     sessionSecret: str | None = None
@@ -193,8 +200,10 @@ def _finish(s, out, kind=None, payload=None):
     imgs = out.get("images") or s.get("images") or []
     if imgs and s.get("status") == "awaiting_review" and kind != "round":
         store.event(sid, "round", {"images": imgs})
-    lng = s.get("lang") or "en"
-    out["reply"] = lang.to_client(out["reply"], lng, sid)
+    lng = s.get("reply_lang") or s.get("lang") or "en"  # a chat reply lock wins over the picker
+    source = out["reply"]  # English as stored in the transcript, before translation
+    out["reply"] = lang.to_client(source, lng, sid)
+    out["source"] = source
     out["lines"] = lang.lines(out["reply"])
     out["lang"] = lng
     out["step"] = out.get("status")
@@ -415,6 +424,9 @@ def chat(body: ChatIn, request: Request):
     with _lock_for(body.sessionId):
         s = _load(body.sessionId, _secret(request, body.sessionSecret))
         _apply_lang(s, request, body.lang)
+        locked = lang.detect_reply_lang(body.text)
+        if locked:
+            s["reply_lang"] = locked
         switch_lang(s, body.text)
         english = lang.to_english(body.text, s.get("lang"), s["id"])
         s.setdefault("transcript", []).append({
@@ -440,6 +452,46 @@ def language(body: LanguageIn, request: Request):
                 last = m["text"]
                 break
         return _finish(s, agent.resp(s, last))
+
+
+@app.post("/api/translate")
+def translate(body: TranslateIn, request: Request):
+    """Re-translate stored bot replies when the client switches language.
+
+    Only texts matching a bot message in this session's transcript are
+    translated; anything else comes back unchanged. Results are cached per
+    text+lang (process lru plus a small per-session dict that survives a
+    restart). No transcript or status change, no new bot message.
+    """
+    if body.lang not in LANGS:
+        raise HTTPException(400, "Unknown language. Choose en, zh, ms or ta.")
+    with _lock_for(body.sessionId):
+        s = _load(body.sessionId, _secret(request, body.sessionSecret))
+        lng = s.get("reply_lang") or body.lang  # a chat reply lock wins over the picker
+        bot_texts = {m.get("text") for m in (s.get("transcript") or [])
+                     if m.get("role") == "bot" and m.get("text")}
+        cache = s.get("translate_cache")
+        if not isinstance(cache, dict):
+            cache = s["translate_cache"] = {}
+        out_texts = []
+        dirty = False
+        for t in (body.texts or []):
+            if t not in bot_texts:
+                out_texts.append(t)
+                continue
+            key = f"{lng}\n{t}"
+            if key in cache:
+                out_texts.append(cache[key])
+                continue
+            tr = lang.to_client(t, lng, s["id"])  # source back on Meta failure
+            cache[key] = tr
+            dirty = True
+            while len(cache) > 200:  # small per-session dict: drop oldest first
+                cache.pop(next(iter(cache)))
+            out_texts.append(tr)
+        if dirty:
+            _save(s)
+        return {"lang": lng, "texts": out_texts}
 
 
 @app.post("/api/confirm")

@@ -31,6 +31,39 @@ PROTECT = re.compile(
 
 _session = contextvars.ContextVar("i18n_session_id", default=None)
 
+# Client asking chat to keep replies in one language ("reply in English",
+# "keep English", "用英文回复", "balas dalam bahasa Inggeris", ...).
+# Intent verb plus a language name; free regex, no model call.
+_REPLY_INTENT = re.compile(
+    r"reply|replies|respond|response|answer|keep|use|using|used|speak|talk"
+    r"|write|writing|switch|change|prefer"
+    r"|balas|jawab|guna|gunakan|kekal|tukar|sila|tolong|dalam bahasa"
+    r"|回复|回答|保持|切换|请",
+    re.IGNORECASE,
+)
+
+_REPLY_LANG_MARKS: tuple[tuple[str, re.Pattern]] = (
+    ("en", re.compile(r"english|英文|英语|inggeris|ஆங்கிலம்", re.IGNORECASE)),
+    ("zh", re.compile(r"chinese|mandarin|中文|华文|华语|\bcina\b|சீன", re.IGNORECASE)),
+    ("ms", re.compile(r"\bmalay\b|\bmelayu\b|马来文|马来语", re.IGNORECASE)),
+    ("ta", re.compile(r"tamil|泰米尔|淡米尔|தமிழ்", re.IGNORECASE)),
+)
+
+
+def detect_reply_lang(text: str) -> str | None:
+    """Return the locked reply language when the client asks for one, else None."""
+    if not text or not text.strip():
+        return None
+    if not _REPLY_INTENT.search(text):
+        return None
+    best: str | None = None
+    pos = -1
+    for code, pat in _REPLY_LANG_MARKS:
+        for m in pat.finditer(text):
+            if m.start() >= pos:
+                best, pos = code, m.start()
+    return best
+
 
 def detect(text: str) -> str | None:
     """Guess the client's language (free heuristics, no model call)."""
