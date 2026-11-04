@@ -147,5 +147,17 @@ const ta: typeof en = {
   "mic.stop": "கேட்பதை நிறுத்து",
   "mic.listening": "கேட்கிறது…",
   "mic.notSupported": "இந்த உலாவியில் குரல் உள்ளீடு இல்லை.",
+  "brandboard.title": "உங்கள் ஸ்டைலை காட்டுங்கள்",
+  "brandboard.body": "உங்களுக்குப் பிடித்த 6 புகைப்படங்கள் வரை அனுப்புங்கள். கடை புகைப்படங்கள் அல்லது பழைய பதிவுகள் போதும்.",
+  "brandboard.add": "ஸ்டைல் புகைப்படங்களைச் சேர்",
+  "brandboard.send": "ஸ்டைல் புகைப்படங்களை அனுப்பு",
+  "brandboard.sending": "அனுப்புகிறது…",
+  "brandboard.done": "கிடைத்தது! இந்த ஸ்டைலைப் பயன்படுத்துவோம்.",
+  "brandboard.pending": "எங்கள் குழு சரிபார்க்கக் காத்திருக்கிறது.",
+  "brandboard.toomany": "ஒரு முறை 6 புகைப்படங்கள் மட்டும்.",
+  "brandboard.colours": "நிறங்கள்",
+  "brandboard.tone": "உணர்வு",
+  "brandboard.style": "பாணி",
+  "brandboard.close": "மூடு",
 };
 export default ta;

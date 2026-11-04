@@ -182,10 +182,22 @@ async function deleteJson<T>(path: string, body: unknown, secret?: string): Prom
   return r.json() as Promise<T>;
 }
 
+/** Style board from the client's style photos. Photos only, never links. */
+export interface StyleBoard {
+  colours: string[];
+  tone_words: string[];
+  style_words: string[];
+  summary: string;
+  photos: string[];
+  status: string;
+}
+
 export interface Client {
   mock: boolean;
   sessionId: string;
   upload(files: File[]): Promise<ApiResponse>;
+  /** Upload style photos (images only, max 6). */
+  styleUpload(files: File[]): Promise<{ board: StyleBoard | null; photos: string[]; skipped: { filename?: string; reason?: string }[] }>;
   form(fields: FormFields): Promise<ApiResponse>;
   chat(text: string): Promise<ApiResponse>;
   review(accepted: boolean, feedback: string): Promise<ApiResponse>;
@@ -228,6 +240,7 @@ type MockHandlers = ReturnType<typeof createMock>;
 
 function mockExtras(m: MockHandlers) {
   return {
+    styleUpload: (files: File[]) => Promise.resolve(m.styleUpload(files)),
     pickLooks: (ids: string[]) => m.pickLooks(ids),
     skipLooks: () => m.skipLooks(),
     confirmExtracted: (fields: Record<string, string>) => m.confirmExtracted(fields),
@@ -347,6 +360,24 @@ export function realClient(sessionId: string, secret: string): Client {
     confirmExtracted: async (fields) =>
       normalizeChatReply(await postJson("/api/extracted/confirm", { sessionId, fields }, secret)),
     removeUpload: async () => normalizeChatReply(await deleteJson("/api/upload", { sessionId }, secret)),
+    async styleUpload(files) {
+      const lang = getLang();
+      const fd = new FormData();
+      fd.append("sessionId", sessionId);
+      fd.append("lang", lang);
+      files.forEach((f) => fd.append("files[]", f, f.name));
+      const res = await fetch(API_BASE + "/api/brand-board/photos", { method: "POST", body: fd, headers: { "x-session-secret": secret, "x-lang": lang } });
+      if (!res.ok) {
+        let detail = "";
+        try {
+          detail = errorDetail(await res.json());
+        } catch {
+          /* not JSON */
+        }
+        throw new HttpError(res.status, detail);
+      }
+      return res.json();
+    },
     trace: async (kind, ok, ms) => {
       try {
         const lang = getLang();

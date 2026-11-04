@@ -296,6 +296,24 @@ export function createMock(opts: { resumed?: boolean } = {}) {
       return out({ reply: t(lang, "mock.removed"), step });
     },
 
+    /** Demo style board for ?mock=1: uploads only, no links. */
+    styleUpload(files: File[]) {
+      const list = (files || []).slice(0, 6);
+      const photos = list.map((_, i) => placeholder(7, i));
+      return {
+        board: {
+          colours: ["#A63D2F", "#F3E6D3", "#2F6B45"],
+          tone_words: ["warm", "welcoming"],
+          style_words: ["retro", "minimal"],
+          summary: "Warm retro look in red and cream.",
+          photos,
+          status: "pending_review",
+        },
+        photos,
+        skipped: [],
+      };
+    },
+
     review(accepted: boolean, feedback: string): ApiResponse {
       if (accepted) return handlers.pickLooks([]);
       const fb = (feedback || "").trim();
@@ -314,6 +332,7 @@ export function createMock(opts: { resumed?: boolean } = {}) {
   const delay = <T,>(v: T) => new Promise<T>((res) => setTimeout(() => res(v), 100));
   return {
     upload: (f: File[]) => delay(handlers.upload(f)),
+    styleUpload: (f: File[]) => delay(handlers.styleUpload(f)),
     form: (f: FormFields) => delay(handlers.form(f)),
     chat: (x: string) => delay(handlers.chat(x)),
     review: (a: boolean, fb: string) => delay(handlers.review(a, fb)),

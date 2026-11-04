@@ -3,6 +3,7 @@ import { connect, HttpError, type Client } from "./api";
 import { EMPTY_FORM, type ApiResponse, type ConsultInfo, type ExtractedField, type FieldIssue, type FormFields, type Looks, type RetakeInfo, type SuggestedLook } from "./types";
 import ConfirmDetails from "./confirm/ConfirmDetails";
 import FormModal from "./FormModal";
+import StyleUpload from "./StyleUpload";
 import LooksPicker from "./looks/LooksPicker";
 import { mergeLooks, mergeSuggested } from "./looks/refresh";
 import { toFieldKeys } from "./staff/fields";
@@ -58,6 +59,7 @@ export default function App() {
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  const [styleOpen, setStyleOpen] = useState(false);
   // Resume link (/?resume=<token>): fields staff asked the client to fill in again.
   const [refill, setRefill] = useState<{ keys: (keyof FormFields)[]; note: string } | null>(null);
   const dragDepth = useRef(0);
@@ -474,6 +476,9 @@ export default function App() {
                         <button type="button" className="btn" id="choiceForm" disabled={busy} onClick={() => setFormOpen(true)}>
                           {t(lang, "fillForm")}
                         </button>
+                        <button type="button" className="btn" id="choiceStyle" disabled={busy} onClick={() => setStyleOpen(true)}>
+                          {t(lang, "brandboard.title")}
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -650,6 +655,9 @@ export default function App() {
       {dragging && <div className="drop-overlay">{t(lang, "dropHere")}</div>}
       {formOpen && (
         <FormModal lang={lang} onCancel={cancelForm} onSubmit={submitForm} only={refill?.keys} intro={refill?.note} trace={traceListen} />
+      )}
+      {styleOpen && (
+        <StyleUpload client={client} lang={lang} onClose={() => setStyleOpen(false)} />
       )}
       {!formOpen && refill && (
         <div className="refill-bar">

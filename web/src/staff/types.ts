@@ -28,6 +28,8 @@ export interface StaffDetail {
   traces?: StepTrace[];
   /** Emails sent for this client so far (oldest first). */
   outbox?: EmailInfo[];
+  /** Style board, when the client uploaded style photos. */
+  brand_board?: BrandBoard | null;
   /** Everything the case view is built from (all present on the real API). */
   transcript?: TranscriptMsg[];
   audit?: AuditEntry[];
@@ -91,7 +93,22 @@ export interface Consult {
   decided_at?: string | null;
 }
 
-/** Step trace recorded for a client; shown as (step, model, ok, ms, S$ cost). */
+/** Style board from the client's style photos (uploads only, no links). */
+export interface BrandBoard {
+  version?: number;
+  colours: string[];
+  tone_words: string[];
+  style_words: string[];
+  summary: string;
+  photos: string[];
+  status: string;
+  approved_by?: string | null;
+  decided_at?: string | null;
+  note?: string | null;
+  updated_at?: string | null;
+}
+
+/** Step trace recorded for a client. The UI shows step and outcome only (no model names). */
 export interface StepTrace {
   step: string;
   model: string;

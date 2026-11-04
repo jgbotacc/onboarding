@@ -1,5 +1,18 @@
 // Mock staff API (demo data only). Used on ?mock=1 or when /api/staff/* is unreachable.
-import type { Consult, DecisionBody, DecisionResult, FeedbackEntry, RejectedLookRound, ShareCreated, ShareLink, ShortlistView, StaffDetail, StaffRow, StepTrace, StudioDraft, StudioDraftsBody, StudioGet, StudioRemixBody, StudioRunResult, StudioSizePreset } from "./types";
+import type { BrandBoard, Consult, DecisionBody, DecisionResult, FeedbackEntry, RejectedLookRound, ShareCreated, ShareLink, ShortlistView, StaffDetail, StaffRow, StepTrace, StudioDraft, StudioDraftsBody, StudioGet, StudioRemixBody, StudioRunResult, StudioSizePreset } from "./types";
+
+const MOCK_BOARD: BrandBoard = {
+  version: 1,
+  colours: ["#A63D2F", "#F3E6D3", "#2F6B45"],
+  tone_words: ["warm", "welcoming"],
+  style_words: ["retro", "minimal"],
+  summary: "Warm retro look in red and cream.",
+  photos: [art("Shopfront", "Style photo 1", "#F3E6D3", "#6B3F1F"), art("Old post", "Style photo 2", "#EDE3D6", "#7A5A3A")],
+  status: "pending_review",
+  approved_by: null,
+  decided_at: null,
+  note: null,
+};
 
 function art(title: string, sub: string, bg: string, fg: string): string {
   const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
@@ -43,6 +56,7 @@ const DETAILS: StaffDetail[] = [
     documents: { "doc-acra": { filename: "ACRA-profile.pdf", status: "confirmed" } },
     looks: [{ id: "lk-k1", url: art("Kopi Corner", "Final post", "#F3E6D3", "#6B3F1F"), title: "Warm retro kopitiam post", brief: "Brown and cream storefront", round: 1, selected: true, at: "2026-10-31T09:09:31Z" }],
     consult: null,
+    brand_board: { ...MOCK_BOARD },
     decisions: [{ decision: "approve", at: "2026-10-31T09:11:00Z" }],
     outbox: [{ status: "Sent (demo)", to: "mei@kopicorner.example", subject: "Approved", sent_at: "2026-10-31T09:11:05Z" }],
     audit: [
@@ -545,6 +559,28 @@ export function createStaffMock() {
       else ids.delete(draftId);
       shortlistDb.set(cid, [...ids]);
       return wait({ drafts: shortlistDrafts(cid) });
+    },
+    board: (cid: string): Promise<{ board: BrandBoard | null }> => {
+      const d = db.find((x) => x.id === cid);
+      if (!d) return Promise.reject(new Error("HTTP 404"));
+      return wait({ board: (d as StaffDetail).brand_board || null });
+    },
+    editBoard: (cid: string, patch: Partial<BrandBoard>): Promise<BrandBoard> => {
+      const d = db.find((x) => x.id === cid);
+      const cur = (d as StaffDetail | undefined)?.brand_board;
+      if (!d || !cur) return Promise.reject(new Error("HTTP 404"));
+      Object.assign(cur, patch);
+      return wait(cur);
+    },
+    decideBoard: (cid: string, decision: "approve" | "reject", note?: string): Promise<BrandBoard> => {
+      const d = db.find((x) => x.id === cid);
+      const cur = (d as StaffDetail | undefined)?.brand_board;
+      if (!d || !cur) return Promise.reject(new Error("HTTP 404"));
+      if (cur.status !== "pending_review") return Promise.reject(new Error("HTTP 409"));
+      cur.status = decision === "approve" ? "approved" : "rejected";
+      cur.decided_at = new Date().toISOString();
+      if (note != null) cur.note = note;
+      return wait(cur);
     },
   };
   seedSample();

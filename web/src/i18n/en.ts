@@ -146,5 +146,17 @@ const en = {
   "mic.stop": "Stop listening",
   "mic.listening": "Listening…",
   "mic.notSupported": "Voice input is not supported in this browser.",
+  "brandboard.title": "Show us your style",
+  "brandboard.body": "Send up to 6 photos you like. Shop photos or old posts are fine.",
+  "brandboard.add": "Add style photos",
+  "brandboard.send": "Send style photos",
+  "brandboard.sending": "Sending…",
+  "brandboard.done": "Got it! We will use this style.",
+  "brandboard.pending": "Waiting for our team to check it.",
+  "brandboard.toomany": "Only 6 photos at a time.",
+  "brandboard.colours": "Colours",
+  "brandboard.tone": "Feel",
+  "brandboard.style": "Style",
+  "brandboard.close": "Close",
 };
 export default en;

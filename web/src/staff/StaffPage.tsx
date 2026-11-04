@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { connectStaff, setOnAuthFail, setStaffKey, StaffAuthError, type StaffClient } from "./api";
+import BrandBoardCard from "./BrandBoardCard";
 import CaseView from "./CaseView";
 import ConsultList from "./ConsultCard";
 import RejectedLooks from "./RejectedLooks";
@@ -170,6 +171,11 @@ function Detail({ client, row, onDecided, onOpen }: DetailProps) {
         <h3>Reference images</h3>
         <ImageGrid urls={d.reference_images} label="Reference image" onOpen={onOpen} />
       </div>
+      {d.brand_board && (
+        <div className="staff-section">
+          <BrandBoardCard client={client} clientId={row.id} initial={d.brand_board} onOpen={onOpen} />
+        </div>
+      )}
 
       <RejectedLooks client={client} clientId={row.id} onOpen={onOpen} />
       <ConsultList client={client} clientId={row.id} />
@@ -182,18 +188,14 @@ function Detail({ client, row, onDecided, onOpen }: DetailProps) {
             <thead>
               <tr>
                 <th scope="col">Step</th>
-                <th scope="col">Model</th>
                 <th scope="col">OK</th>
-                <th scope="col" className="num">Ms</th>
               </tr>
             </thead>
             <tbody>
               {d.traces.map((t, i) => (
                 <tr key={i} data-ok={t.ok}>
                   <td>{stepName(t.step)}</td>
-                  <td>{t.model}</td>
                   <td>{t.ok ? "Yes" : "No"}</td>
-                  <td className="num">{t.ms}</td>
                 </tr>
               ))}
             </tbody>

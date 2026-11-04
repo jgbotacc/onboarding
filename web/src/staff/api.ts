@@ -1,5 +1,5 @@
 import { createStaffMock } from "./mock";
-import type { Consult, DecisionBody, DecisionResult, RejectedLookRound, ShareCreated, ShareLink, ShortlistView, StaffDetail, StaffRow, StudioDraft, StudioDraftsBody, StudioGet, StudioRemixBody, StudioRunResult } from "./types";
+import type { BrandBoard, Consult, DecisionBody, DecisionResult, RejectedLookRound, ShareCreated, ShareLink, ShortlistView, StaffDetail, StaffRow, StudioDraft, StudioDraftsBody, StudioGet, StudioRemixBody, StudioRunResult } from "./types";
 
 export interface StaffClient {
   mock: boolean;
@@ -20,6 +20,9 @@ export interface StaffClient {
   revokeShare(id: string, tokenId: string): Promise<{ id: string; revoked_at: string }>;
   shortlist(id: string): Promise<ShortlistView>;
   setShortlist(id: string, draftId: string, add: boolean): Promise<{ drafts: StudioDraft[] }>;
+  board(id: string): Promise<{ board: BrandBoard | null }>;
+  editBoard(id: string, patch: Partial<Pick<BrandBoard, "colours" | "tone_words" | "style_words" | "summary">>): Promise<BrandBoard>;
+  decideBoard(id: string, decision: "approve" | "reject", note?: string): Promise<BrandBoard>;
 }
 
 // [staff-key] Staff passcode, kept for this browser tab only and sent as x-staff-key on every staff call.
@@ -136,6 +139,19 @@ const real: Omit<StaffClient, "mock"> = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ add }),
+    }),
+  board: (id) => req("/api/staff/clients/" + encodeURIComponent(id) + "/brand-board"),
+  editBoard: (id, patch) =>
+    req("/api/staff/clients/" + encodeURIComponent(id) + "/brand-board", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    }),
+  decideBoard: (id, decision, note) =>
+    req("/api/staff/clients/" + encodeURIComponent(id) + "/brand-board/decision", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decision, note: note || null }),
     }),
 };
 

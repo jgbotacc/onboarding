@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { StaffClient } from "./api";
+import BrandBoardCard from "./BrandBoardCard";
 import { actorRole, buildCase, maskSensitive, openDuration, type CaseStep } from "./caseView";
 import { statusLabel, type StaffDetail, type StaffRow, type StudioDraft } from "./types";
 
@@ -193,6 +194,7 @@ export default function CaseView({ client, row, onBack, onOpen, onDecided }: {
 
         <aside className="cv-file" aria-label="Case file">
           <h3>Case file</h3>
+          {d.brand_board && <BrandBoardCard client={client} clientId={row.id} initial={d.brand_board} onOpen={onOpen} />}
           <h4>Documents</h4>
           {docs.length === 0 && <p className="staff-empty">None</p>}
           <ul className="cv-docs">

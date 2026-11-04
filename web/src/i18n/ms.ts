@@ -147,5 +147,17 @@ const ms: typeof en = {
   "mic.stop": "Berhenti mendengar",
   "mic.listening": "Mendengar…",
   "mic.notSupported": "Input suara tidak disokong dalam pelayar ini.",
+  "brandboard.title": "Tunjukkan gaya anda",
+  "brandboard.body": "Hantar sehingga 6 foto yang anda suka. Foto kedai atau hantaran lama pun boleh.",
+  "brandboard.add": "Tambah foto gaya",
+  "brandboard.send": "Hantar foto gaya",
+  "brandboard.sending": "Menghantar…",
+  "brandboard.done": "Dapat! Kami akan guna gaya ini.",
+  "brandboard.pending": "Menunggu pasukan kami menyemak.",
+  "brandboard.toomany": "Maksimum 6 foto sahaja.",
+  "brandboard.colours": "Warna",
+  "brandboard.tone": "Rasa",
+  "brandboard.style": "Gaya",
+  "brandboard.close": "Tutup",
 };
 export default ms;

@@ -380,3 +380,20 @@ button { font: inherit; }
   .btn-icon { width: 44px; height: 44px; min-width: 44px; min-height: 44px; }
   .btn-send { min-height: 44px; height: 44px; }
 }
+
+/* Brand board style step: big plain buttons, readable at 390px. */
+.style-panel {
+  position: fixed; inset: auto 0 0 0; z-index: 40;
+  background: var(--surface, #fff); color: var(--text, #1d2129);
+  border-top: 1px solid #e2e5ea; border-radius: 16px 16px 0 0;
+  padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+  max-width: 760px; margin: 0 auto;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, .16);
+}
+.style-panel h2 { margin: 0 0 8px; font-size: 20px; }
+.style-panel p { margin: 8px 0; font-size: 15px; }
+.style-choices { display: flex; flex-direction: column; gap: 12px; margin: 12px 0; }
+.btn-big { min-height: 52px; font-size: 17px; width: 100%; }
+.style-swatches { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+.swatch { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text, #1d2129); }
+.swatch-chip { display: inline-block; width: 28px; height: 28px; border-radius: 6px; border: 1px solid rgba(0, 0, 0, .25); }

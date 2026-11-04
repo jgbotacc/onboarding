@@ -147,5 +147,17 @@ const zh: typeof en = {
   "mic.stop": "停止聆听",
   "mic.listening": "正在聆听…",
   "mic.notSupported": "此浏览器不支持语音输入。",
+  "brandboard.title": "秀出你的风格",
+  "brandboard.body": "最多发6张你喜欢的照片。店铺照片或以前的帖子都可以。",
+  "brandboard.add": "加风格照片",
+  "brandboard.send": "发送风格照片",
+  "brandboard.sending": "发送中…",
+  "brandboard.done": "收到!我们会用这个风格。",
+  "brandboard.pending": "等我们团队确认。",
+  "brandboard.toomany": "一次最多6张。",
+  "brandboard.colours": "颜色",
+  "brandboard.tone": "感觉",
+  "brandboard.style": "风格",
+  "brandboard.close": "关闭",
 };
 export default zh;
