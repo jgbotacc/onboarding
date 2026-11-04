@@ -17,6 +17,29 @@ export const STAGES: { id: StageId; label: string }[] = [
 export type StepStatus = "done" | "active" | "waiting" | "queued";
 export type StageStatus = "done" | "current" | "waiting" | "queued";
 
+/** The three case-view stages: onboarding chat, drafts under review, sent to designers. */
+export type CasePhase = "onboarding" | "drafts" | "sent";
+
+export const PHASES: { id: CasePhase; label: string }[] = [
+  { id: "onboarding", label: "Onboarding" },
+  { id: "drafts", label: "Drafts under review" },
+  { id: "sent", label: "Sent to designers" },
+];
+
+/** Which stage the case is in: sent once handed off, onboarding before any
+ *  drafts/looks exist, drafts under review otherwise. */
+export function casePhase(d: StaffDetail, studio?: StudioDraft[]): CasePhase {
+  if (d.sent_to_designers_at) return "sent";
+  const hasWork = (d.looks?.length || 0) > 0 || (studio?.length || 0) > 0 ||
+    (d.images?.length || 0) > 0 || !!d.consult || (d.decisions?.length || 0) > 0;
+  return hasWork ? "drafts" : "onboarding";
+}
+
+/** Full chat history, oldest first. */
+export function orderedTranscript(d: StaffDetail) {
+  return [...(d.transcript || [])].sort((a, b) => (a.at || "").localeCompare(b.at || ""));
+}
+
 export interface CaseStep {
   id: string;
   stage: StageId;

@@ -20,6 +20,7 @@ export interface StaffClient {
   revokeShare(id: string, tokenId: string): Promise<{ id: string; revoked_at: string }>;
   shortlist(id: string): Promise<ShortlistView>;
   setShortlist(id: string, draftId: string, add: boolean): Promise<{ drafts: StudioDraft[] }>;
+  sendToDesigners(id: string): Promise<{ ok?: boolean; id?: string; sent_to_designers_at: string }>;
 }
 
 // [staff-key] Staff passcode, kept for this browser tab only and sent as x-staff-key on every staff call.
@@ -137,6 +138,8 @@ const real: Omit<StaffClient, "mock"> = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ add }),
     }),
+  sendToDesigners: (id) =>
+    req("/api/staff/clients/" + encodeURIComponent(id) + "/send-to-designers", { method: "POST" }),
 };
 
 export type StaffConnect =

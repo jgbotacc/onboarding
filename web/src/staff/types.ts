@@ -14,6 +14,7 @@ export interface StaffRow {
   industry?: string | null;
   updated: string | null; // ISO 8601 (UTC), last activity
   image: string | null; // latest generated image URL
+  sent_to_designers_at?: string | null;
 }
 
 /** GET /api/staff/clients/:id */
@@ -35,6 +36,8 @@ export interface StaffDetail {
   looks?: CaseLook[];
   consult?: Consult | null;
   decisions?: { decision: string; at?: string }[];
+  /** Final-edit handoff timestamp; set by POST send-to-designers. */
+  sent_to_designers_at?: string | null;
 }
 
 export interface TranscriptMsg {
@@ -91,10 +94,12 @@ export interface Consult {
   decided_at?: string | null;
 }
 
-/** Step trace recorded for a client; shown as (step, model, ok, ms, S$ cost). */
+/** Step trace recorded for a client. The backend keeps model and cost fields;
+ * the staff UI never shows them. */
 export interface StepTrace {
   step: string;
-  model: string;
+  /** Backend-kept model id; never rendered. */
+  model?: string;
   ok: boolean;
   ms: number;
   cost_sgd: number;
