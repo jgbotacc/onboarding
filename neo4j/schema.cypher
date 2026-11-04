@@ -8,11 +8,22 @@ CREATE CONSTRAINT handoff_id IF NOT EXISTS FOR (h:HumanHandoff) REQUIRE h.id IS 
 CREATE CONSTRAINT fielddef_key IF NOT EXISTS FOR (fd:FieldDef) REQUIRE fd.key IS UNIQUE;
 CREATE CONSTRAINT look_id IF NOT EXISTS FOR (l:Look) REQUIRE l.id IS UNIQUE;
 CREATE CONSTRAINT consult_id IF NOT EXISTS FOR (k:Consult) REQUIRE k.id IS UNIQUE;
+CREATE CONSTRAINT feedback_id IF NOT EXISTS FOR (f:Feedback) REQUIRE f.id IS UNIQUE;
+CREATE CONSTRAINT sharetoken_id IF NOT EXISTS FOR (t:ShareToken) REQUIRE t.id IS UNIQUE;
 CREATE INDEX client_status IF NOT EXISTS FOR (c:Client) ON (c.status);
 CREATE INDEX field_key IF NOT EXISTS FOR (f:Field) ON (f.key);
 
 // Model
 // (:Client {id, name, status: 'registering'|'missing_info'|'generating'|'awaiting_review'|'accepted'|'handed_off', createdAt})
+// (:Client)-[:HAS_DRAFT]->(:Draft {id, session_id, run_id, parent_id, parent_kind, preset, width, height,
+//   marketer_prompt, chips, style_title, style, prompt, url, status, error, author, starred,
+//   pinned_to, pinned_consult_id, sent_at, sent_by, createdAt})
+// (:Client)-[:GAVE_FEEDBACK]->(:Feedback {id, session_id, draft_id, kind, note, actor, createdAt})
+// (:Client)-[:SHORTLISTED]->(:Draft)
+// (:Client)-[:HAS_SHARE]->(:ShareToken {id, session_id, token_hash, created_by, created_at,
+//   expires_at, revoked_at, used_at})
+// (:ShareToken)-[:AUDITED]->(:Audit) via the client (share_issued / share_revoked, details hold
+//   only the token id and expiry; the token and its hash never appear in audit rows)
 // (:Client)-[:UPLOADED]->(:Document {id, filename, sandboxId, parsedAt})
 // (:Document)-[:HAS_FIELD]->(:Field {key, value, confidence, valid:bool, issue})-[:OF_TYPE]->(:FieldDef {key, label, mandatory:bool})
 // (:Client)-[:PROVIDED]->(:ReferenceImage {id, url, uploadedAt})

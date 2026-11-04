@@ -201,6 +201,39 @@ export interface StudioRemixBody {
   preset?: StudioSizePreset;
 }
 
+/** POST /api/staff/clients/:id/studio/share -> shown once, never stored */
+export interface ShareCreated {
+  id: string;
+  url: string;
+  expires_at: string;
+}
+
+/** GET /api/staff/clients/:id/studio/shares -> live and past links (no tokens) */
+export interface ShareLink {
+  id: string;
+  expires_at: string;
+  revoked_at: string | null;
+  used_at: string | null;
+  created_by: string | null;
+}
+
+export type FeedbackKind = "heart" | "reject" | "approve" | "changes";
+
+/** One client tap from the share page (change requests carry the client's note). */
+export interface FeedbackEntry {
+  draft_id: string;
+  kind: FeedbackKind;
+  note: string | null;
+  actor: string;
+  created_at: string;
+}
+
+/** GET /api/staff/clients/:id/studio/shortlist */
+export interface ShortlistView {
+  drafts: StudioDraft[];
+  feedback: FeedbackEntry[];
+}
+
 export const STAFF_STATUS_LABELS: Record<string, string> = {
   need_document: "Getting started",
   registering: "Getting started",

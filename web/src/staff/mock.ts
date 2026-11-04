@@ -1,5 +1,5 @@
 // Mock staff API (demo data only). Used on ?mock=1 or when /api/staff/* is unreachable.
-import type { Consult, DecisionBody, DecisionResult, RejectedLookRound, StaffDetail, StaffRow, StepTrace, StudioDraft, StudioDraftsBody, StudioGet, StudioRemixBody, StudioRunResult, StudioSizePreset } from "./types";
+import type { Consult, DecisionBody, DecisionResult, FeedbackEntry, RejectedLookRound, ShareCreated, ShareLink, ShortlistView, StaffDetail, StaffRow, StepTrace, StudioDraft, StudioDraftsBody, StudioGet, StudioRemixBody, StudioRunResult, StudioSizePreset } from "./types";
 
 function art(title: string, sub: string, bg: string, fg: string): string {
   const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
@@ -140,6 +140,26 @@ const DETAILS: StaffDetail[] = [
       { at: "2026-10-29T03:04:00Z", actor: "staff:demo", action: "decision_approve", target: "r1-a" },
     ],
   },
+  {
+    id: "c-sample04",
+    fields: {
+      business_name: "Sample Bakery (demo)",
+      business_type: "Bakery",
+      industry: "Food & Beverage",
+      business_website: "sample-bakery.example.test",
+      contact_name: "Sam Lee",
+      title_position: "Owner",
+      email: "sam@sample-bakery.example.test",
+      phone_number: "+65 6000 0004",
+      design_preferences: "Cosy neighbourhood bakery, warm browns and cream",
+      expected_annual_revenue: "SGD 250k",
+      requirements_notes: "Weekend offer poster.",
+    },
+    images: [art("Sample Bakery", "Weekend offer", "#FFF3E0", "#9C6B2F")],
+    reference_images: [],
+    status: "awaiting_review",
+    round: 1,
+  },
 ];
 
 const TRACES: Record<string, StepTrace[]> = {
@@ -226,7 +246,7 @@ const CONSULTS: Consult[] = [
     decided_at: "2026-10-29T06:40:00Z",
   },
 ];
-const SUBMITTED = ["2026-10-31T09:12:00Z", "2026-10-30T14:40:00Z", "2026-10-29T03:05:00Z"];
+const SUBMITTED = ["2026-10-31T09:12:00Z", "2026-10-30T14:40:00Z", "2026-10-29T03:05:00Z", "2026-11-03T10:15:00Z"];
 
 const STATUS_AFTER: Record<string, string> = { approve: "approved", reject: "rejected", more_info: "needs_info" };
 
@@ -285,6 +305,10 @@ export function createStaffMock() {
   const db = DETAILS.map((d) => ({ ...d, traces: TRACES[d.id] || [] }));
   const consultDb = CONSULTS.map((c) => ({ ...c }));
   const draftsDb = new Map<string, StudioDraft[]>();
+  // Clearly fake share-link + feedback demo data (Sample Bakery only).
+  const sharesDb = new Map<string, ShareLink[]>();
+  const shortlistDb = new Map<string, string[]>();
+  const feedbackDb = new Map<string, FeedbackEntry[]>();
   let seq = 0;
   const wait = <T,>(v: T) => new Promise<T>((r) => setTimeout(() => r(structuredClone(v)), 300));
   const draftsFor = (cid: string): StudioDraft[] => {
@@ -312,6 +336,43 @@ export function createStaffMock() {
     const notes = (f as Record<string, unknown>).requirements_notes;
     if (typeof notes === "string" && notes.trim()) brief.requirements_notes = notes;
     return brief;
+  };
+  const sharesFor = (cid: string): ShareLink[] => {
+    let list = sharesDb.get(cid);
+    if (!list) {
+      list = [];
+      sharesDb.set(cid, list);
+    }
+    return list;
+  };
+  const shortlistIds = (cid: string): string[] => shortlistDb.get(cid) || [];
+  const shortlistDrafts = (cid: string): StudioDraft[] => {
+    const ids = new Set(shortlistIds(cid));
+    return draftsFor(cid).filter((d) => ids.has(d.id));
+  };
+  const knownClient = (cid: string) => db.some((x) => x.id === cid);
+  const DAY = 86400000;
+
+  // Seed Sample Bakery with two sent drafts, a shortlist, taps and two links.
+  const seedSample = () => {
+    const cid = "c-sample04";
+    const sentAt = new Date(Date.now() - 2 * DAY).toISOString();
+    const a = makeDraft(cid, "Sample Bakery", "post", 3, { run_id: "mock-run-sample" });
+    const b = makeDraft(cid, "Sample Bakery", "post", 0, { run_id: "mock-run-sample" });
+    a.sent_at = sentAt;
+    b.sent_at = sentAt;
+    draftsFor(cid).push(a, b);
+    shortlistDb.set(cid, [a.id, b.id]);
+    feedbackDb.set(cid, [
+      { draft_id: a.id, kind: "heart", note: null, actor: "client:share", created_at: new Date(Date.now() - 30 * 3600000).toISOString() },
+      { draft_id: b.id, kind: "changes", note: "Love the colours — please make the weekend offer headline bigger.", actor: "client:share", created_at: new Date(Date.now() - 26 * 3600000).toISOString() },
+      { draft_id: b.id, kind: "reject", note: null, actor: "client:share", created_at: new Date(Date.now() - 25 * 3600000).toISOString() },
+      { draft_id: a.id, kind: "approve", note: null, actor: "client:share", created_at: new Date(Date.now() - 5 * 3600000).toISOString() },
+    ]);
+    sharesDb.set(cid, [
+      { id: "mock-share-live", expires_at: new Date(Date.now() + 6 * DAY).toISOString(), revoked_at: null, used_at: new Date(Date.now() - DAY).toISOString(), created_by: "staff:demo" },
+      { id: "mock-share-old", expires_at: new Date(Date.now() - DAY).toISOString(), revoked_at: null, used_at: null, created_by: "staff:demo" },
+    ]);
   };
   const makeDraft = (cid: string, name: string, preset: StudioSizePreset, styleIdx: number, extra?: Partial<StudioDraft>): StudioDraft => {
     seq += 1;
@@ -341,7 +402,7 @@ export function createStaffMock() {
       created_at: new Date().toISOString(),
     };
   };
-  return {
+  const api = {
     list: (): Promise<StaffRow[]> =>
       wait(
         db.map((d, i) => ({
@@ -450,5 +511,42 @@ export function createStaffMock() {
       d.sent_at = new Date().toISOString();
       return wait(d);
     },
+    createShare: (cid: string, days = 7): Promise<ShareCreated> => {
+      if (!knownClient(cid)) return Promise.reject(new Error("HTTP 404"));
+      if (!Number.isInteger(days) || days < 1 || days > 30) {
+        return Promise.reject(new Error("Link lifetime must be between 1 and 30 days."));
+      }
+      seq += 1;
+      const id = `mock-share-${seq}`;
+      const expiresAt = new Date(Date.now() + days * DAY).toISOString();
+      sharesFor(cid).push({ id, expires_at: expiresAt, revoked_at: null, used_at: null, created_by: "staff:demo" });
+      return wait({ id, url: `https://example.test/share#t=mock-token-${seq}`, expires_at: expiresAt });
+    },
+    listShares: (cid: string): Promise<ShareLink[]> => {
+      if (!knownClient(cid)) return Promise.reject(new Error("HTTP 404"));
+      return wait(sharesFor(cid));
+    },
+    revokeShare: (cid: string, tokenId: string): Promise<{ id: string; revoked_at: string }> => {
+      if (!knownClient(cid)) return Promise.reject(new Error("HTTP 404"));
+      const row = sharesFor(cid).find((s) => s.id === tokenId);
+      if (!row) return Promise.reject(new Error("HTTP 404"));
+      row.revoked_at = row.revoked_at || new Date().toISOString();
+      return wait({ id: row.id, revoked_at: row.revoked_at });
+    },
+    shortlist: (cid: string): Promise<ShortlistView> => {
+      if (!knownClient(cid)) return Promise.reject(new Error("HTTP 404"));
+      return wait({ drafts: shortlistDrafts(cid), feedback: feedbackDb.get(cid) || [] });
+    },
+    setShortlist: (cid: string, draftId: string, add: boolean): Promise<{ drafts: StudioDraft[] }> => {
+      if (!knownClient(cid)) return Promise.reject(new Error("HTTP 404"));
+      if (!draftsFor(cid).some((d) => d.id === draftId)) return Promise.reject(new Error("HTTP 404"));
+      const ids = new Set(shortlistIds(cid));
+      if (add) ids.add(draftId);
+      else ids.delete(draftId);
+      shortlistDb.set(cid, [...ids]);
+      return wait({ drafts: shortlistDrafts(cid) });
+    },
   };
+  seedSample();
+  return api;
 }

@@ -27,6 +27,11 @@ def _hash(secret: str) -> str:
     return hashlib.sha256(secret.encode()).hexdigest()
 
 
+def token_hash(token: str) -> str:
+    """SHA-256 hex of a share token. Only the hash is stored, compared, or audited."""
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
 def issue_secret(s: dict) -> str:
     """New random secret for this session; only its hash is stored. Replaces any earlier secret."""
     secret = secrets.token_urlsafe(24)

@@ -1,5 +1,5 @@
 import { createStaffMock } from "./mock";
-import type { Consult, DecisionBody, DecisionResult, RejectedLookRound, StaffDetail, StaffRow, StudioDraft, StudioDraftsBody, StudioGet, StudioRemixBody, StudioRunResult } from "./types";
+import type { Consult, DecisionBody, DecisionResult, RejectedLookRound, ShareCreated, ShareLink, ShortlistView, StaffDetail, StaffRow, StudioDraft, StudioDraftsBody, StudioGet, StudioRemixBody, StudioRunResult } from "./types";
 
 export interface StaffClient {
   mock: boolean;
@@ -15,6 +15,11 @@ export interface StaffClient {
   starDraft(id: string, draftId: string, starred: boolean): Promise<StudioDraft>;
   pinDraft(id: string, draftId: string, target: "client" | "consult" | null): Promise<StudioDraft>;
   sendDraft(id: string, draftId: string): Promise<StudioDraft>;
+  createShare(id: string, days?: number): Promise<ShareCreated>;
+  listShares(id: string): Promise<ShareLink[]>;
+  revokeShare(id: string, tokenId: string): Promise<{ id: string; revoked_at: string }>;
+  shortlist(id: string): Promise<ShortlistView>;
+  setShortlist(id: string, draftId: string, add: boolean): Promise<{ drafts: StudioDraft[] }>;
 }
 
 // [staff-key] Staff passcode, kept for this browser tab only and sent as x-staff-key on every staff call.
@@ -111,6 +116,26 @@ const real: Omit<StaffClient, "mock"> = {
   sendDraft: (id, draftId) =>
     req("/api/staff/clients/" + encodeURIComponent(id) + "/studio/drafts/" + encodeURIComponent(draftId) + "/send", {
       method: "POST",
+    }),
+  createShare: (id, days = 7) =>
+    req("/api/staff/clients/" + encodeURIComponent(id) + "/studio/share", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ days }),
+    }),
+  listShares: (id) => req("/api/staff/clients/" + encodeURIComponent(id) + "/studio/shares"),
+  revokeShare: (id, tokenId) =>
+    req("/api/staff/clients/" + encodeURIComponent(id) + "/studio/shares/" + encodeURIComponent(tokenId) + "/revoke", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    }),
+  shortlist: (id) => req("/api/staff/clients/" + encodeURIComponent(id) + "/studio/shortlist"),
+  setShortlist: (id, draftId, add) =>
+    req("/api/staff/clients/" + encodeURIComponent(id) + "/studio/shortlist/" + encodeURIComponent(draftId), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ add }),
     }),
 };
 
