@@ -36,6 +36,8 @@ def main():
     d = Daytona(DaytonaConfig(api_key=os.environ["DAYTONA_API_KEY"],
                               api_url=os.getenv("DAYTONA_API_URL", "https://app.daytona.io/api")))
     env = {k: os.environ[k] for k in APP_ENV if os.getenv(k)}
+    if "BASETEN_API_KEY" not in env and os.getenv("BASETEN_DEPLOY_API_KEY"):
+        env["BASETEN_API_KEY"] = os.environ["BASETEN_DEPLOY_API_KEY"]
     sb = None
     if ID_FILE.exists():
         try:
@@ -69,6 +71,8 @@ def main():
         print("WARNING: STAFF_PASSCODE not set; staff pages will answer 503 (fail closed)")
     if not env.get("ONBOARDING_NOTIFY_EMAIL"):
         print("WARNING: ONBOARDING_NOTIFY_EMAIL not set; staff-decision emails stay in the outbox")
+    if not env.get("BASETEN_API_KEY"):
+        print("WARNING: BASETEN_API_KEY not set; chat goes straight to Meta when MODEL_API_KEY is set, else chat is disabled")
     envs = " ".join(f"{k}='{v}'" for k, v in env.items())
     sb.process.execute_session_command("web", SessionExecuteRequest(
         command=f"cd {home}/app && {envs} nohup python -m uvicorn src.app:app --host 0.0.0.0 --port {PORT} "
