@@ -53,6 +53,26 @@ function ImageGrid({ urls, label, onOpen }: { urls: string[]; label: string; onO
   );
 }
 
+/** Readiness strip: two marks from the already-loaded detail payload only.
+ * Profile reflects field completeness; Looks reflects chosen/reference images.
+ * No Drafts mark — the studio payload is not loaded on this tab. */
+function Readiness({ detail, updated }: { detail: StaffDetail; updated: string | null }) {
+  const filled = FIELDS.filter((f) => ((detail.fields[f.key] || "") as string).trim()).length;
+  const profile = filled >= FIELDS.length ? "done" : filled === 0 ? "none" : "waiting";
+  const looks = detail.images.length ? "done" : detail.reference_images.length ? "waiting" : "none";
+  return (
+    <p className="staff-readiness">
+      <span className="staff-mark" data-state={profile}>
+        Profile: {profile}
+      </span>
+      <span className="staff-mark" data-state={looks}>
+        Looks: {looks}
+      </span>
+      {updated && <span className="staff-updated">Updated {fmtDate(updated)}</span>}
+    </p>
+  );
+}
+
 interface DetailProps {
   client: StaffClient;
   row: StaffRow;
@@ -138,6 +158,7 @@ function Detail({ client, row, onDecided, onOpen }: DetailProps) {
         </div>
       ) : (
       <div id={`panel-details-${row.id}`} role="tabpanel" aria-labelledby={`tab-details-${row.id}`}>
+      <Readiness detail={d} updated={row.updated} />
       <div className="staff-contactcard">
         <div className="staff-cc-item">
           <span className="staff-cc-label">Contact</span>
@@ -182,6 +203,7 @@ function Detail({ client, row, onDecided, onOpen }: DetailProps) {
       {d.traces?.length ? (
         <div className="staff-section">
           <h3>Step traces</h3>
+          <div className="staff-table-wrap">
           <table className="staff-traces">
             <thead>
               <tr>
@@ -204,6 +226,7 @@ function Detail({ client, row, onDecided, onOpen }: DetailProps) {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       ) : null}
 
@@ -355,6 +378,7 @@ function MetricsPanel({ client }: { client: StaffClient }) {
         <div className="staff-kv-row"><dt>Total cost:</dt><dd>S${m.total_cost_sgd.toFixed(4)}</dd></div>
       </dl>
       {m.steps?.length ? (
+        <div className="staff-table-wrap">
         <table className="staff-traces">
           <thead>
             <tr>
@@ -379,9 +403,23 @@ function MetricsPanel({ client }: { client: StaffClient }) {
             ))}
           </tbody>
         </table>
+        </div>
       ) : null}
     </div>
   );
+}
+
+/** One-line queue summary from the already-loaded rows: no extra API calls. */
+function queueSummary(rows: StaffRow[]): string {
+  const waiting = rows.filter((r) => !FINAL.includes(r.status) && r.status !== "handed_off");
+  if (!waiting.length) return "Nothing waiting.";
+  const dated = waiting.filter((r) => r.updated && !isNaN(new Date(r.updated).getTime()));
+  const oldest = (dated.length ? dated : waiting).reduce((a, b) =>
+    (a.updated || "") <= (b.updated || "") ? a : b,
+  );
+  const days = oldest.updated ? Math.max(0, Math.floor((Date.now() - new Date(oldest.updated).getTime()) / 86400000)) : 0;
+  const name = oldest.business_name || "Unnamed client";
+  return `${waiting.length} waiting — oldest ${name}, ${days} day${days === 1 ? "" : "s"}`;
 }
 
 export default function StaffPage() {
@@ -454,6 +492,7 @@ export default function StaffPage() {
             <h2>Submissions</h2>
             <span className="staff-count">{client ? `${rows.length} client${rows.length === 1 ? "" : "s"}` : "Loading…"}</span>
           </div>
+          {client && rows.length > 0 && <p className="staff-finding">{queueSummary(rows)}</p>}
           {client && !rows.length && <p className="staff-empty">No submissions yet.</p>}
           <ul className="staff-list">
             {rows.map((r) => {

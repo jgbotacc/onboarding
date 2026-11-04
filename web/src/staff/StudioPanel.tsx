@@ -96,7 +96,13 @@ function DraftCard({
               disabled={working || busy}
               onClick={() => act(() => client.starDraft(clientId, d.id, !d.starred), "Couldn't update the favourite.")}
             >
-              {d.starred ? "★ Favourited" : "☆ Favourite"}
+              <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill={d.starred ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.5">
+                <path
+                  d="M8 1.6l1.9 4 4.4.6-3.2 3.1.8 4.4L8 11.7l-3.9 2 .8-4.4-3.2-3.1 4.4-.6z"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              {d.starred ? "Favourited" : "Favourite"}
             </button>
             <button type="button" className="btn studio-btn" disabled={working || busy || sent} onClick={remix}>
               More like this
