@@ -1,5 +1,7 @@
 # Onboarding Agent
 
+[Watch the demo video](https://www.youtube.com/watch?v=WP5Iw92599A)
+
 ## What it does
 AI-assisted onboarding chat for small businesses. A client uploads a PDF or phone photo with business details, the agent pulls out the fields, asks only for what is still missing, and shows marketing mockups to get a sense of client's design preferences. If nothing is picked, it hands off to staff for a consult.
 
