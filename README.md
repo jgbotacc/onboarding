@@ -8,6 +8,7 @@
 - Staff: https://8000-44729a7d-c953-4cf4-bb69-f3f43bd8d06a.daytonaproxy01.net/staff
 - Demo passwords: `staff` for the staff view, `designer` for the designer view.
 - Staff and designers share the one /staff address; the password decides the view.
+- Find documents in 'Sample Documents' of this folder for testing
 
 ## What it does
 AI-assisted onboarding chat for small businesses. A client uploads a PDF or phone photo with business details, the agent pulls out the fields, asks only for what is still missing, and shows marketing mockups to get a sense of client's design preferences. If nothing is picked, it hands off to staff for a consult.
