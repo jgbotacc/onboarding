@@ -1,4 +1,4 @@
-# Decisions and assumptions (v2)
+# Decisions and assumptions
 
 Decisions were made by Jin. Assumptions are ours; Jin can override any of them.
 
