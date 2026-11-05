@@ -1,4 +1,4 @@
-# Onboarding Agent (v2)
+# Onboarding Agent
 
 ## What it does
 AI-assisted onboarding chat for small businesses. A client uploads a PDF or phone photo with business details, the agent pulls out the fields, asks only for what is still missing, and shows marketing mockups to get a sense of client's design preferences. If nothing is picked, it hands off to staff for a consult.
@@ -50,18 +50,6 @@ Env vars, by name only:
 - `STAFF_PASSCODE` (staff pages and API at `/staff`)
 - `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD` optional, SQLite fallback in `var/` if not set
 - `ONBOARDING_NOTIFY_EMAIL`, `RESEND_API_KEY` optional
-
-## Staff image studio
-Staff-only Studio tab per client: runs 3 drafts per run from the client brief, with remix of a draft or a rejected look. Rejected looks steer the prompt away (best effort, prompt text only). Drafts can be starred, pinned to the client or consult card, and sent to the client, where they appear as "Suggested by our team". Cap is 9 drafts per client. Drafts are staff-only until sent; every studio action is written to the audit log.
-Routes (all under `/api/staff`, staff passcode applies):
-- `GET /api/staff/clients/{cid}/studio`
-- `POST /api/staff/clients/{cid}/studio/drafts`
-- `POST /api/staff/clients/{cid}/studio/remix`
-- `POST /api/staff/clients/{cid}/studio/drafts/{did}/star`
-- `POST /api/staff/clients/{cid}/studio/drafts/{did}/pin`
-- `POST /api/staff/clients/{cid}/studio/drafts/{did}/send`
-To try it without a backend, open the staff page with `?mock=1` for demo data.
-Designer handoff page at `/designer` (staff passcode, or the `DESIGNER_PASSCODE` designer passcode): one row per case sent to designers, with an image zip download, final-image upload, and Done/Pending status.
 
 ## Docs (used for spec driven development)
 - [Docs/PRD.md](Docs/PRD.md)
