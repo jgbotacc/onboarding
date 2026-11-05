@@ -11,7 +11,7 @@ Stack: `web (FastAPI + React/Vite, Neo4j Aura, Daytona, Vercel relay)`
 ├── README.md                 how to run, build and test
 ├── requirements.txt          Python dependencies
 ├── Docs/
-│   ├── PRD.md                requirements, principles, integrations, API contract
+│   ├── PRD.md                v2 requirements, principles, integrations, API contract
 │   ├── ASSUMPTIONS.md        decisions and assumptions log
 │   ├── b2b-registration-form.html   field source of truth
 │   ├── review-api.md         staff review API contract
@@ -59,7 +59,7 @@ Stack: `web (FastAPI + React/Vite, Neo4j Aura, Daytona, Vercel relay)`
 | `/scripts` | Daytona deploy, sandbox exec, Cypher loader, sample PDF |
 
 ## Added files and folders
-- `Docs/PRD.md`, `Docs/ASSUMPTIONS.md`: requirements and decisions
+- `Docs/PRD.md`, `Docs/ASSUMPTIONS.md`: v2 requirements and decisions
 - `src/shared/meta.py`, `src/shared/trace.py`, `src/shared/guard.py`: Meta client with retries, step tracing, outbound guard
 - `src/features/intake/document.py`, `src/features/intake/photo.py`: general document and photo reading
 - `src/features/i18n/`: language detection and translation

@@ -1,4 +1,4 @@
-# Onboarding Agent: product requirements
+# Onboarding Agent v2: product requirements
 
 Status: in build (backend). Branch `v2`, repo `jgbotacc/onboarding-agent-v2` (private).
 Related: `Docs/ASSUMPTIONS.md` (decisions and assumptions), `Docs/FILE-STRUCTURE.md`, `Docs/review-api.md` (v1 staff API, still valid).
@@ -6,13 +6,13 @@ Related: `Docs/ASSUMPTIONS.md` (decisions and assumptions), `Docs/FILE-STRUCTURE
 ## 1. Problem and users
 The client is a **non-tech-savvy small business owner** finishing onboarding with us. They read very little,
 may not write in English, and may only have a phone photo of their business registration.
-Their main risks are **getting stuck** and **being misread**, so this version prioritises plain language, short lines and
-confirm steps over extra features. Some boilerplate code to test out data flow end-to-end for an onboarding flow was previously generated.
+Their main risks are **getting stuck** and **being misread**, so v2 prioritises plain language, short lines and
+confirm steps over extra features. v1 was earlier boilerplate code generated to test the data flow end to end for an onboarding flow.
 
 Staff (our onboarding team) review every client in English, approve consult handoffs and emails, and see quality
 and cost numbers.
 
-## 2. Goals
+## 2. Goals for v2
 1. **General business document upload.** PDFs and phone photos (JPG, PNG, HEIC) of documents such as the ACRA
    business profile. We pull out business name, UEN, registered address, business type, industry (from business
    activity), director as contact and title. The client confirms what we found, then the bot asks only for what
@@ -117,7 +117,7 @@ Each step gets only what it needs:
 | Neo4j Aura | HTTPS Query API `POST https://<host>/db/<db>/query/v2` (Bolt 7687 is blocked on the box) | https://neo4j.com/docs/query-api/current/ | Us (Jin's Aura) |
 | SQLite | local file `var/onboarding.sqlite3` (fallback store, tests) | https://docs.python.org/3/library/sqlite3.html | Us |
 | Resend | `POST https://api.resend.com/emails`, staff decision emails only (off-live unless `ONBOARDING_NOTIFY_EMAIL` and a key are set) | https://resend.com/docs/api-reference/emails/send-email | Third party |
-| Vercel relay (v1) | pass-through to Neo4j, Muse images and Resend | `relay/README.md` | Us. The relay was set up earlier and this build does not deploy or change it. |
+| Vercel relay (v1) | pass-through to Neo4j, Muse images and Resend | `relay/README.md` | Us. **v2 does not deploy or change it.** |
 | Jev (via Composio, `JEV_EVALUATE_STATE`) | offline sampled grading only; never called by the running app | Composio toolkit `jev` | Third party (TypeSafe AI), Jin's Composio account |
 | Front end (`web/`) | consumes the API contract in section 6 | this doc | Teammate (front end) |
 
@@ -573,5 +573,5 @@ Jev sample on the smoke test (2026-11-03): document extraction from a phone phot
 image fit to brief 2.68/3 (from short descriptions of the three looks). Not yet imported into the store; `scripts/eval_sample.py`
 is planned, so `evals` in the metrics API is `null` for now.
 
-## 7. Out of scope for backend
+## 7. Out of scope for v2 backend
 Redeploying Daytona/Vercel, changing the v1 repo, server-side voice, consult emails or alerts.

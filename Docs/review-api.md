@@ -65,7 +65,7 @@ Calls the front end makes:
 Status labels handled: need_document, missing_info, need_direction, awaiting_review, accepted,
 handed_off, approved, rejected, needs_info, pending_review.
 
-## Additions
+## v2 additions
 Client: `POST /api/language`, `purpose=document` uploads, `POST /api/confirm`,
 `DELETE /api/documents/{docId}`, `POST /api/looks`, status `confirm_details`, plus `lines`,
 `lang`, `retake`, `confirm`, `looks`, `consult` on every reply. Staff detail adds `lang`,

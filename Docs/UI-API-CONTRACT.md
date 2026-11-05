@@ -1,4 +1,4 @@
-# UI ↔ API contract (front end)
+# UI ↔ API contract (v2 front end)
 
 Owner: front end (`web/`). The UI talks to the backend only through the adapter in `web/src/api.ts`
 (`realClient`). If backend names change, edit that one function. `?mock=1` runs the same contract
