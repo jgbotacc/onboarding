@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
-import { connect, HttpError, type Client } from "./api";
+import { clearClientSession, connect, HttpError, type Client } from "./api";
 import { EMPTY_FORM, type ApiResponse, type ConsultInfo, type ExtractedField, type FieldIssue, type FormFields, type Looks, type RetakeInfo, type SuggestedLook } from "./types";
 import ConfirmDetails from "./confirm/ConfirmDetails";
 import FormModal from "./FormModal";
@@ -424,8 +424,21 @@ export default function App() {
   const showAccepted = !!acceptedMsg && dismissedAcceptedId !== acceptedMsg.id;
   const acceptedCloseRef = useRef<HTMLButtonElement>(null);
   const acceptedRestoreRef = useRef<Element | null>(null);
+  // Closing the final popup starts over: drop the stored session, drop any
+  // one-time resume token, and reload so the app re-runs the first-visit init
+  // (a new session showing the upload/form start). No server call touches the
+  // finished case, and the language stays in localStorage.
   const closeAccepted = useCallback(() => {
     if (acceptedMsg) setDismissedAcceptedId(acceptedMsg.id);
+    clearClientSession();
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.delete("resume");
+      window.history.replaceState(null, "", u.toString());
+    } catch {
+      /* ignore */
+    }
+    window.location.reload();
   }, [acceptedMsg]);
   // Focus moves into the popup while it is open; Escape (or the close button)
   // dismisses it and focus returns to where it was.

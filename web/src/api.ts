@@ -22,6 +22,12 @@ const read = (k: string) => {
   }
 };
 
+/** Drop the stored client session so the next connect() starts a fresh one. Keeps the chosen language (localStorage). */
+export function clearClientSession(): void {
+  store(SESSION_KEY, "");
+  store(SECRET_KEY, "");
+}
+
 const isLang = (v: unknown): v is Lang => v === "en" || v === "zh" || v === "ms" || v === "ta";
 
 /** Active language, shared with the i18n picker via localStorage (default `en`). */
