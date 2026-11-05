@@ -64,8 +64,10 @@ export default function App() {
   const [micOn, setMicOn] = useState(false);
   const [micSupported] = useState(() => isMicSupported());
   const micStopRef = useRef<(() => void) | null>(null);
-  const [feedbackMode, setFeedbackMode] = useState(false);
   const [lightbox, setLightbox] = useState<string | null>(null);
+  // Final accepted message: shown as a popup, not a chat bubble. Dismissed per
+  // message id so a later accepted reply pops up again.
+  const [dismissedAcceptedId, setDismissedAcceptedId] = useState<number | null>(null);
   const [dragging, setDragging] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   // Resume link (/?resume=<token>): fields staff asked the client to fill in again.
@@ -327,14 +329,8 @@ export default function App() {
     }
   };
 
-  const startFeedback = () => {
-    setFeedbackMode(true);
-    inputRef.current?.focus();
-  };
-
   const accept = () => {
     if (!client || busy) return;
-    setFeedbackMode(false);
     push({ role: "user", text: t(lang, "looksGood"), files: [] });
     run(() => client.review(true, ""));
   };
@@ -358,9 +354,7 @@ export default function App() {
       if (ok && hasPdf(fs)) setChatReady(true);
       if (!ok || !t) return;
     }
-    const asFeedback = feedbackMode && status === "awaiting_review";
-    setFeedbackMode(false);
-    await run(() => (asFeedback ? client.review(false, t) : client.chat(t)));
+    await run(() => client.chat(t));
   };
 
   // Mic: spoken answers go into the input for the client to check; never auto-sent.
@@ -424,6 +418,34 @@ export default function App() {
     return k ? fieldLabel(lang, k) : m;
   };
 
+  // The final message is the reply whose session status is "accepted" (from the
+  // API, never matched on English text). It shows as a popup, not a bubble.
+  const acceptedMsg = [...messages].reverse().find((m) => m.role === "assistant" && m.status === "accepted");
+  const showAccepted = !!acceptedMsg && dismissedAcceptedId !== acceptedMsg.id;
+  const acceptedCloseRef = useRef<HTMLButtonElement>(null);
+  const acceptedRestoreRef = useRef<Element | null>(null);
+  const closeAccepted = useCallback(() => {
+    if (acceptedMsg) setDismissedAcceptedId(acceptedMsg.id);
+  }, [acceptedMsg]);
+  // Focus moves into the popup while it is open; Escape (or the close button)
+  // dismisses it and focus returns to where it was.
+  useEffect(() => {
+    if (!showAccepted) return;
+    acceptedRestoreRef.current = document.activeElement;
+    acceptedCloseRef.current?.focus();
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+      (acceptedRestoreRef.current as HTMLElement | null)?.focus?.();
+    };
+  }, [showAccepted]);
+  const onAcceptedKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Escape") {
+      e.stopPropagation();
+      closeAccepted();
+    }
+  };
   const lastReviewId = [...messages].reverse().find((m) => m.role === "assistant" && m.status === "awaiting_review")?.id;
   const lastLooksId = [...messages].reverse().find((m) => m.role === "assistant" && (m.looks?.options?.length ?? 0) > 0)?.id;
   const lastConfirmId = [...messages].reverse().find((m) => m.role === "assistant" && ((m.extracted?.length ?? 0) > 0 || !!m.retake))?.id;
@@ -510,6 +532,7 @@ export default function App() {
       <main className="chat" id="chat" ref={chatRef} aria-live="polite">
         <div className="column">
           {messages.map((m) => {
+            if (m.role === "assistant" && m.status === "accepted") return null; // final message shows as a popup
             if (m.role === "user")
               return (
                 <div key={m.id} className="msg user" lang={lang}>
@@ -601,16 +624,11 @@ export default function App() {
                 ) : null}
                 {m.consult && <p className="consult-note">{t(lang, "consult.note")}</p>}
                 {showReview && (
-                  <>
-                    <div className="review">
-                      <button type="button" className="btn primary" disabled={!active || busy} onClick={accept}>
-                        {t(lang, "looksGood")}
-                      </button>
-                      <button type="button" className={"btn" + (active && feedbackMode ? " on" : "")} disabled={!active || busy} onClick={startFeedback}>
-                        {t(lang, "askChanges")}
-                      </button>
-                    </div>
-                  </>
+                  <div className="review">
+                    <button type="button" className="btn primary" disabled={!active || busy} onClick={accept}>
+                      {t(lang, "looksGood")}
+                    </button>
+                  </div>
                 )}
               </div>
               </div>
@@ -676,7 +694,7 @@ export default function App() {
               ))}
             </div>
           )}
-          <form className={"composer" + (feedbackMode ? " feedback" : "")} id="composer" onSubmit={onSubmit} autoComplete="off">
+          <form className="composer" id="composer" onSubmit={onSubmit} autoComplete="off">
             <button type="button" className="btn-icon" id="attachBtn" title={t(lang, "attachTitle")} aria-label={t(lang, "attachLabel")} disabled={closed} onClick={() => fileRef.current?.click()}>
               <PaperclipIcon />
             </button>
@@ -686,7 +704,7 @@ export default function App() {
                 id="textInput"
                 rows={1}
                 value={text}
-                placeholder={closed ? t(lang, "linkClosed") : feedbackMode ? t(lang, "feedbackPrompt") : t(lang, "typeMessage")}
+                placeholder={closed ? t(lang, "linkClosed") : t(lang, "typeMessage")}
                 disabled={closed}
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={onKeyDown}
@@ -713,7 +731,6 @@ export default function App() {
               <SendIcon />
             </button>
           </form>
-          {feedbackMode && <div className="hint">{t(lang, "feedbackHint")}</div>}
         </div>
       </footer>
       )}
@@ -732,6 +749,19 @@ export default function App() {
       {lightbox && (
         <div className="lightbox" id="lightbox" onClick={() => setLightbox(null)} role="dialog" aria-label={t(lang, "imagePreview")}>
           <img src={lightbox} alt={t(lang, "enlargedImage")} />
+        </div>
+      )}
+      {showAccepted && acceptedMsg && (
+        <div className="modal-backdrop" id="acceptedPopup" onMouseDown={(e) => e.target === e.currentTarget && closeAccepted()}>
+          <div className="modal accepted-modal" role="dialog" aria-modal="true" aria-labelledby="acceptedTitle" onKeyDown={onAcceptedKeyDown}>
+            <div className="accepted-text" id="acceptedTitle" lang={lang}>
+              <MsgText text={acceptedMsg.text} />
+            </div>
+            <ListenButton id={"accepted-" + acceptedMsg.id} text={acceptedMsg.text} lang={lang} trace={traceListen} />
+            <button ref={acceptedCloseRef} type="button" className="btn primary" id="acceptedClose" onClick={closeAccepted}>
+              {t(lang, "close")}
+            </button>
+          </div>
         </div>
       )}
     </div>

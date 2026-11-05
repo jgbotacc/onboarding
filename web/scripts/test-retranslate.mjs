@@ -54,9 +54,11 @@ try {
   pass("note reuses existing style", /translating && \([\s\S]*?className="hint"/.test(appSrc));
   for (const l of ["en", "zh", "ms", "ta"]) pass(`translating string (${l})`, typeof t(l, "translating") === "string" && t(l, "translating").trim() !== "" && t(l, "translating") !== "translating");
   pass("translating string per language", new Set(["en", "zh", "ms", "ta"].map((l) => t(l, "translating"))).size === 4);
-  // Listen reads the shown (translated) text: both buttons pass the message text.
+  // Listen reads the shown (translated) text: chat buttons pass the message
+  // text, the accepted popup passes its own (translated) accepted text.
   const listenUses = [...appSrc.matchAll(/<ListenButton[^>]*text=\{([^}]+)\}/g)].map((m) => m[1].trim());
-  pass("ListenButton reads message text", listenUses.length >= 2 && listenUses.every((t0) => t0 === "m.text"));
+  pass("ListenButton reads message text", listenUses.filter((t0) => t0 === "m.text").length >= 2);
+  pass("Accepted popup reads its accepted text", listenUses.includes("acceptedMsg.text"));
 
   // Switching translates prior assistant messages; client messages never change.
   const history = () => ([

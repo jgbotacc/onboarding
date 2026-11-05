@@ -43,8 +43,8 @@ pass("attach kept on refs step", /id="attachBtn"/.test(src));
 // Every other step keeps its text input exactly the same.
 pass("textarea kept for other steps", /<textarea/.test(src) && /id="textInput"/.test(src));
 pass(
-  "composer hint unchanged",
-  /placeholder=\{closed \? t\(lang, "linkClosed"\) : feedbackMode \? t\(lang, "feedbackPrompt"\) : t\(lang, "typeMessage"\)\}/.test(src),
+  "composer hint has no feedback mode",
+  /placeholder=\{closed \? t\(lang, "linkClosed"\) : t\(lang, "typeMessage"\)\}/.test(src),
 );
 
 // Mock/i18n refs text no longer says type skip: it says press the arrow to skip.

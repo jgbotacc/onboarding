@@ -59,7 +59,6 @@ button { font: inherit; }
 .composer textarea::placeholder { color: var(--text-3); }
 .composer textarea:hover { border-color: #c9cdd4; }
 .composer textarea:focus { border-color: var(--accent); }
-.composer.feedback textarea { border-color: var(--accent); }
 .btn-icon {
   flex: none; width: 44px; height: 44px; min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center;
   border: 1px solid var(--border); border-radius: var(--r); background: var(--surface); color: var(--text-2); cursor: pointer;
@@ -79,6 +78,10 @@ button { font: inherit; }
 }
 .lightbox { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; background: rgba(29, 33, 41, .72); cursor: zoom-out; }
 .lightbox img { max-width: 92vw; max-height: 92vh; border-radius: var(--r); background: var(--surface); }
+
+/* Accepted popup: the final message as a large centred dialog with big, easy-to-read text. */
+.accepted-modal { flex-direction: column; align-items: center; gap: 16px; max-width: 560px; padding: 32px 24px; text-align: center; }
+.accepted-text { margin: 0; font-size: 1.5rem; line-height: 2rem; font-weight: 600; }
 
 @media (max-width: 600px) {
   .chat { padding: 12px; }
